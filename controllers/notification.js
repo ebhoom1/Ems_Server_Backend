@@ -1,42 +1,86 @@
 const mongoose = require('mongoose');
 const Notification = require('../models/notification');
 const cron = require('node-cron');
+const userdb = require('../models/user');
+const nodemailer = require('nodemailer');
+
+// Nodemailer transporter configuration
+const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+        user: process.env.EMAIL,
+        pass: process.env.PASSWORD
+    }
+});
 
 //Add Notification 
-const addNotification = async (req,res) =>{
+// Add Notification and Send Email to All Users
+const addNotification = async (req, res) => {
     try {
         const {
             message,
-            adminID,
-            adminName,             
-            dateOfNoticationAdded,
-            timeOfNoticationAdded,
-            
-        } =req.body
-
-        //Create New Notification
-        const newNotification = new Notification({message,
+            subject,
             adminID,
             adminName,
             dateOfNoticationAdded,
             timeOfNoticationAdded,
-            })
-        //Save the New Notification
-        await newNotification.save()
+        } = req.body;
 
+        // Create New Notification
+        const newNotification = new Notification({
+            message,
+            subject,
+            adminID,
+            adminName,
+            dateOfNoticationAdded,
+            timeOfNoticationAdded,
+        });
+
+        // Save the New Notification
+        await newNotification.save();
+
+        // Fetch all users from the user database
+        const users = await userdb.find({});
+        if (users.length === 0) {
+            console.log('No users found to send the notification email.');
+        } else {
+            // Send email notification to each user
+            users.forEach(user => {
+                const mailOptions = {
+                    from: '"Notification Service" <notifications@example.com>',
+                    to: user.email,
+                    subject: `Ebhoom EMS Notification: ${subject}`,
+                    text: `Dear ${user.userName},\n\n${message}\n\nBest regards,\nNotification Service`
+                };
+
+                // Send email
+                transporter.sendMail(mailOptions, (error, info) => {
+                    if (error) {
+                        console.log(`Failed to send email to ${user.email}: ${error.message}`);
+                    } else {
+                        console.log(`Email successfully sent to ${user.email}: ${info.response}`);
+                    }
+                });
+            });
+        }
+
+        // Respond with success
         res.status(201).json({
-            success:true,
-            message:"New Notification is added",
-            notification:newNotification
-        })
+            success: true,
+            message: "New Notification is added and emails sent to all users",
+            notification: newNotification
+        });
     } catch (error) {
+        console.error("Error in adding notification:", error);
         res.status(500).json({
-            success:false,
-            message:"Error from Catch",
-            error:error.message
-        })
+            success: false,
+            message: "Error in adding notification",
+            error: error.message
+        });
     }
-}
+};
 //Add Notification for UserId
 const createNotification = async (message,userId,userName,  currentDate,
     currentTime,req,res)=>{

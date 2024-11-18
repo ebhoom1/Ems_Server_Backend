@@ -12,7 +12,7 @@ const {checkAndSendNotification} = require('../controllers/calibration');
 const router =express.Router()
 
 //Add Notification
-router.post('/add-notificaiton',addNotification);
+router.post('/add-notification', addNotification);
 
 //view All Notification
 router.get('/view-notification',viewNotification);

@@ -112,6 +112,7 @@ app.use('/api', billRoutes);
 
 
 
+
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
