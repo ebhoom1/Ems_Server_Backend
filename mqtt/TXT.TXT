@@ -1,0 +1,106 @@
+// Setup MQTT Client
+// const setupMqttClient = (io) => {
+//     const client = mqtt.connect(options);
+
+//     client.on('connect', () => {
+//         console.log('Connected to MQTT broker');
+
+//         // Subscribe to the topic only on a successful connection
+//         client.subscribe('ebhoomPub', (err) => {
+//             if (err) {
+//                 console.error('Subscription error:', err);
+//             } else {
+//                 console.log('Subscribed to topic: ebhoomPub');
+//             }
+//         });
+//     });
+
+//     // Handle Incoming Messages
+//     client.on('message', async (topic, message) => {
+//         try {
+//             // console.log(Received message on topic: ${topic});
+//             const messageString = message.toString();
+//             // console.log('Message:', messageString);
+
+//             let data;
+//             try {
+//                 data = JSON.parse(messageString); // Try parsing JSON
+//                 data = Array.isArray(data) ? data : [data]; // Ensure it's an array
+//             } catch (parseError) {
+//                 console.log('Invalid JSON. Treating message as plain string.');
+//                 data = [{ message: messageString }];
+//             }
+
+//             const time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
+//             const timestamp = moment().tz('Asia/Kolkata').toDate();
+
+//             for (const item of data) {
+//                 const { product_id, userName, stacks } = item;
+
+//                 if (!product_id || !userName || !Array.isArray(stacks) || stacks.length === 0) {
+//                     console.error('Invalid data: Missing product_id, userName, or stack data.');
+//                     continue;
+//                 }
+
+//                 const stackNames = stacks.map(stack => stack.stackName);
+
+//                 const userDetails = await userdb.findOne({
+//                     productID: product_id,
+//                     userName,
+//                     stackName: { 
+//                         $elemMatch: { name: { $in: stackNames } } 
+//                     },
+//                 });
+
+//                 if (!userDetails) {
+//                     console.error(`No matching user found for product_id: ${product_id}, userName: ${userName}`);
+//                     continue;
+//                 }
+
+//                 const payload = {
+//                     product_id,
+//                     userName: userDetails.userName,
+//                     email: userDetails.email,
+//                     mobileNumber: userDetails.mobileNumber,
+//                     companyName: userDetails.companyName,
+//                     industryType: userDetails.industryType,
+//                     stackData: stacks.map(stack => ({
+//                         stackName: stack.stackName,
+//                         ...Object.fromEntries(
+//                             Object.entries(stack).filter(([key, value]) => key !== 'stackName' && value !== 'N/A')
+//                         ),
+//                     })),
+//                     date: moment().format('DD/MM/YYYY'),
+//                     time:moment().format('HH:mm'),
+//                     timestamp: new Date(),    
+//                 };
+
+//                 await axios.post('http://localhost:5555/api/handleSaveMessage', payload); //https://api.ocems.ebhoom.com
+//                 io.to(product_id.toString()).emit('data', payload);
+               
+//                 //console.log('MQTT message received:', message);
+//                  console.log('Data successfully sent:', payload);
+//             }
+//         } catch (error) {
+//             console.error('Error handling MQTT message:', error);
+//         }
+//     });
+
+//     // Handle MQTT Errors
+//     client.on('error', (err) => {
+//         console.error('MQTT error:', err);
+//         console.log('Attempting to reconnect...');
+//     });
+
+//     // Handle Disconnections
+//     client.on('close', () => {
+//         console.warn(`Disconnected from broker at ${new Date().toLocaleString()}`);
+//     });
+
+//     // Reconnection Logic
+//     client.on('reconnect', () => {
+//         console.log('Reconnecting to MQTT broker...');
+//     });
+
+//     return client;
+// };

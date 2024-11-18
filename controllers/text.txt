@@ -1,0 +1,61 @@
+const calculateAndSaveConsumption = async () => {
+    const now = moment().subtract(1, 'hours');
+    const currentHour = now.format('HH');
+    const currentDate = now.format('DD/MM/YYYY');
+
+    console.log(`Fetching data for current hour: ${currentHour}, Date: ${currentDate}`);
+
+    try {
+        const [currentHourData, previousHourData, startOfDay, startOfMonth, startOfYear] = await Promise.all([
+            fetchDataForCalculation(currentDate, currentHour),
+            fetchDataForCalculation(currentDate, currentHour - 1),
+            fetchDataForCalculation(currentDate, "00"),
+            fetchDataForCalculation(moment().startOf('month').format('DD/MM/YYYY'), "00"),
+            fetchDataForCalculation(moment().startOf('year').format('DD/MM/YYYY'), "00")
+        ]);
+
+        if (!currentHourData || !currentHourData.userName || !currentHourData.product_id) {
+            console.error('No valid current hour data found or required fields are missing.');
+            return; // Exit if data is missing or incomplete
+        }
+
+        const newConsumptionData = new Consumption({
+            userName: currentHourData.userName,
+            product_id: currentHourData.product_id,
+            date: currentDate,
+            hour: currentHour,
+            stacks: currentHourData.stacks.map(stack => {
+                const stackName = stack.stackName;
+                const findStack = (data, name) => data.stacks.find(s => s.stackName === name) || {};
+                return {
+                    stackName: stackName,
+                    stationType: stack.stationType,
+                    energyHourlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(previousHourData, stackName).energy),
+                    flowHourlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(previousHourData, stackName).cumulatingFlow),
+                    energyDailyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfDay, stackName).energy),
+                    flowDailyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfDay, stackName).cumulatingFlow),
+                    energyMonthlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfMonth, stackName).energy),
+                    flowMonthlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfMonth, stackName).cumulatingFlow),
+                    energyYearlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfYear, stackName).energy),
+                    flowYearlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfYear, stackName).cumulatingFlow),
+                };
+            })
+        });
+
+        await newConsumptionData.save();
+        console.log(`New consumption data saved for ${currentHourData.userName} at hour: ${currentHour} on date: ${currentDate}`);
+
+        // Emit the new consumption data to a specific room or globally
+        io.emit('consumptionDataUpdate', {
+            userName: currentHourData.userName,
+            product_id: currentHourData.product_id,
+            date: currentDate,
+            hour: currentHour,
+            stacks: newConsumptionData.stacks,
+            timestamp: new Date()
+        });
+
+    } catch (error) {
+        console.error('Error during consumption calculation:', error);
+    }
+};

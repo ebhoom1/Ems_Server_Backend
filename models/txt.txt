@@ -1,0 +1,93 @@
+const mongoose = require(`mongoose`);
+
+const averageDataSchema = new mongoose.Schema({
+    userId: {
+        type: String,
+        required: true
+    },
+    userName: {
+        type: String,
+        required: true
+    },
+    averageType: {
+        type: String,
+        enum: ['hour', 'day', 'month', 'sixmonth', 'year'],
+        required: true
+    },
+    ph: {
+        type: Number
+    },
+    TDS: {
+        type: Number
+    },
+    turbidity: {
+        type: Number
+    },
+    temperature: {
+        type: Number
+    },
+    BOD: {
+        type: Number
+    },
+    COD: {
+        type: Number
+    },
+    TSS: {
+        type: Number
+    },
+    ORP: {
+        type: Number
+    },
+    nitrate: {
+        type: Number
+    },
+    ammonicalNitrogen: {
+        type: Number
+    },
+    DO: {
+        type: Number
+    },
+    chloride: {
+        type: Number
+    },
+    PM10: {
+        type: Number
+    },
+    PM25: {
+        type: Number
+    },
+    NOH: {
+        type: Number
+    },
+    NH3: {
+        type: Number
+    },
+    WindSpeed: {
+        type: Number
+    },
+    WindDir: {
+        type: Number
+    },
+    AirTemperature: {
+        type: Number
+    },
+    Humidity: {
+        type: Number
+    },
+    solarRadiation: {
+        type: Number
+    },
+    DB: {
+        type: Number
+    },
+    timestamp: {
+        type: Date,
+        default: Date.now
+    }
+
+
+});
+
+const AverageData = mongoose.model('AverageData',averageDataSchema)
+
+module.exports = AverageData;
