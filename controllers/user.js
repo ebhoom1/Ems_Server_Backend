@@ -299,32 +299,41 @@ const forgotPassword=async (req,res)=>{
 
 //change password
 
-const changePassword= async (req,res)=>{
-    const {id, token}=req.params;
-    const {password, cpassword}=req.body;
+const changePassword = async (req, res) => {
+    const { id, token } = req.params;
+    const { password, cpassword } = req.body;
+
+    if (password !== cpassword) {
+        return res.status(422).json({ status: 422, message: "New password and confirmation password do not match" });
+    }
 
     try {
-        const validuser =await userdb.findOne({_id: id, verifytoken:token});
+        // Check if the token exists in the tokens array
+        const user = await userdb.findOne({
+            _id: id,
+            "tokens.token": token, // Search for token in tokens array
+        });
 
-        const verifytoken=jwt.verify(token,keysecret);
-         if(password !==cpassword){
-            return res.status(422).json({ status: 422, message: "New password and confirmation password do not match" });
-         }
-        if(validuser && verifytoken._id){
-            const newpassword =await bcrypt.hash(password,12);
-
-            const setnewuserpass = await userdb.findByIdAndUpdate({_id:id},{password:newpassword});
-
-            setnewuserpass.save()
-            res.status(201).json({status:201, setnewuserpass})
-        }else{
-            res.status(401).json({status: 401, message:"user not exist"})
+        if (!user) {
+            return res.status(401).json({ status: 401, message: "User not found or invalid token" });
         }
+
+        // Verify the token
+        jwt.verify(token, process.env.SECRET_KEY);
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Update the password
+        await userdb.updateOne({ _id: id }, { $set: { password: hashedPassword } });
+
+        return res.status(200).json({ status: 200, message: "Password changed successfully" });
     } catch (error) {
-        res.status(401).json({status:401, error})
-        
+        console.error(`Error changing password: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-}     
+};
+   
 const getAllUsers = async (req, res) => {
     try {
         const users = await userdb.find({}, { password: 0, cpassword: 0 }).lean().exec(); // Exclude sensitive fields
@@ -341,195 +350,182 @@ const getAllUsers = async (req, res) => {
 
 
 // edit user
-const editUser= async(req,res)=>{
+const editUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const updateFields = req.body;
 
-    try{
-        const {userId} =req.params;
-        const updateFields= req.body;
+        // Use findByIdAndUpdate with lean for faster updates
+        const updatedUser = await userdb
+            .findByIdAndUpdate(userId, updateFields, { new: true, lean: true })
+            .exec();
 
-        
-        const updatedUser = await userdb.findByIdAndUpdate(userId,updateFields, { new: true });
-        
-        if(!updatedUser){
-                return res.status(404).json({status:404, message:"user Not Found"})
-        }else{
-            return res.status(200).json(
-                {status:200,
-                success:true,
-                message: "User upadated successfully", 
-                user: updatedUser
-             })
+        if (!updatedUser) {
+            return res.status(404).json({ status: 404, message: "User Not Found" });
         }
 
-    }catch(error){
+        return res.status(200).json({
+            status: 200,
+            success: true,
+            message: "User updated successfully",
+            user: updatedUser,
+        });
+    } catch (error) {
+        console.error(`Error updating user: ${error.message}`);
         return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-}
+};
 
 // Delete User
 const deleteUser = async (req, res) => {
     try {
-        const userName = req.params.userName;
+        const { userName } = req.params;
 
-       
-        const deletedUser = await userdb.findOneAndDelete({ userName });
+        // Use findOneAndDelete directly
+        const deletedUser = await userdb.findOneAndDelete({ userName }).lean();
 
         if (!deletedUser) {
-            return res.status(404).json({ status: 404, message: "User Not found" });
-        } else {
-            return res.status(200).json({ status: 200, message: "User Deleted Successfully" });
+            return res.status(404).json({ status: 404, message: "User Not Found" });
         }
+
+        return res.status(200).json({ status: 200, message: "User Deleted Successfully" });
     } catch (error) {
-        return res.status(500).json({ status: 500, error: error.message || "Internal Server Error" });
+        console.error(`Error deleting user: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-}
+};
+
 
 // Get A User
-const getAUser=async (req,res)=>{
-
+const getAUser = async (req, res) => {
     try {
-        const userId=req.params.userId
+        const { userId } = req.params;
 
-        const user=await userdb.findById(userId);
+        // Use findById with lean to optimize
+        const user = await userdb.findById(userId, { password: 0 }).lean();
 
-        if(!user){
-            return res.status(404).json({status:404, message:"User Not Fount"})
-        }else{
-            return res.status(200).json({status:200, user});
+        if (!user) {
+            return res.status(404).json({ status: 404, message: "User Not Found" });
         }
-    } catch (error) {
-        return res.status(500).json({status:500, error: "Internal Server Error"})
-    }
-}
 
-const getAUserByUserName = async(req,res)=>{
+        return res.status(200).json({ status: 200, user });
+    } catch (error) {
+        console.error(`Error fetching user: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
+    }
+};
+
+const getAUserByUserName = async (req, res) => {
     try {
-       const {userName}=req.params;
-        
-       const user = await userdb.findOne({userName});
+        const { userName } = req.params;
 
-       if(!user){
-        return res.status(404).json({status:404, message:"User Not Found"})
-       }else{
-        return res.status(200).json({status:200, user});
-    }
+        // Use findOne with lean
+        const user = await userdb.findOne({ userName }, { password: 0 }).lean();
+
+        if (!user) {
+            return res.status(404).json({ status: 404, message: "User Not Found" });
+        }
+
+        return res.status(200).json({ status: 200, user });
     } catch (error) {
-        return res.status(500).json({status:500, error: "Internal Server Error"})
+        console.error(`Error fetching user by username: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-}
-const getAUserByCompanyName = async(req,res)=>{
+};
+
+const getAUserByCompanyName = async (req, res) => {
     try {
-       const {companyName}=req.params;
-        
-       const user = await userdb.findOne({companyName});
+        const { companyName } = req.params;
 
-       if(!user){
-        return res.status(404).json({status:404, message:"User Not Found"})
-       }else{
-        return res.status(200).json({status:200, user});
-    }
+        const user = await userdb.findOne({ companyName }, { password: 0 }).lean();
+
+        if (!user) {
+            return res.status(404).json({ status: 404, message: "User Not Found" });
+        }
+
+        return res.status(200).json({ status: 200, user });
     } catch (error) {
-        return res.status(500).json({status:500, error: "Internal Server Error"})
+        console.error(`Error fetching user by company name: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-}
-    const getStackNamesByCompanyName = async (req, res) => {
-        try {
-            const { companyName } = req.params;
+};
 
-            // Find the document with the specified companyName
-            const user = await userdb.findOne({ companyName });
+const getStackNamesByCompanyName = async (req, res) => {
+    try {
+        const { companyName } = req.params;
 
-            if (!user) {
-                return res.status(404).json({ status: 404, message: "User Not Found" });
-            }
+        // Fetch only stackName field
+        const user = await userdb.findOne({ companyName }, { stackName: 1 }).lean();
 
-            // Assuming stackName is a field directly inside the user document (not inside stackData)
-            if (user.stackName && user.stackName.length > 0) {
-                return res.status(200).json({
-                    status: 200,
-                    stackNames: user.stackName,  // Returning the stackName directly
-                });
-            } else {
-                return res.status(404).json({
-                    status: 404,
-                    message: `No stack names found for companyName: ${companyName}`,
-                });
-            }
-        } catch (error) {
-            return res.status(500).json({ status: 500, error: "Internal Server Error" });
+        if (!user || !user.stackName?.length) {
+            return res.status(404).json({ status: 404, message: "No stack names found" });
         }
-    };
-    const getStackNamesByUserName = async (req, res) => {
-        try {
-            const { userName } = req.params;
 
-            // Find the document with the specified companyName
-            const user = await userdb.findOne({ userName });
+        return res.status(200).json({ status: 200, stackNames: user.stackName });
+    } catch (error) {
+        console.error(`Error fetching stack names: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
+    }
+};
 
-            if (!user) {
-                return res.status(404).json({ status: 404, message: "User Not Found" });
-            }
+const getStackNamesByUserName = async (req, res) => {
+    try {
+        const { userName } = req.params;
 
-            // Assuming stackName is a field directly inside the user document (not inside stackData)
-            if (user.stackName && user.stackName.length > 0) {
-                return res.status(200).json({
-                    status: 200,
-                    stackNames: user.stackName,  // Returning the stackName directly
-                });
-            } else {
-                return res.status(404).json({
-                    status: 404,
-                    message: `No stack names found for UserName: ${userName}`,
-                });
-            }
-        } catch (error) {
-            return res.status(500).json({ status: 500, error: "Internal Server Error" });
+        const user = await userdb.findOne({ userName }, { stackName: 1 }).lean();
+
+        if (!user || !user.stackName?.length) {
+            return res.status(404).json({ status: 404, message: "No stack names found" });
         }
-    };
+
+        return res.status(200).json({ status: 200, stackNames: user.stackName });
+    } catch (error) {
+        console.error(`Error fetching stack names by username: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
+    }
+};
+
 
 //Change Current Password 
-    const changeCurrentPassword = async (req, res) => {
-        const { id, token } = req.params;
-        const { password, newPassword, reEnterPassword } = req.body;
+const changeCurrentPassword = async (req, res) => {
+    const { userId, token } = req.params;
+    const { password, newPassword, reEnterPassword } = req.body;
 
-        try {
-            // Find the user by Id and token
-            const user = await userdb.findOne({ _id: id, verifytoken: token });
-
-            // Check if the user exists and the token is valid
-            if (!user) {
-                return res.status(401).json({ status: 401, message: "User not found or invalid token" });
-            }
-            
-            // Verify if the current password matches the user's stored password
-            const isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch) {
-                return res.status(401).json({ status: 401, message: "Current password is incorrect" });
-            }
-
-            // Validate the new password
-            if (newPassword !== reEnterPassword) {
-                return res.status(422).json({ status: 422, message: "New password and re-enter password do not match" });
-            }
-
-            // Hash the new password
-            const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-            // Update the user's password with the new hashed password
-            user.password = hashedPassword;
-
-            // Save the updated user object
-            await user.save();
-
-            // Return success response
-            return res.status(200).json({ status: 200, message: "Password changed successfully" });
-
-        } catch (error) {
-            // Handle Errors
-            console.error(`Error changing password: ${error}`);
-            return res.status(500).json({ status: 500, error: "Internal Server Error" });
-        }
+    if (newPassword !== reEnterPassword) {
+        return res.status(422).json({ status: 422, message: "Passwords do not match" });
     }
+
+    try {
+        // Check if the token exists in the tokens array and fetch the user
+        const user = await userdb.findOne({
+            _id: userId,
+            "tokens.token": token, // Search for token in tokens array
+        });
+
+        if (!user) {
+            return res.status(401).json({ status: 401, message: "User not found or invalid token" });
+        }
+
+        // Validate the current password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ status: 401, message: "Current password is incorrect" });
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the password
+        await userdb.updateOne({ _id: userId }, { $set: { password: hashedPassword } });
+
+        return res.status(200).json({ status: 200, message: "Password changed successfully" });
+    } catch (error) {
+        console.error(`Error changing password: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
+    }
+};
+
+
 
 const getDeviceCredentidals = async(userId)=>{
     try {
@@ -543,21 +539,18 @@ const getDeviceCredentidals = async(userId)=>{
         throw error;
     }
 }
-const getAllDeviceCredentials = async () => {
+const getAllDeviceCredentials = async (req, res) => {
     try {
-        const users = await userdb.find({});
-        return users.map(user => ({
-            userId: user._id,
-            userName: user.userName,
-            email: user.email,
-            mobileNumber: user.mobileNumber,
-            companyName: user.companyName,
-            industryType: user.industryType,
-            productID: user.productID
-        }));
+        const credentials = await userdb.find({}, { userName: 1, email: 1, mobileNumber: 1, companyName: 1, industryType: 1, productID: 1 }).lean();
+
+        if (!credentials.length) {
+            return res.status(404).json({ status: 404, message: "No credentials found" });
+        }
+
+        return res.status(200).json({ status: 200, credentials });
     } catch (error) {
-        console.error('Error fetching all device credentials:', error);
-        throw error;
+        console.error(`Error fetching device credentials: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
 };
 

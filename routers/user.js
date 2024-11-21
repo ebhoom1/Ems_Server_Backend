@@ -44,7 +44,7 @@ router.delete('/deleteuser/:userName',deleteUser);
 router.get('/getauser/:userId', getAUser)
 router.get('/get-user-by-userName/:userName',getAUserByUserName);
 router.get('/get-user-by-companyName/:companyName',getAUserByCompanyName);
-router.post('/changePassword/:id/:token', changeCurrentPassword);
+router.post('/changePassword/:userId/:token', changeCurrentPassword);
 router.get('/get-stacknames-by-companyName/:companyName', getStackNamesByCompanyName);
 router.get('/get-stacknames-by-userName/:userName',getStackNamesByUserName);
 
