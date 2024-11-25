@@ -34,7 +34,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 
 const cron = require('node-cron');
-const { deleteOldNotifications } = require('./controllers/notification');
+const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
 const {schedulePredictionCalculation} = require('./controllers/predictionController')
 const {scheduleTotalConsumptionCalculation} = require('./controllers/consumptionController');
@@ -42,11 +42,27 @@ const {setupCronJobTotalSummary} =require('./controllers/TotalConsumptionSummary
 const {setupCronJobPredictionSummary} = require('./controllers/TotalPredictionSummaryController');
 // const totalPredictionSummaryController = require('./controllers/TotalPredictionSummaryController');
 const {scheduleExceedanceAveragesCalculation} = require('./controllers/averageExceedanceController');
-const {  scheduleIotDataEmails,sendDataDaily } = require('./controllers/DataSend');
+const {  scheduleDailyDataSend,sendDataDaily } = require('./controllers/DataSend');
 const {setupCronJob} = require('./controllers/saveHourlyData');
 const {setupCronJobConsumption}= require('./controllers/consumption');
 const {setupCronJobPrediction} = require('./controllers/PredictionOfConsumption');
-const {scheduleDifferenceCalculation } = require('./controllers/differenceData')
+const {scheduleDifferenceCalculation } = require('./controllers/differenceData');
+const {setupCronJobBillDelete} = require('./controllers/BillController');
+
+// S3 bucket data 
+const {setupCronJobS3} = require('./S3Bucket/s3IotData')
+const {setupCronJobS3Average} = require('./S3Bucket/s3AverageIotData')
+const {setupCronJobS3Chat} = require('./S3Bucket/s3Chat');
+const {setupCronJobS3ParameterExceed} = require('./S3Bucket/s3ParameterExeceedance');
+const {setupCronJobS3ConsumptionData} = require('./S3Bucket/S3ConsumptionData');
+const {setupCronJobS3PredictionData} = require('./S3Bucket/s3PredictionDatas');
+const {setupCronJobS3TotalPredictionData} = require('./S3Bucket/s3TotalPredictionData');
+const {setupCronJobS3TotalConsumptionData} = require('./S3Bucket/s3TotalConsumptionData');
+const {setupCronJobS3HourlyData} = require('./S3Bucket/s3HourlyData');
+const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
+const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
+
+
 
 const app = express();
 const port = process.env.PORT || 5555;
@@ -200,7 +216,7 @@ setupCronJobPredictionSummary();
 scheduleExceedanceAveragesCalculation();
 
 //Send data daily as CSV
-scheduleIotDataEmails()
+scheduleDailyDataSend()
 
 
 
@@ -218,16 +234,49 @@ setupCronJobConsumption()
 setupCronJobPrediction()
 
 // Schedule the task to delete old notifications every day at midnight
-cron.schedule('0 0 * * *', () => {
-    deleteOldNotifications();
-    // console.log('Old notifications deleted.');
-});
+setupCronJobNotificationDelete()
+
+// Schedule the bill delete in every month 
+setupCronJobBillDelete()
 
 // Schedule the calculation of inflow, final flow, energy
 cron.schedule('59 23 * * *', async () => {
     await calculateAndSaveDailyDifferences();
     // console.log('Daily differences calculated and saved');
 });
+
+// Schedule the iotdata transfer to S3 bucket
+setupCronJobS3()
+
+// Schedule the averageIotData transfer to S3 bucket 
+setupCronJobS3Average()
+
+// Schedule the chatData transfer to S3 bucket
+setupCronJobS3Chat()
+
+// Schedule the Paramter Exceed data transfer to S3 bucket
+setupCronJobS3ParameterExceed()
+
+//Schedule the consumptionData transfer to S3 bucket
+setupCronJobS3ConsumptionData();
+
+//Schedule the predictionData transfer to S3 bucket
+setupCronJobS3PredictionData();
+
+//Schedule the total ConsumptionData transfer to S3 bucket
+setupCronJobS3TotalConsumptionData();
+
+//Schedule the total PredictionData transfer to s3 bucket 
+setupCronJobS3TotalPredictionData();
+
+// Schedule the hourlyData of electricity data transfer to s3 bucket
+setupCronJobS3HourlyData()
+
+// Schedule the report Data transfer to s3 bucket
+setupCronJobS3Report();
+
+//Schedule the payment data transfer to s3 bucket
+setupCronJobS3Payment();
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {

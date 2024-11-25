@@ -41,7 +41,9 @@ const calibrationSchema = new mongoose.Schema({
     },
     notes: {
         type: String
-    }
+    },
+    timestamp: { type: Date, default: Date.now },
+
 });
 
 const Calibration = mongoose.model('Calibration', calibrationSchema);

@@ -4,6 +4,7 @@ const moment = require('moment-timezone');
 const cron = require('node-cron');
 const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
+const AWS = require('aws-sdk');
 
 
 // Function to calculate averages dynamically
@@ -228,8 +229,6 @@ const calculateAverages = async (userName, product_id, startTime, endTime, inter
 // Schedule calculations for all intervals
 const scheduleAveragesCalculation = () => {
     const intervals = [
-        { cronTime: '*/15 * * * *', interval: '15Minutes', duration: 15 * 60 * 1000 }, // Every 15 minutes
-        { cronTime: '*/30 * * * *', interval: '30Minutes', duration: 30 * 60 * 1000 }, // Every 30 minutes
         { cronTime: '0 * * * *', interval: 'hour', duration: 60 * 60 * 1000 }, // Every hour
         { cronTime: '0 0 * * *', interval: 'day', duration: 24 * 60 * 60 * 1000 }, // Every day
         { cronTime: '0 0 * * 1', interval: 'week', duration: 7 * 24 * 60 * 60 * 1000 }, // Every week (Monday)
@@ -265,36 +264,88 @@ const scheduleAveragesCalculation = () => {
     });
 };
 
-// Controller function to fetch all average data
-const getAllAverageData = async (req, res) => {
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+/**
+ * Fetch data from S3 bucket.
+ * @returns {Promise<Array>} - Parsed data from S3 file (JSON format).
+ */
+const fetchAverageDataFromS3 = async () => {
     try {
-        const data = await IotDataAverage.find(); // Fetch all data from the collection
+        const key = 'average_data/averageData.json';  // S3 file path
 
-        if (!data || data.length === 0) {
-            return res.status(404).json({ message: 'No average data found.' });
-        }
+        console.log(`Fetching data from S3 with key: ${key}`);
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Key: key
+        };
 
-        res.status(200).json(data); // Return all data in the response
+        const s3Object = await s3.getObject(params).promise();
+        const fileContent = s3Object.Body.toString('utf-8');
+
+        // Parse JSON content
+        const jsonData = JSON.parse(fileContent);
+
+        console.log("Fetched S3 Average Data Length:", jsonData.length);
+
+        return jsonData;
     } catch (error) {
-        console.error('Error fetching all average data:', error);
-        res.status(500).json({ message: 'Error fetching average data.', error });
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch average data from S3');
     }
 };
 
 
+// Controller function to fetch all average data
+// Controller function to fetch all average data
+const getAllAverageData = async (req, res) => {
+    try {
+        const data = await fetchAverageDataFromS3(); // Fetch data from the S3 bucket
 
+        if (!data || data.length === 0) {
+            return res.status(404).json({ message: 'No average data found in S3.' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'All average data fetched successfully from S3',
+            data
+        });
+    } catch (error) {
+        console.error('Error fetching all average data from S3:', error);
+        res.status(500).json({ message: 'Error fetching average data from S3.', error });
+    }
+};
+
+// Controller function to fetch average data by userName
 const findAverageDataUsingUserName = async (req, res) => {
     const { userName } = req.params;
 
     try {
-        const data = await IotDataAverage.find({ userName });
-        if (!data || data.length === 0) {
-            return res.status(404).json({ message: 'No average data found for this user.' });
+        const data = await fetchAverageDataFromS3(); // Fetch data from the S3 bucket
+
+        // Filter the data for the specific userName
+        const filteredData = data.filter(entry => entry.userName === userName);
+
+        if (!filteredData || filteredData.length === 0) {
+            return res.status(404).json({ message: `No average data found for userName: ${userName} in S3.` });
         }
-        res.status(200).json(data);
+
+        res.status(200).json({
+            success: true,
+            message: `Average data for userName ${userName} fetched successfully from S3`,
+            data: filteredData
+        });
     } catch (error) {
-        console.error(`Error fetching data for user ${userName}:`, error);
-        res.status(500).json({ message: 'Error fetching average data.', error });
+        console.error(`Error fetching average data for userName ${userName} from S3:`, error);
+        res.status(500).json({ message: 'Error fetching average data from S3.', error });
     }
 };
 
@@ -302,100 +353,138 @@ const findAverageDataUsingUserNameAndStackName = async (req, res) => {
     const { userName, stackName } = req.params;
 
     try {
-        const data = await IotDataAverage.find({
-            userName,
-            'stackData.stackName': stackName,
-        });
+        const data = await fetchAverageDataFromS3(); // Fetch all data from the S3 bucket
 
-        if (!data || data.length === 0) {
-            return res.status(404).json({ message: 'No average data found for this user and stack name.' });
+        // Filter the data for the specific userName and stackName
+        const filteredData = data
+            .filter(entry => entry.userName === userName)
+            .map(entry => ({
+                ...entry,
+                stackData: entry.stackData.filter(stack => stack.stackName === stackName),
+            }))
+            .filter(entry => entry.stackData.length > 0); // Ensure only non-empty entries are returned
+
+        if (!filteredData || filteredData.length === 0) {
+            return res.status(404).json({
+                message: `No average data found for userName: ${userName} and stackName: ${stackName} in S3.`,
+            });
         }
 
-        // Filter only the matching stackName data
-        const filteredData = data.map(entry => ({
-            ...entry._doc, // Spread the entry to avoid mutation
-            stackData: entry.stackData.filter(stack => stack.stackName === stackName),
-        }));
-
-        res.status(200).json(filteredData);
+        res.status(200).json({
+            success: true,
+            message: `Average data for userName ${userName} and stackName ${stackName} fetched successfully from S3`,
+            data: filteredData,
+        });
     } catch (error) {
-        console.error(`Error fetching data for user ${userName} and stack ${stackName}:`, error);
-        res.status(500).json({ message: 'Error fetching average data.', error });
+        console.error(`Error fetching average data for userName ${userName} and stackName ${stackName} from S3:`, error);
+        res.status(500).json({ message: 'Error fetching average data from S3.', error });
     }
 };
 const findAverageDataUsingUserNameAndStackNameAndIntervalType = async (req, res) => {
     const { userName, stackName, intervalType } = req.params;
 
     try {
-        const data = await IotDataAverage.find({
-            userName,
-            intervalType,
-            'stackData.stackName': stackName,
-        });
+        // Fetch all average data from S3
+        const allData = await fetchAverageDataFromS3();
 
-        if (!data || data.length === 0) {
-            return res.status(404).json({ message: 'No average data found for this user, stack name, and interval type.' });
+        // Filter the data based on userName, stackName, and intervalType
+        const filteredData = allData
+            .filter(entry => entry.userName === userName && entry.intervalType === intervalType)
+            .map(entry => ({
+                ...entry,
+                stackData: entry.stackData.filter(stack => stack.stackName === stackName),
+            }))
+            .filter(entry => entry.stackData.length > 0) // Ensure only non-empty stackData entries
+            .slice(0, 24); // Limit to the last 24 records
+
+        if (!filteredData || filteredData.length === 0) {
+            return res.status(404).json({
+                message: `No average data found for userName: ${userName}, stackName: ${stackName}, and intervalType: ${intervalType} in S3.`,
+            });
         }
 
-        // Filter only the matching stackName data
-        const filteredData = data.map(entry => ({
-            ...entry._doc, // Spread the entry to avoid mutation
-            stackData: entry.stackData.filter(stack => stack.stackName === stackName),
-        }));
-
-        res.status(200).json(filteredData);
+        res.status(200).json({
+            status: 200,
+            success: true,
+            message: `Last 24 average data points fetched successfully from S3 for user ${userName}, stack ${stackName}, and interval type ${intervalType}.`,
+            data: filteredData,
+        });
     } catch (error) {
-        console.error(`Error fetching data for user ${userName}, stack ${stackName}, and interval type ${intervalType}:`, error);
-        res.status(500).json({ message: 'Error fetching average data.', error });
+        console.error(`Error fetching average data for user ${userName}, stack ${stackName}, and interval type ${intervalType} from S3:`, error);
+        res.status(500).json({ message: 'Error fetching average data from S3.', error });
     }
 };
+
 
 
 const findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange = async (req, res) => {
     const { userName, stackName, intervalType } = req.params;
-    const { startTime, endTime } = req.query; // Time range query parameters
+    const { startTime, endTime, page = 1, limit = 10 } = req.query; // Include page and limit for pagination
 
     try {
-        // Parse start and end dates from the query
-        const startDate = moment(startTime, 'DD-MM-YYYY').format('DD/MM/YYYY');
-        const endDate = moment(endTime, 'DD-MM-YYYY').format('DD/MM/YYYY');
+        // Parse start and end dates
+        const startDate = moment(startTime, 'DD-MM-YYYY', true).format('YYYY-MM-DD');
+        const endDate = moment(endTime, 'DD-MM-YYYY', true).format('YYYY-MM-DD');
 
-        if (!startDate || !endDate) {
-            return res.status(400).json({ message: 'Invalid start or end date format.' });
+        if (!startDate || !endDate || !moment(startDate).isValid() || !moment(endDate).isValid()) {
+            return res.status(400).json({ message: 'Invalid start or end date format. Use DD-MM-YYYY.' });
         }
 
-        // Fetch data matching the user, stack, and interval type within the date range
-        const data = await IotDataAverage.find({
-            userName,
-            intervalType,
-            'stackData.stackName': stackName,
-            dateAndTime: { $gte: startDate, $lte: endDate }, // Query by date range
-        });
+        // Fetch all average data from S3
+        const allData = await fetchAverageDataFromS3();
+        console.log('Fetched S3 Average Data Length:', allData.length);
 
-        if (!data || data.length === 0) {
+        // Filter data for the specific userName, intervalType, and date range
+        const filteredData = allData
+            .filter(entry => {
+                const dateValid = moment(entry.dateAndTime, 'DD/MM/YYYY').isBetween(startDate, endDate, 'day', '[]');
+                const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
+                const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
+                return userMatch && intervalMatch && dateValid;
+            })
+            .map(entry => ({
+                ...entry,
+                stackData: entry.stackData.filter(stack => stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()),
+            }))
+            .filter(entry => entry.stackData.length > 0); // Ensure only non-empty stackData entries
+
+        if (!filteredData || filteredData.length === 0) {
             return res.status(404).json({
-                message: 'No average data found for the specified criteria.',
+                message: `No average data found for userName: ${userName}, stackName: ${stackName}, intervalType: ${intervalType}, and the specified time range in S3.`,
             });
         }
 
-        // Filter the stack data by the provided stackName
-        const filteredData = data.map((entry) => ({
-            ...entry._doc,
-            stackData: entry.stackData.filter((stack) => stack.stackName === stackName),
-        }));
+        // Implement pagination
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + parseInt(limit);
 
-        res.status(200).json(filteredData);
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        res.status(200).json({
+            status: 200,
+            success: true,
+            message: `Average data fetched successfully from S3 for user ${userName}, stack ${stackName}, interval type ${intervalType}, and time range.`,
+            data: paginatedData,
+            pagination: {
+                totalRecords: filteredData.length,
+                totalPages: Math.ceil(filteredData.length / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit),
+            },
+        });
     } catch (error) {
         console.error(
-            `Error fetching data for user ${userName}, stack ${stackName}, interval type ${intervalType}, and time range:`,
+            `Error fetching data for user ${userName}, stack ${stackName}, interval type ${intervalType}, and time range from S3:`,
             error
         );
         res.status(500).json({
-            message: 'Error fetching average data.',
-            error,
+            message: 'Error fetching average data from S3.',
+            error: error.message,
         });
     }
 };
+
+
 
 
 const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
@@ -409,30 +498,50 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         }
 
         // Parse and format dates
-        const startDate = moment(startTime, 'DD-MM-YYYY').startOf('day').toDate();
-        const endDate = moment(endTime, 'DD-MM-YYYY').endOf('day').toDate();
+        const startDate = moment(startTime, 'DD-MM-YYYY').startOf('day');
+        const endDate = moment(endTime, 'DD-MM-YYYY').endOf('day');
 
-        if (!startDate || !endDate) {
+        if (!startDate.isValid() || !endDate.isValid()) {
             return res.status(400).json({ success: false, message: 'Invalid date format. Use "DD-MM-YYYY".' });
         }
 
-        // Query data with filtering for stackName and date range
-        const data = await IotDataAverage.find({
-            userName,
-            intervalType,
-            'stackData.stackName': stackName,
-            timestamp: { $gte: startDate, $lte: endDate },
-        }).lean();
+        // Fetch data from S3
+        const allData = await fetchAverageDataFromS3();
+        console.log('Fetched S3 Average Data Length:', allData.length);
 
-        if (!data || data.length === 0) {
+        // Debugging: Log first few entries for review
+        console.log('Sample S3 Data:', allData.slice(0, 5));
+
+        // Filter data for userName, stackName, intervalType, and date range
+        const filteredData = allData
+            .filter(entry => {
+                const entryDate = moment(entry.dateAndTime, 'DD/MM/YYYY');
+                const dateValid =
+                    entryDate.isSameOrAfter(startDate, 'day') && entryDate.isSameOrBefore(endDate, 'day');
+                const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
+                const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
+
+                // Log every filtering step
+                console.log(
+                    `Checking entry: userName=${entry.userName}, intervalType=${entry.intervalType}, dateAndTime=${entry.dateAndTime}`
+                );
+
+                return userMatch && intervalMatch && dateValid;
+            })
+            .map(entry => ({
+                ...entry,
+                stackData: entry.stackData.filter(stack =>
+                    stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
+                ),
+            }))
+            .filter(entry => entry.stackData.length > 0); // Ensure only non-empty stackData entries
+
+        // Log the result of the filtering
+        console.log('Filtered Data Length:', filteredData.length);
+
+        if (!filteredData || filteredData.length === 0) {
             return res.status(404).json({ success: false, message: 'No data found for the specified criteria.' });
         }
-
-        // Filter out the stack data that matches the requested stackName
-        const filteredData = data.map(entry => ({
-            ...entry,
-            stackData: entry.stackData.filter(stack => stack.stackName === stackName),
-        })).filter(entry => entry.stackData.length > 0); // Ensure only non-empty stackData entries are included
 
         // Extract dynamic fields from the stackData
         const stackKeys = Object.keys(filteredData[0].stackData[0]?.parameters || {}).filter(key => key !== '_id');
@@ -442,8 +551,8 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             const csvData = filteredData.flatMap(item =>
                 item.stackData.map(stack => ({
-                    Date: moment(item.timestamp).format('DD-MM-YYYY'),
-                    Time: moment(item.timestamp).format('HH:mm:ss'),
+                    Date: moment(item.dateAndTime, 'DD/MM/YYYY').format('DD-MM-YYYY'),
+                    Time: moment(item.dateAndTime, 'DD/MM/YYYY HH:mm:ss').format('HH:mm:ss'),
                     'Stack Name': stack.stackName,
                     ...stack.parameters,
                 }))
@@ -470,8 +579,8 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             filteredData.forEach(item => {
                 item.stackData.forEach(stack => {
-                    doc.fontSize(12).text(`Date: ${moment(item.timestamp).format('DD-MM-YYYY')}`);
-                    doc.text(`Time: ${moment(item.timestamp).format('HH:mm:ss')}`);
+                    doc.fontSize(12).text(`Date: ${moment(item.dateAndTime, 'DD/MM/YYYY').format('DD-MM-YYYY')}`);
+                    doc.text(`Time: ${moment(item.dateAndTime, 'DD/MM/YYYY HH:mm:ss').format('HH:mm:ss')}`);
                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
 
                     const keys = Object.keys(stack.parameters || {});
@@ -491,6 +600,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
+
 
 
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,

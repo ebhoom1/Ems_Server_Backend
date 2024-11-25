@@ -2,6 +2,7 @@ const moment = require('moment');
 const HourlyData = require('../models/hourlyData');
 const Consumption = require('../models/Consumption');
 const cron = require('node-cron');
+const AWS = require('aws-sdk');
 const { io, server } = require('../app');
 
 
@@ -97,24 +98,68 @@ const setupCronJobConsumption = () => {
 
 console.log('Scheduled tasks have been initialized.');
 
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+});
+
+const s3 = new AWS.S3();
+
+/**
+ * Fetch data from S3 bucket for consumption data.
+ * @returns {Promise<Array>} - Parsed data from S3 file.
+ */
+const fetchConsumptionDataFromS3 = async () => {
+    try {
+        const key = 'consumption_data/consumptionData.json'; // Specify your S3 file key
+        console.log(`Fetching data from S3 with key: ${key}`);
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Your bucket name
+            Key: key,
+        };
+
+        const s3Object = await s3.getObject(params).promise();
+        const fileContent = s3Object.Body.toString('utf-8');
+
+        // Parse JSON content
+        const jsonData = JSON.parse(fileContent);
+
+        console.log("Fetched S3 Data Length:", jsonData.length);
+
+        return jsonData;
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch data from S3');
+    }
+};
+
 const getConsumptionData = async (req, res) => {
     const { userName, hour, date } = req.query;
 
     try {
-        const query = {
-            userName: userName,
-            date: date,
-            hour: hour
-        };
-
-        // Find the consumption data that matches the userName, date, and hour
+        // Query MongoDB for consumption data
+        const query = { userName, date, hour };
         const consumptionData = await Consumption.findOne(query);
 
         if (!consumptionData) {
-            return res.status(404).json({ message: "No consumption data found." });
+            console.log("No data found in MongoDB. Fetching from S3...");
+
+            // Fetch data from S3
+            const s3Data = await fetchConsumptionDataFromS3();
+
+            // Filter S3 data
+            const filteredS3Data = s3Data.find(entry => entry.userName === userName && entry.date === date && entry.hour === hour);
+
+            if (!filteredS3Data) {
+                return res.status(404).json({ message: "No consumption data found." });
+            }
+
+            return res.json(filteredS3Data);
         }
 
-        res.json(consumptionData); // Send the full document found
+        res.json(consumptionData); // Send the full document found in MongoDB
     } catch (error) {
         console.error('Error fetching consumption data:', error);
         res.status(500).json({ message: "Internal server error" });
@@ -124,24 +169,41 @@ const getConsumptionDataStackName = async (req, res) => {
     const { userName, month, stackName } = req.query;
 
     try {
+        // Query MongoDB for consumption data
         const query = {
-            userName: userName,
-            month: month, // Assuming `month` is stored in a way that this direct comparison is valid
-            "stacks.stackName": stackName
+            userName,
+            month,
+            "stacks.stackName": stackName,
         };
-
         const consumptionData = await Consumption.findOne(query);
 
         if (!consumptionData) {
-            return res.status(404).json({ message: "No consumption data found." });
+            console.log("No data found in MongoDB. Fetching from S3...");
+
+            // Fetch data from S3
+            const s3Data = await fetchConsumptionDataFromS3();
+
+            // Filter S3 data
+            const filteredS3Data = s3Data.find(entry =>
+                entry.userName === userName &&
+                entry.month === month &&
+                entry.stacks.some(stack => stack.stackName === stackName)
+            );
+
+            if (!filteredS3Data) {
+                return res.status(404).json({ message: "No consumption data found." });
+            }
+
+            return res.json(filteredS3Data);
         }
 
-        res.json(consumptionData); // Send the full document found
+        res.json(consumptionData); // Send the full document found in MongoDB
     } catch (error) {
         console.error('Error fetching consumption data:', error);
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 const getConsumptionDataByStacks = async (req, res) => {
     const { userName, stackNames, month } = req.query;
@@ -154,13 +216,40 @@ const getConsumptionDataByStacks = async (req, res) => {
             "stacks.stackName": { $in: stackNamesArray }
         };
 
+        // First, try fetching from MongoDB
         const consumptionData = await Consumption.find(query);
 
         if (!consumptionData.length) {
-            return res.status(404).json({ message: "No matching consumption data found." });
+            console.log('No data found in MongoDB. Fetching from S3...');
+
+            // If no data found in MongoDB, fetch data from S3
+            const s3Data = await fetchConsumptionDataFromS3();
+
+            // Filter the S3 data based on userName, stackNames, and month
+            const filteredS3Data = s3Data.filter(entry => 
+                entry.userName === userName &&
+                entry.month === month &&
+                entry.stacks.some(stack => stackNamesArray.includes(stack.stackName))
+            );
+
+            if (filteredS3Data.length === 0) {
+                return res.status(404).json({ message: "No matching consumption data found." });
+            }
+
+            // Filter the stacks to only include the ones that match the requested stack names
+            const responseData = filteredS3Data.map(data => ({
+                userName: data.userName,
+                product_id: data.product_id,
+                date: data.date,
+                hour: data.hour,
+                month: data.month,
+                stacks: data.stacks.filter(stack => stackNamesArray.includes(stack.stackName))
+            }));
+
+            return res.json(responseData); // Send the filtered data from S3
         }
 
-        // Map through each consumption data entry and filter stacks
+        // If MongoDB has data, filter the stacks based on stack names
         const responseData = consumptionData.map(data => ({
             userName: data.userName,
             product_id: data.product_id,
@@ -170,7 +259,8 @@ const getConsumptionDataByStacks = async (req, res) => {
             stacks: data.stacks.filter(stack => stackNamesArray.includes(stack.stackName))
         }));
 
-        res.json(responseData); // Send the array of filtered data
+        res.json(responseData); // Send the filtered data from MongoDB
+
     } catch (error) {
         console.error('Error fetching consumption data by stacks:', error);
         res.status(500).json({ message: "Internal server error" });
@@ -186,10 +276,23 @@ const getLatestConsumptionData = async (req, res) => {
                                             .limit(1);
 
         if (!latestData) {
-            return res.status(404).json({ message: "No latest consumption data found for this user." });
+            console.log('No data found in MongoDB. Fetching from S3...');
+
+            // If no data is found in MongoDB, fetch from S3
+            const s3Data = await fetchConsumptionDataFromS3();
+
+            // Filter data from S3 based on userName
+            const filteredS3Data = s3Data.find(entry => entry.userName === userName);
+
+            if (!filteredS3Data) {
+                return res.status(404).json({ message: "No latest consumption data found for this user." });
+            }
+
+            return res.json(filteredS3Data); // Send the latest data from S3
         }
 
-        res.json(latestData);
+        res.json(latestData); // Send the latest data from MongoDB
+
     } catch (error) {
         console.error('Error fetching the latest consumption data:', error);
         res.status(500).json({ message: "Internal server error" });

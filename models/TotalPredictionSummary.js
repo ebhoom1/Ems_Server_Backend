@@ -12,6 +12,7 @@ const TotalPredictionSummarySchema = new mongoose.Schema({
     intervalType: { type: String, required: true },
     totalEnergyPrediction: { type: Number, default: 0 },
     totalFlowPrediction: { type: Number, default: 0 },
+    timestamp: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('TotalPredictionSummary', TotalPredictionSummarySchema);

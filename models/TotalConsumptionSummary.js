@@ -13,6 +13,7 @@ const TotalConsumptionSummarySchema = new mongoose.Schema({
     totalEnergy: { type: Number, default: 0 },
     totalCumulatingFlow: { type: Number, default: 0 },
     date:{type:String,required:true},
+    timestamp: { type: Date, default: Date.now },
     
 });
 

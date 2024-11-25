@@ -1,9 +1,18 @@
-const moment = require('moment'); // ensure moment is installed
+const AWS = require('aws-sdk');
 const cron = require('node-cron');
+const moment = require('moment');
 const nodemailer = require('nodemailer');
 const { Parser } = require('json2csv');
-const IotData = require('../models/iotData');
 const User = require('../models/user');
+
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
 
 // Nodemailer transporter configuration
 const transporter = nodemailer.createTransport({
@@ -16,24 +25,58 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Function to fetch IoT data for a specific user and send it via email
+/**
+ * Fetch data from S3 bucket.
+ * @param {String} userName - The userName to filter data for.
+ * @returns {Promise<Array>} - Parsed data from S3 file.
+ */
+const fetchDataFromS3 = async (userName) => {
+    try {
+        const key = 'iot_data/iotData.json'; // S3 file key where data is stored
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Key: key
+        };
+
+        const s3Object = await s3.getObject(params).promise();
+        const fileContent = s3Object.Body.toString('utf-8');
+
+        // Parse JSON content
+        const jsonData = JSON.parse(fileContent);
+
+        // Filter data for the specific user
+        const userData = jsonData.filter(entry => entry.userName === userName);
+        console.log("Fetched S3 Data Length:", userData.length);
+
+        return userData;
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch data from S3');
+    }
+};
+
+/**
+ * Send daily IoT data report via email.
+ * @param {Object} user - The user to whom the data should be sent.
+ */
 const sendDataDaily = async (user) => {
     const today = moment().format('DD/MM/YYYY'); // Current date in the format stored in the DB
+    const userName = user.userName;
 
     try {
-        // Fetch data for today, for a specific user
-        const data = await IotData.find({
-            userName: user.userName,
-            date: today // Matches date format in the database
-        }).sort('time').lean(); // Sorting by time if multiple entries per day
+        // Fetch data for today for the specific user from S3
+        const data = await fetchDataFromS3(userName);
 
-        if (data.length === 0) {
-            console.log(`No IoT data found for today for user ${user.userName}`);
+        // Filter data for today's date
+        const todayData = data.filter(item => item.date === today);
+
+        if (todayData.length === 0) {
+            console.log(`No IoT data found for today for user ${userName}`);
             return;
         }
 
         // Reduce data to collect all unique keys in stackData
-        const stackKeys = data.reduce((keys, entry) => {
+        const stackKeys = todayData.reduce((keys, entry) => {
             entry.stackData.forEach(stack => {
                 Object.keys(stack).forEach(key => {
                     if (!keys.includes(key) && key !== '_id') keys.push(key);
@@ -43,7 +86,7 @@ const sendDataDaily = async (user) => {
         }, ['Date', 'Time', 'Stack Name']);
 
         // Prepare CSV data
-        const csvData = data.flatMap(item =>
+        const csvData = todayData.flatMap(item =>
             item.stackData.map(stack => ({
                 Date: item.date,
                 Time: item.time,
@@ -76,20 +119,21 @@ const sendDataDaily = async (user) => {
             }
         });
     } catch (error) {
-        console.error(`Error while fetching or sending IoT data for today for user ${user.userName}:`, error);
+        console.error(`Error while fetching or sending IoT data for today for user ${userName}:`, error);
     }
 };
 
-// Scheduled function to send emails every 15 minutes and at midnight
-const scheduleIotDataEmails = () => {
-    cron.schedule('55 23 * * *', async () => { 
-        const users = await User.find({});
+// Scheduled function to send emails at 01:00 AM every day
+const scheduleDailyDataSend = () => {
+    cron.schedule('0 1 * * *', async () => {
+        console.log('Running daily IoT data report send...');
+
+        // Fetch users from the database and send data to each user
+        const users = await User.find({}); // Fetch all users
         users.forEach(user => {
-            sendDataDaily(user);
+            sendDataDaily(user); // Send the data to each user
         });
     });
-}
+};
 
-module.exports = { scheduleIotDataEmails,sendDataDaily  };
-
-
+module.exports = { sendDataDaily, scheduleDailyDataSend };

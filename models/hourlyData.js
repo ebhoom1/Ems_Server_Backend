@@ -12,7 +12,8 @@ const hourlyDataSchema = new mongoose.Schema({
         stationType: String,
         energy: Number,
         cumulatingFlow: Number
-    }]
+    }],
+    timestamp: { type: Date, default: Date.now }
 });
 
 const HourlyData = mongoose.model('HourlyData', hourlyDataSchema);

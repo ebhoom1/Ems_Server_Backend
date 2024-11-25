@@ -3,6 +3,7 @@
 const TotalConsumptionSummary = require('../models/TotalConsumptionSummary');
 const Bill = require('../models/Bill');
 const moment = require('moment');
+const cron = require('node-cron');
 
 exports.calculateElectricityBill = async (req, res) => {
     try {
@@ -51,4 +52,29 @@ exports.calculateElectricityBill = async (req, res) => {
         console.error('Failed to calculate electricity bill:', error);
         res.status(500).json({ message: 'Error calculating electricity bill', error });
     }
+};
+
+// Function to delete bills older than one month
+exports.deleteOldBills = async () => {
+    try {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+        // Delete bills where the calculatedAt date is older than one month
+        const result = await Bill.deleteMany({
+            calculatedAt: { $lt: oneMonthAgo }
+        });
+
+        console.log(`Deleted ${result.deletedCount} bills older than one month.`);
+    } catch (error) {
+        console.error('Error deleting old bills:', error);
+    }
+};
+
+// Schedule the task to run on the 1st of every month at midnight
+exports.setupCronJobBillDelete = () => {
+    cron.schedule('0 0 1 * *', () => {
+        console.log('Running cron job to delete bills older than one month');
+        deleteOldBills();
+    });
 };

@@ -3,6 +3,7 @@ const Prediction = require('../models/PredictionOfConsumption');
 const TotalPredictionSummary = require('../models/TotalPredictionSummary');
 const User = require('../models/user');
 const moment = require('moment-timezone');
+const AWS = require('aws-sdk');
 const cron = require('node-cron');
 
 // Function to fetch user details
@@ -61,7 +62,8 @@ const calculateTotalPredictionSummary = async () => {
             totalEnergyPrediction: totalEnergy,
             totalFlowPrediction: totalFlow,
             interval: `${previousHourTime.format('DD/MM/YYYY HH:mm:ss')} - ${currentTime.format('DD/MM/YYYY HH:mm:ss')}`,
-            intervalType: 'hourly'
+            intervalType: 'hourly',
+            timestamp:new Date(),
         });
 
         await summaryEntry.save();
@@ -86,14 +88,49 @@ cron.schedule('0 * * * *', () => {
     calculateTotalPredictionSummary();
 });
  };
+
+ // Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+// Helper Function to Fetch Data from S3
+const fetchDataFromS3 = async (key) => {
+    try {
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Key: key // File key in the bucket
+        };
+        const s3Object = await s3.getObject(params).promise();
+        return JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch data from S3');
+    }
+};
+
+
 // Function to get all prediction summary data  
 const getAllPredictionSummaryData = async (req, res) => {
     try {
-        const data = await TotalPredictionSummary.find({});
-        if (data.length === 0) {
+        // Fetch MongoDB data
+        const mongoData = await TotalPredictionSummary.find().lean();
+
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalPrediction_data/totalPredictionData.json');
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3Data];
+
+        if (!combinedData.length) {
             return res.status(404).json({ message: 'No prediction summary data found.' });
         }
-        res.status(200).json(data);
+
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error(`Error fetching all prediction summary data: ${error.message}`);
         res.status(500).json({ message: 'Internal server error', error });
@@ -103,34 +140,60 @@ const getAllPredictionSummaryData = async (req, res) => {
 // Function to get prediction summary by userName
 const getPredictionSummaryByUserName = async (req, res) => {
     const { userName } = req.params;
+
     try {
-        const data = await TotalPredictionSummary.find({ userName });
-        if (data.length === 0) {
+        // Fetch MongoDB data
+        const mongoData = await TotalPredictionSummary.find({ userName }).lean();
+
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalPrediction_data/totalPredictionData.json');
+        const s3FilteredData = s3Data.filter(entry => entry.userName === userName);
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3FilteredData];
+
+        if (!combinedData.length) {
             return res.status(404).json({ message: `No prediction summary data found for user: ${userName}` });
         }
-        res.status(200).json(data);
+
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error(`Error fetching prediction summary for user ${userName}: ${error.message}`);
         res.status(500).json({ message: 'Internal server error', error });
     }
 };
 
+
 // Function to get prediction summary by userName and intervalType
 const getPredictionSummaryByUserNameAndInterval = async (req, res) => {
     const { userName, intervalType } = req.params;
+
     try {
-        const data = await TotalPredictionSummary.find({ userName, intervalType });
-        if (data.length === 0) {
-            return res.status(404).json({ 
-                message: `No prediction summary data found for user: ${userName} and interval: ${intervalType}` 
+        // Fetch MongoDB data
+        const mongoData = await TotalPredictionSummary.find({ userName, intervalType }).lean();
+
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalPrediction_data/totalPredictionData.json');
+        const s3FilteredData = s3Data.filter(
+            (entry) => entry.userName === userName && entry.intervalType === intervalType
+        );
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3FilteredData];
+
+        if (!combinedData.length) {
+            return res.status(404).json({
+                message: `No prediction summary data found for user: ${userName} and interval: ${intervalType}`
             });
         }
-        res.status(200).json(data);
+
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error(`Error fetching prediction summary for user ${userName} and interval ${intervalType}: ${error.message}`);
         res.status(500).json({ message: 'Internal server error', error });
     }
 };
+
 module.exports = { 
     calculateTotalPredictionSummary,
     setupCronJobPredictionSummary,

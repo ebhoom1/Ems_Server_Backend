@@ -1,6 +1,5 @@
 const express = require('express');
 const { 
-        getAllIotData,
         getIotDataByUserName,
         getLatestIoTData,
         downloadIotData,
@@ -22,8 +21,8 @@ const router = express.Router();
 // Define the route for handleSaveMessage
 router.post('/handleSaveMessage', handleSaveMessage);
 
-//Route to get the IOT values from DB
-router.get('/get-all-iot-values',getAllIotData);
+// //Route to get the IOT values from DB
+// router.get('/get-all-iot-values',getAllIotData);
 
 //Route to find a IoT data using UserName
 router.get('/get-IoT-Data-by-userName/:userName',getIotDataByUserName);

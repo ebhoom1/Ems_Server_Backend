@@ -33,7 +33,8 @@ const addCalibration = async (req, res) => {
             before,
             after,
             technician,
-            notes
+            notes,
+            timestamp: new Date(),
         });
 
         // Check if a Calibration with the same userName already exists

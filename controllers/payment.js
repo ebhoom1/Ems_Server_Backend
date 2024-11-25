@@ -54,6 +54,7 @@ const verifyPayment = async (req, res) => {
          paymentDate,
          orderId: order_id,
          paymentId: payment_id,
+         timestamp:new Date()
        });
  
        await newPayment.save();

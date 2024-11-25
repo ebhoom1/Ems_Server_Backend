@@ -9,6 +9,8 @@ const CalibrationExceedValues = require('../models/calibrationExceedValues');
 const IotData = require('../models/iotData')
 const Chat = require('../models/chatModel')
 const User = require('../models/user');
+const AWS = require('aws-sdk');
+
 
 // Create a new Twilio client
 const accountsid ="AC16116151f40f27195ca7e326ada5cb83"
@@ -168,6 +170,30 @@ const editComments = async (req, res) => {
     }
 };
 
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+const fetchExceedDataFromS3 = async (key) => {
+    const params = {
+        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Key: key, // Replace with the correct key
+    };
+
+    try {
+        const data = await s3.getObject(params).promise();
+        return JSON.parse(data.Body.toString('utf-8'));
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw error;
+    }
+};
+
 const getAllExceedData = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -201,7 +227,7 @@ const getAUserExceedData = async (req, res) => {
     try {
         const { userName, industryType, companyName, fromDate, toDate, stackName } = req.query;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;  // Default to 10 records per page
+        const limit = parseInt(req.query.limit) || 10; // Default to 10 records per page
         const skipIndex = (page - 1) * limit;
 
         let query = {};
@@ -223,31 +249,58 @@ const getAUserExceedData = async (req, res) => {
             query.timestamp = { $gte: parsedFromDate, $lte: parsedToDate };
         }
 
-        const comments = await CalibrationExceed.find(query)
+        // Fetch data from MongoDB
+        const mongoData = await CalibrationExceed.find(query)
             .sort({ timestamp: -1 })
             .limit(limit)
             .skip(skipIndex)
             .exec();
 
-        if (!comments || comments.length === 0) {
+        if (mongoData && mongoData.length > 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'Data retrieved successfully from MongoDB',
+                data: mongoData,
+                page,
+                limit
+            });
+        }
+
+        // If MongoDB data is insufficient, fetch from S3
+        console.log('No data in MongoDB, fetching from S3...');
+        const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json');
+
+        // Apply the same filtering logic to S3 data
+        const filteredS3Data = s3Data
+            .filter(entry => {
+                const dateValid = (!fromDate || !toDate) || moment(entry.timestamp).isBetween(parsedFromDate, parsedToDate, 'day', '[]');
+                const userMatch = userName ? entry.userName === userName : true;
+                const industryMatch = industryType ? entry.industryType === industryType : true;
+                const companyMatch = companyName ? entry.companyName === companyName : true;
+                const stackMatch = stackName ? entry.stackName === stackName : true;
+                return dateValid && userMatch && industryMatch && companyMatch && stackMatch;
+            })
+            .slice(skipIndex, skipIndex + limit);
+
+        if (!filteredS3Data || filteredS3Data.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'No comments found'
+                message: 'No exceedance data found in S3 or MongoDB for the specified query.'
             });
         }
 
         res.status(200).json({
             success: true,
-            message: 'Comments retrieved successfully',
-            data: comments,
+            message: 'Data retrieved successfully from S3',
+            data: filteredS3Data,
             page,
             limit
         });
     } catch (error) {
-        console.error('Error retrieving data:', error);
+        console.error('Error retrieving exceedance data:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to retrieve the comments',
+            message: 'Failed to retrieve exceedance data',
             error: error.message
         });
     }
@@ -256,35 +309,67 @@ const getAUserExceedData = async (req, res) => {
 
 
 
+
   
-const getExceedDataByUserName = async(req, res) => {
+const getExceedDataByUserName = async (req, res) => {
     try {
         const { userName } = req.params;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;  // Default to 10 records per page
+        const limit = parseInt(req.query.limit) || 50; // Default to 10 records per page
         const skipIndex = (page - 1) * limit;
 
-        // Retrieve Exceed Data using UserName with pagination
-        const userExceedData = await CalibrationExceed.find({ userName: userName })
-            .sort({ timestamp: -1 })  // Ensuring the latest data is fetched first
+        // Retrieve data from MongoDB
+        const mongoData = await CalibrationExceed.find({ userName: userName })
+            .sort({ timestamp: -1 }) // Latest data first
             .limit(limit)
             .skip(skipIndex)
             .exec();
 
+        if (mongoData && mongoData.length > 0) {
+            return res.status(200).json({
+                status: 200,
+                success: true,
+                message: `Calibration Exceed data of user ${userName} fetched successfully from MongoDB`,
+                data: mongoData,
+                page,
+                limit,
+            });
+        }
+
+        // If no data found in MongoDB, fallback to S3
+        console.log(`No MongoDB data found for user ${userName}, fetching from S3...`);
+
+        const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json'); // Replace with actual S3 key
+
+        // Filter S3 data by userName
+        const filteredS3Data = s3Data
+            .filter(entry => entry.userName.trim().toLowerCase() === userName.trim().toLowerCase())
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Sort by timestamp descending
+
+        const paginatedS3Data = filteredS3Data.slice(skipIndex, skipIndex + limit);
+
+        if (paginatedS3Data.length === 0) {
+            return res.status(404).json({
+                status: 404,
+                success: false,
+                message: `No exceed data found for user ${userName} in MongoDB or S3.`,
+            });
+        }
+
         res.status(200).json({
             status: 200,
             success: true,
-            message: `Calibration Exceed data of user ${userName} fetched successfully`,
-            data: userExceedData,
+            message: `Calibration Exceed data of user ${userName} fetched successfully from S3`,
+            data: paginatedS3Data,
             page,
-            limit
+            limit,
         });
-
     } catch (error) {
+        console.error('Error fetching user exceed data:', error);
         res.status(500).json({
             status: 500,
             success: false,
-            message: "Error in fetching User Exceed Data",
+            message: 'Error in fetching User Exceed Data',
             error: error.message,
         });
     }

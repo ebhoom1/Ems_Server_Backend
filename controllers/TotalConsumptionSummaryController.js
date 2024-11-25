@@ -5,6 +5,7 @@ const moment = require('moment-timezone');
 const cron = require('node-cron');
 const HourlyData = require('../models/hourlyData');
 const User = require('../models/user');
+const AWS = require('aws-sdk');
 
 
 
@@ -50,7 +51,8 @@ const calculateTotalConsumptionFromLastEntry = async () => {
             intervalType: intervalType,
             totalEnergy: totalEnergy,
             totalCumulatingFlow: totalCumulatingFlow,
-            date: date
+            date: date,
+            timestamp:new Date()
         });
 
         await summaryEntry.save();
@@ -66,14 +68,48 @@ cron.schedule('0 * * * *', () => {
     calculateTotalConsumptionFromLastEntry();
 });
 };
+
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+// Helper Function to Fetch Data from S3
+const fetchDataFromS3 = async (key) => {
+    try {
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Key: key // File key in the bucket
+        };
+        const s3Object = await s3.getObject(params).promise();
+        return JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch data from S3');
+    }
+};
+
 // Get all total consumption summaries
 const getAllSummary = async (req, res) => {
     try {
-        const data = await TotalConsumptionSummary.find();
-        if (!data.length) {
+        // Fetch MongoDB data
+        const mongoData = await TotalConsumptionSummary.find().lean();
+
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalConsumption_data/totalConsumptionData.json');
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3Data];
+
+        if (!combinedData.length) {
             return res.status(404).json({ message: 'No summary data available.' });
         }
-        res.status(200).json(data);
+
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error('Error fetching all summary data:', error);
         res.status(500).json({ message: 'Internal server error.', error });
@@ -83,13 +119,29 @@ const getAllSummary = async (req, res) => {
 // Get total consumption summary by userName
 const getSummaryByUserName = async (req, res) => {
     const { userName } = req.params;
+
     try {
-        const data = await TotalConsumptionSummary.findOne({ userName })
-                                                  .sort({ createdAt: -1 }); // Sorts by `createdAt` in descending order, ensuring the newest document is first.
-        if (!data) {
+        // Fetch MongoDB data
+        const mongoData = await TotalConsumptionSummary.findOne({ userName })
+            .sort({ createdAt: -1 })
+            .lean(); // Sorts by `createdAt` in descending order
+
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalConsumption_data/totalConsumptionData.json');
+        const s3FilteredData = s3Data.filter(entry => entry.userName === userName);
+
+        // Combine MongoDB and S3 data
+        const combinedData = [];
+        if (mongoData) {
+            combinedData.push(mongoData);
+        }
+        combinedData.push(...s3FilteredData);
+
+        if (!combinedData.length) {
             return res.status(404).json({ message: `No summary data found for user ${userName}.` });
         }
-        res.status(200).json(data);
+
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error(`Error fetching summary data for user ${userName}:`, error);
         res.status(500).json({ message: 'Internal server error.', error });
@@ -97,23 +149,31 @@ const getSummaryByUserName = async (req, res) => {
 };
 
 
+
 // Get total consumption summary by userName and intervalType
 const getSummaryByUserNameAndInterval = async (req, res) => {
     const { userName, intervalType } = req.params;
 
     try {
-        const data = await TotalConsumptionSummary.find({
-            userName,
-            intervalType,
-        });
+        // Fetch MongoDB data
+        const mongoData = await TotalConsumptionSummary.find({ userName, intervalType }).lean();
 
-        if (!data.length) {
+        // Fetch S3 data
+        const s3Data = await fetchDataFromS3('totalConsumption_data/totalConsumptionData.json');
+        const s3FilteredData = s3Data.filter(
+            (entry) => entry.userName === userName && entry.intervalType === intervalType
+        );
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3FilteredData];
+
+        if (!combinedData.length) {
             return res.status(404).json({
                 message: 'No summary data found for the specified user and interval type.',
             });
         }
 
-        res.status(200).json(data);
+        res.status(200).json(combinedData);
     } catch (error) {
         console.error(
             `Error fetching summary data for user ${userName} and interval type ${intervalType}:`,
@@ -122,6 +182,7 @@ const getSummaryByUserNameAndInterval = async (req, res) => {
         res.status(500).json({ message: 'Internal server error.', error });
     }
 };
+
 
 module.exports = { 
     // scheduleTotalConsumptionSummaryCalculation, 

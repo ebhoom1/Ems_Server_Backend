@@ -31,6 +31,8 @@ const reportSchema = new mongoose.Schema({
         message: String
       }],
     reportApproved: { type: Boolean, required: true },
+    timestamp: { type: Date, default: Date.now },
+
 })
 const Report = mongoose.model('Report',reportSchema);
 

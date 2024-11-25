@@ -179,20 +179,27 @@ const deleteNotification = async(req,res)=>{
         })
     }
 }
-const deleteOldNotifications = async () =>{
-    try{
-        const fourHundredDays = new Date();
-        fourHundredDays.setDate(fourHundredDays.getDate()-400);
+const deleteOldNotifications = async () => {
+    try {
+        const threeDaysAgo = new Date();
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-        const result =await Notification.deleteMany({dateOfNotificationAdded: { $lt: oneWeekAgo }})
-        console.log(`Deleted ${result.deletedCount} old notifications`);
-    }catch(error){
+        // Delete notifications older than 3 days
+        const result = await Notification.deleteMany({
+            dateOfNoticationAdded: { $lt: threeDaysAgo }
+        });
+
+        console.log(`Deleted ${result.deletedCount} notifications older than 3 days`);
+    } catch (error) {
         console.error('Error deleting old notifications:', error);
     }
-}
-//Schedule the task to run every day at midnight
-cron.schedule('0 0 * * *', () => {
-    console.log('Running cron job to delete old notifications');
-    deleteOldNotifications();
-  });
-module.exports ={addNotification,viewNotification,deleteNotification,getNotificationOfUser,createNotification,deleteOldNotifications};
+};
+
+// Schedule the task to run every day at midnight
+const setupCronJobNotificationDelete = () => {
+    cron.schedule('0 0 * * *', () => {
+        console.log('Running cron job to delete notifications older than 3 days');
+        deleteOldNotifications();
+    });
+};
+module.exports ={addNotification,viewNotification,deleteNotification,getNotificationOfUser,createNotification,setupCronJobNotificationDelete};
