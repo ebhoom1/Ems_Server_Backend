@@ -86,8 +86,8 @@ const uploadDataToS3AndClearDB = async () => {
 
 // Schedule the job to run every hour at the top of the hour
 const setupCronJobS3Average = () => {
-    cron.schedule('15 * * * *', () => {  // Run every 1 hour and 15 minutes
-        console.log('Running hourly data average data upload and cleanup...');
+    cron.schedule('0 1 * * *', () => {  // Run every day at 01:00 AM
+        console.log('Running daily data average data upload and cleanup...');
         uploadDataToS3AndClearDB();
     });
 };
