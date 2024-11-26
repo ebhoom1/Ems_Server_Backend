@@ -31,7 +31,7 @@ const uploadDataToS3AndClearDB = async () => {
         const newJsonData = data;
 
         // Prepare the S3 parameters
-        const fileName = 'average_data/averageData.json';
+        const fileName = 'average_data/Data.json';
 
         try {
             // Attempt to get the existing file from S3
@@ -51,7 +51,7 @@ const uploadDataToS3AndClearDB = async () => {
                 Bucket: 'ems-ebhoom-bucket',
                 Key: fileName,
                 Body: JSON.stringify(updatedJsonData, null, 2), // Pretty print JSON
-                ContentType: 'application/json'
+                ContentType: 'application/json',
             };
 
             await s3.upload(uploadParams).promise();
@@ -86,11 +86,10 @@ const uploadDataToS3AndClearDB = async () => {
 
 // Schedule the job to run every hour at the top of the hour
 const setupCronJobS3Average = () => {
-    cron.schedule('0 1 * * *', () => {  // Run every day at 01:00 AM
-        console.log('Running daily data average data upload and cleanup...');
+    cron.schedule('15 * * * *', () => {
+        console.log('Running hourly data average data upload and cleanup...');
         uploadDataToS3AndClearDB();
     });
 };
-
 
 module.exports = { uploadDataToS3AndClearDB, setupCronJobS3Average };
