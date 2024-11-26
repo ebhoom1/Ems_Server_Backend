@@ -61,6 +61,7 @@ const {setupCronJobS3TotalConsumptionData} = require('./S3Bucket/s3TotalConsumpt
 const {setupCronJobS3HourlyData} = require('./S3Bucket/s3HourlyData');
 const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
 const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
+const {setupWeeklyCronJobS3Difference} = require('./S3Bucket/s3differenceData');
 
 
 
@@ -277,6 +278,10 @@ setupCronJobS3Report();
 
 //Schedule the payment data transfer to s3 bucket
 setupCronJobS3Payment();
+
+
+//Schedule the difference data tranfer to S3 bucket in week
+setupWeeklyCronJobS3Difference();
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {

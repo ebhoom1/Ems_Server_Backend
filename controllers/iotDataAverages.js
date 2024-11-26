@@ -303,7 +303,7 @@ const fetchAverageDataFromS3 = async () => {
 };
 
 
-// Controller function to fetch all average data
+
 // Controller function to fetch all average data
 const getAllAverageData = async (req, res) => {
     try {
