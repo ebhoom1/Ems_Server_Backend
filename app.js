@@ -26,6 +26,7 @@ const totalConsumptionSummaryRoutes = require('./routers/totalConsumptionSummary
 const hourlyDataRoutes = require('./routers/hourlyData');
 const primaryStationRoutes = require('./routers/primaryStationRoutes');
 const billRoutes = require('./routers/billRoutes');
+const liveStationRoutes = require('./routers/liveStationRoutes');
 
 
 const { getAllDeviceCredentials } = require('./controllers/user');
@@ -95,6 +96,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../client/build')));
 
+// Serve static files from the 'uploads' folder
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Request logging middleware
 app.use((req, res, next) => {
     console.log(req.path, req.method);
@@ -126,6 +130,7 @@ app.use('/api', totalConsumptionSummaryRoutes);
 app.use('/api',hourlyDataRoutes);
 app.use('/api', primaryStationRoutes);
 app.use('/api', billRoutes);
+app.use('/api', liveStationRoutes);
 
 
 
