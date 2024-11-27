@@ -31,7 +31,7 @@ const uploadDataToS3AndClearDB = async () => {
         const newJsonData = data;
 
         // Prepare the S3 parameters
-        const fileName = 'average_data/Data.json';
+        const fileName = 'average_data/averageData.json';
 
         try {
             // Attempt to get the existing file from S3
