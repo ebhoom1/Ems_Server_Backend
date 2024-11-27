@@ -197,30 +197,45 @@ const fetchExceedDataFromS3 = async (key) => {
 const getAllExceedData = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;  // Default to 10 records per page
+        const limit = parseInt(req.query.limit) || 10; // Default to 10 records per page
         const skipIndex = (page - 1) * limit;
 
-        const allComments = await CalibrationExceed.find()
-            .sort({ timestamp: -1 })  // Ensuring the latest data is fetched first
-            .limit(limit)
-            .skip(skipIndex)
+        // Fetch data from MongoDB
+        const mongoData = await CalibrationExceed.find()
+            .sort({ timestamp: -1 }) // Fetch latest data first
             .exec();
+
+        // Fetch data from S3
+        console.log('Fetching data from S3...');
+        const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json');
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3Data];
+
+        // Sort combined data by timestamp (assuming both datasets have a `timestamp` field)
+        const sortedData = combinedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // Apply pagination to the sorted combined data
+        const paginatedData = sortedData.slice(skipIndex, skipIndex + limit);
 
         res.status(200).json({
             success: true,
-            message: 'All comments are found',
-            data: allComments,
+            message: 'All comments are found from MongoDB and S3',
+            data: paginatedData,
             page,
-            limit
+            limit,
+            totalRecords: combinedData.length
         });
     } catch (error) {
+        console.error('Error combining data from MongoDB and S3:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch the comments',
+            message: 'Failed to fetch data from MongoDB and S3',
             error: error.message
         });
     }
-}
+};
+
 
 
 const getAUserExceedData = async (req, res) => {
@@ -231,6 +246,7 @@ const getAUserExceedData = async (req, res) => {
         const skipIndex = (page - 1) * limit;
 
         let query = {};
+        let parsedFromDate, parsedToDate; // Declare variables outside the block
 
         if (userName) query.userName = decodeURIComponent(userName.trim());
         if (industryType) query.industryType = industryType;
@@ -238,8 +254,8 @@ const getAUserExceedData = async (req, res) => {
         if (stackName) query.stackName = decodeURIComponent(stackName.trim());
 
         if (fromDate && toDate) {
-            const parsedFromDate = moment(fromDate, 'DD-MM-YYYY').startOf('day').utc().toDate();
-            const parsedToDate = moment(toDate, 'DD-MM-YYYY').endOf('day').utc().toDate();
+            parsedFromDate = moment(fromDate, 'DD-MM-YYYY').startOf('day').utc().toDate();
+            parsedToDate = moment(toDate, 'DD-MM-YYYY').endOf('day').utc().toDate();
             if (!parsedFromDate || !parsedToDate) {
                 return res.status(400).json({
                     success: false,
@@ -309,46 +325,41 @@ const getAUserExceedData = async (req, res) => {
 
 
 
-
   
 const getExceedDataByUserName = async (req, res) => {
     try {
         const { userName } = req.params;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50; // Default to 10 records per page
+        const limit = parseInt(req.query.limit) || 50; // Default to 50 records per page
         const skipIndex = (page - 1) * limit;
 
         // Retrieve data from MongoDB
         const mongoData = await CalibrationExceed.find({ userName: userName })
             .sort({ timestamp: -1 }) // Latest data first
-            .limit(limit)
-            .skip(skipIndex)
-            .exec();
+            .exec(); // Fetch all matching records without pagination
 
-        if (mongoData && mongoData.length > 0) {
-            return res.status(200).json({
-                status: 200,
-                success: true,
-                message: `Calibration Exceed data of user ${userName} fetched successfully from MongoDB`,
-                data: mongoData,
-                page,
-                limit,
-            });
-        }
+        console.log(`MongoDB data found for user ${userName}:`, mongoData.length);
 
-        // If no data found in MongoDB, fallback to S3
-        console.log(`No MongoDB data found for user ${userName}, fetching from S3...`);
-
+        // Fetch data from S3
+        console.log(`Fetching data from S3 for user ${userName}...`);
         const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json'); // Replace with actual S3 key
 
         // Filter S3 data by userName
         const filteredS3Data = s3Data
-            .filter(entry => entry.userName.trim().toLowerCase() === userName.trim().toLowerCase())
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Sort by timestamp descending
+            .filter(entry => entry.userName.trim().toLowerCase() === userName.trim().toLowerCase());
 
-        const paginatedS3Data = filteredS3Data.slice(skipIndex, skipIndex + limit);
+        console.log(`S3 data found for user ${userName}:`, filteredS3Data.length);
 
-        if (paginatedS3Data.length === 0) {
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...filteredS3Data];
+
+        // Sort combined data by timestamp in descending order
+        const sortedData = combinedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // Apply pagination to the combined sorted data
+        const paginatedData = sortedData.slice(skipIndex, skipIndex + limit);
+
+        if (paginatedData.length === 0) {
             return res.status(404).json({
                 status: 404,
                 success: false,
@@ -359,10 +370,11 @@ const getExceedDataByUserName = async (req, res) => {
         res.status(200).json({
             status: 200,
             success: true,
-            message: `Calibration Exceed data of user ${userName} fetched successfully from S3`,
-            data: paginatedS3Data,
+            message: `Calibration Exceed data of user ${userName} fetched successfully from MongoDB and S3`,
+            data: paginatedData,
             page,
             limit,
+            totalRecords: combinedData.length,
         });
     } catch (error) {
         console.error('Error fetching user exceed data:', error);
@@ -374,6 +386,7 @@ const getExceedDataByUserName = async (req, res) => {
         });
     }
 };
+
 
   
 
