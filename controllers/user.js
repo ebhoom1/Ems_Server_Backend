@@ -531,15 +531,22 @@ const findUsersByAdminType = async (req, res) => {
     }
 
     try {
-        // Find users with the specified adminType, excluding those with userType === 'admin'
+        let query = {};
+
+        if (adminType === 'ALL') {
+            // Fetch all users (no filter on adminType or userType)
+            query = {};
+        } else {
+            // Filter by adminType and include only users with userType === 'user'
+            query = { adminType, userType: 'user' };
+        }
+
+        // Find users based on the constructed query
         const users = await userdb.find(
-            {
-                adminType,
-                userType: 'user' // Only include users with userType === 'user'
-            },
+            query,
             {
                 password: 0, // Exclude sensitive fields
-                tokens: 0,    // Exclude tokens for security
+                tokens: 0,   // Exclude tokens for security
             }
         ).lean();
 
