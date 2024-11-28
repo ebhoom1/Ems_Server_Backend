@@ -2,7 +2,7 @@ const mongoose=require('mongoose');
 const validator=require('validator');
 const bcrypt=require('bcryptjs');
 const jwt=require('jsonwebtoken');
-const moment =require('moment');
+const moment =require('moment')
 
 const keysecret=process.env.SECRET_KEY
 
@@ -56,6 +56,8 @@ const userSchema=new mongoose.Schema({
     },
     cpassword:{
         type:String,
+        required:true,
+        minlength:8
     },
     subscriptionDate:{
         type:String,
@@ -73,8 +75,7 @@ const userSchema=new mongoose.Schema({
         default: false,
       },
     userType:{
-        type:String,
-        required:true
+        type:String
     },
     adminType:{
         type:String,
@@ -126,16 +127,16 @@ const userSchema=new mongoose.Schema({
         default: () => moment().toDate()
     }
 })
-userSchema.index({ email: 1 }); 
+
 //hash password
 
-userSchema.pre("save", async function (next) {
-    if (this.isModified("password")) {
-        this.password = await bcrypt.hash(this.password, 10); // Hash only the password field
+userSchema.pre("save",async function(next){
+    if(this.isModified("password")){
+        this.password=await bcrypt.hash(this.password,12);
+        this.cpassword=await bcrypt.hash(this.cpassword,12);
     }
-    next();
-});
-
+    next()
+})
 
 //token generate
 

@@ -24,66 +24,37 @@ const transporter=nodemailer.createTransport({
 })
 
 
-
-
 const register = async (req, res) => {
-    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType, adminType, industryType, industryPollutionCategory, dataInterval, district, state, address, latitude, longitude, productID } = req.body;
-
-    // Validate passwords
-    if (password !== cpassword) {
-        return res.status(422).json({ error: "Passwords do not match" });
-    }
+    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType,adminType, industryType,industryPollutionCategory, dataInteval, district, state, address, latitude, longitude,productID } = req.body;
 
     try {
-        // Check if the email is already registered
-        const existingUser = await userdb.findOne({ email }).lean().exec();
-        if (existingUser) {
-            return res.status(422).json({ error: "This Email Already Registered" });
+        const preuser = await userdb.findOne({ email: email });
+        if (preuser) {
+            return res.status(422).json({ error: "This Email Already Register" });
+        } else if (password !== cpassword) {
+            return res.status(422).json({ error: "Password and Confirm Password not Match" });
+        } else {
+            // Calculate endSubscriptionDate
+            const subscriptionDateObj = new Date(subscriptionDate);
+            const endSubscriptionDate = new Date(subscriptionDateObj);
+            endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
+
+            // Format endSubscriptionDate to "YYYY-MM-DD"
+            const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split('T')[0];
+
+            const finalUser = new userdb({
+                userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, endSubscriptionDate: formattedEndSubscriptionDate, userType,adminType, industryType,industryPollutionCategory, dataInteval, district, state, address, latitude, longitude,
+                productID,iotLastEnterDate: subscriptionDate
+
+            });
+
+            const storeData = await finalUser.save();
+            return res.status(201).json({ status: 201, storeData });
         }
-
-        // Calculate the subscription end date
-        const subscriptionDateObj = new Date(subscriptionDate);
-        const endSubscriptionDate = new Date(subscriptionDateObj);
-        endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
-
-        const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split('T')[0];
-
-        // Hash the password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create a new user
-        const finalUser = new userdb({
-            userName,
-            companyName,
-            modelName,
-            fname,
-            email,
-            mobileNumber,
-            password: hashedPassword,
-            cpassword: hashedPassword, // Store the hashed version of cpassword as well
-            subscriptionDate,
-            endSubscriptionDate: formattedEndSubscriptionDate,
-            userType,
-            adminType,
-            industryType,
-            industryPollutionCategory,
-            dataInterval,
-            district,
-            state,
-            address,
-            latitude,
-            longitude,
-            productID,
-            iotLastEnterDate: subscriptionDate,
-        });
-
-        // Save the user in the database
-        const storeData = await finalUser.save();
-        return res.status(201).json({ status: 201, storeData });
     } catch (error) {
-        console.error(`Error in registration: ${error.message}`);
-        return res.status(500).json({ error: "Internal Server Error" });
-    }
+        console.log(`Error : ${error}`);
+        return res.status(400).json(error);
+    }
 };
 
 
@@ -153,91 +124,54 @@ const updateAdminType = async (req, res) => {
 
 // user login
   
-// const login = async (req, res) => {
-//     const { email, password, userType } = req.body;
 
-//     if (!email || !password || !userType) {
-//         return res.status(422).json({ error: "Fill all the details" });
-//     }
-
-//     try {
-//         const userValid = await userdb.findOne({ email });
-
-//         if (userValid) {
-//                 if(userValid.userType !== userType){
-//                     return res.status(401).json({error:"Invalid UserType"})
-//                 }
-
-//             const isMatch = await bcrypt.compare(password, userValid.password);
-//             if (!isMatch) {
-//                 return res.status(422).json({ error: "Invalid User" });
-//             } else {
-//                 const token = await userValid.generateAuthtoken();
-//                 res.cookie("usercookie", token, {
-//                     expires: new Date(Date.now() + 9000000),
-//                     httpOnly: true
-//                 });
-//                 const result = {
-//                     userValid,
-//                     token
-//                 };
-//                 return res.status(200).json({ status: 200, result }); // Send success response
-//             }
-//         } else {
-//             return res.status(401).json({ status: 401, message: "Invalid details" }); // Send invalid details response
-//         }
-//     } catch (error) {
-//         return res.status(500).json({ error: "Internal Server Error" + error});
-//         console.log(`Error: ${error}`); // Send internal server error response
-//     }
-// };
+  
 const login = async (req, res) => {
     const { email, password, userType } = req.body;
 
     if (!email || !password || !userType) {
-        return res.status(422).json({ error: "All fields are required" });
+        return res.status(422).json({ error: "Fill all the details" });
     }
 
     try {
-        // Fetch user and validate userType without loading entire document
-        const user = await userdb.findOne({ email });
+        const userValid = await userdb.findOne({ email });
 
-        if (!user) {
-            return res.status(401).json({ message: "Invalid credentials" });
+        if (userValid) {
+            if (userValid.userType !== userType) {
+                return res.status(401).json({ error: "Invalid UserType" });
+            }
+
+            const isMatch = await bcrypt.compare(password, userValid.password);
+            if (!isMatch) {
+                return res.status(422).json({ error: "Invalid User" });
+            } else {
+                // Generate a new token
+                const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
+
+                // Replace the existing token array with the new token
+                userValid.tokens = [{ token }];
+                await userValid.save();
+
+                res.cookie("usercookie", token, {
+                    expires: new Date(Date.now() + 9000000),
+                    httpOnly: true
+                });
+
+                const result = {
+                    userValid,
+                    token
+                };
+                return res.status(200).json({ status: 200, result }); // Send success response
+            }
+        } else {
+            return res.status(401).json({ status: 401, message: "Invalid details" }); // Send invalid details response
         }
-
-        if (user.userType !== userType) {
-            return res.status(401).json({ error: "User type mismatch" });
-        }
-
-        // Validate password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
-
-        // Generate a new token
-        const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY, { expiresIn: "30d" });
-
-        // Update the token in the database, overwriting previous tokens
-        await userdb.updateOne(
-            { _id: user._id },
-            { $set: { tokens: [{ token }] } } // Overwrite the tokens array with the new token
-        );
-
-        // Set the token in cookies
-        res.cookie("usercookie", token, {
-            expires: new Date(Date.now() + 9000000),
-            httpOnly: true,
-        });
-
-        // Return user details and token
-        return res.status(200).json({ status: 200, user, token });
     } catch (error) {
-        console.error(`Error during login: ${error.message}`);
-        return res.status(500).json({ error: "Internal Server Error" });
+        console.error(`Error: ${error}`);
+        return res.status(500).json({ error: "Internal Server Error" + error });
     }
 };
+
 
 
 
