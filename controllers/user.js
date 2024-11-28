@@ -467,7 +467,7 @@ const findUsersByAdminType = async (req, res) => {
     try {
         let query = {};
 
-        if (adminType === 'ALL') {
+        if (adminType === 'EBHOOM') {
             // Fetch all users (no filter on adminType or userType)
             query = {};
         } else {
