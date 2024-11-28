@@ -93,8 +93,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Serve static files from the React app
-app.use(express.static(path.join(__dirname, '../client/build')));
+// Serve static files from the React app's build directory
+app.use(express.static(path.join(__dirname, '../Ems_client_frontend/build')));
 
 // Serve static files from the 'uploads' folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -325,7 +325,8 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
-// Serve React app for all other routes
+
+// Catch-all handler for any requests not handled above
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+    res.sendFile(path.join(__dirname, '../Ems_client_frontend/build/index.html'));
 });
