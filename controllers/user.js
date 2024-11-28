@@ -137,19 +137,26 @@ const login = async (req, res) => {
         const userValid = await userdb.findOne({ email });
 
         if (userValid) {
-                if(userValid.userType !== userType){
-                    return res.status(401).json({error:"Invalid UserType"})
-                }
+            if (userValid.userType !== userType) {
+                return res.status(401).json({ error: "Invalid UserType" });
+            }
 
             const isMatch = await bcrypt.compare(password, userValid.password);
             if (!isMatch) {
                 return res.status(422).json({ error: "Invalid User" });
             } else {
-                const token = await userValid.generateAuthtoken();
+                // Generate a new token
+                const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
+
+                // Replace the existing token array with the new token
+                userValid.tokens = [{ token }];
+                await userValid.save();
+
                 res.cookie("usercookie", token, {
                     expires: new Date(Date.now() + 9000000),
                     httpOnly: true
                 });
+
                 const result = {
                     userValid,
                     token
@@ -160,9 +167,9 @@ const login = async (req, res) => {
             return res.status(401).json({ status: 401, message: "Invalid details" }); // Send invalid details response
         }
     } catch (error) {
-        return res.status(500).json({ error: "Internal Server Error" + error});
-        console.log(`Error: ${error}`); // Send internal server error response
-    }
+        console.error(`Error: ${error}`);
+        return res.status(500).json({ error: "Internal Server Error" + error });
+    }
 };
 
 
