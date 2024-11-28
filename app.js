@@ -227,7 +227,8 @@ scheduleDailyDataSend()
 
 
 // Start the scheduling process
-scheduleDifferenceCalculation();
+console.log('scheduleDifferenceCalculation started');
+// scheduleDifferenceCalculation();
 
 //Save hourly data of the energy and cumulatingFlow
 setupCronJob()

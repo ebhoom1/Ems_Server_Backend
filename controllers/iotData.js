@@ -188,7 +188,8 @@ req.io.to(data.userName).emit('stackDataUpdate', {
                 newEntry,
             });
             handleExceedValues()
-            // saveOrUpdateLastEntryByUserName()
+            await saveOrUpdateLastEntryByUserName(newEntryData);
+
         } catch (error) {
             console.error('Error saving data:', error);
             res.status(500).json({ success: false, message: 'Error saving data', error: error.message });

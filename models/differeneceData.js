@@ -11,12 +11,12 @@ const DifferenceDataSchema = new mongoose.Schema({
     initialEnergy: { type: Number },
     lastEnergy: { type: Number },
     energyDifference: { type: Number },
-    initialInflow: { type: Number },
-    lastInflow: { type: Number },
-    inflowDifference: { type: Number },
-    initialFinalFlow: { type: Number },
-    lastFinalFlow: { type: Number },
-    finalFlowDifference: { type: Number },
+    initialCumulatingFlow: { type: Number },
+    lastCumulatingFlow: { type: Number },
+    cumulatingFlowDifference: { type: Number },
+    initialFlowRate: { type: Number },
+    lastFlowRate: { type: Number },
+    flowRateDifference: { type: Number },
     timestamp: { type: Date, default: Date.now },
 });
 

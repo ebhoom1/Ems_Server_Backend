@@ -19,71 +19,83 @@ const getInitialAndLastEntries = async (userName, stackName, startTime, endTime)
     return { initialEntry: data[0], lastEntry: data[data.length - 1] };
 };
 
-// Extract values from stack data
 const extractValues = (entry, stackName) => {
     const stack = entry.stackData.find(stack => stack.stackName === stackName) || {};
     const timestamp = moment(entry.timestamp);
 
     return {
         energy: stack.energy || 0,
-        inflow: stack.inflow || 0,
-        finalflow: stack.finalflow || 0,
+        cumulatingFlow: stack.cumulatingFlow || 0,
+        flowRate: stack.flowRate || 0,
         date: timestamp.format('DD/MM/YYYY'),
         time: timestamp.format('HH:mm'),
     };
 };
 
-// Calculate and save the difference data
 const calculateAndSaveDifferences = async (userName, stackName, stationType, interval, intervalType, startTime, endTime) => {
+    if (!['energy', 'effluent_flow'].includes(stationType)) {
+        console.log(`Skipping stack ${stackName} for user ${userName} due to stationType: ${stationType}`);
+        return;
+    }
+
     const entries = await getInitialAndLastEntries(userName, stackName, startTime, endTime);
-    if (!entries) return;
+    if (!entries) {
+        console.log(`No entries found for user: ${userName}, stack: ${stackName}, time range: ${startTime} - ${endTime}`);
+        return;
+    }
 
     const { initialEntry, lastEntry } = entries;
     const initialValues = extractValues(initialEntry, stackName);
     const lastValues = extractValues(lastEntry, stackName);
 
     const differenceDataEntry = {
-        stackName,
+        stackName, // Ensure this field is included
         stationType: stationType || 'NIL',
         initialEnergy: initialValues.energy,
         lastEnergy: lastValues.energy,
         energyDifference: lastValues.energy - initialValues.energy,
-        initialInflow: initialValues.inflow,
-        lastInflow: lastValues.inflow,
-        inflowDifference: lastValues.inflow - initialValues.inflow,
-        initialFinalFlow: initialValues.finalflow,
-        lastFinalFlow: lastValues.finalflow,
-        finalFlowDifference: lastValues.finalflow - initialValues.finalflow,
+        initialCumulatingFlow: initialValues.cumulatingFlow,
+        lastCumulatingFlow: lastValues.cumulatingFlow,
+        cumulatingFlowDifference: lastValues.cumulatingFlow - initialValues.cumulatingFlow,
+        initialFlowRate: initialValues.flowRate,
+        lastFlowRate: lastValues.flowRate,
+        flowRateDifference: lastValues.flowRate - initialValues.flowRate,
     };
 
-    // Convert to IST and format the interval
-    const intervalIST = moment().tz('Asia/Kolkata').format('ddd MMM DD YYYY HH:mm:ss [GMT+0530] (India Standard Time)');
+    console.log('Calculated differenceDataEntry:', differenceDataEntry);
 
     const differenceEntry = new DifferenceData({
         userName,
-        interval: intervalIST,
+        stackName, // Ensure this is saved correctly
+        stationType: differenceDataEntry.stationType,
+        interval,
         intervalType,
         date: initialValues.date,
         time: initialValues.time,
-        differenceData: [differenceDataEntry], // Save the difference in an array
-        timestamp: new Date(),
+        ...differenceDataEntry,
     });
 
-    await differenceEntry.save();
-    console.log(`Saved difference data for ${userName} - ${stackName}`);
+    try {
+        await differenceEntry.save();
+        console.log(`Saved difference data for ${userName} - ${stackName}`);
+    } catch (error) {
+        console.error('Error saving difference data:', error);
+    }
 };
+
 
 // Schedule the difference calculations
 const scheduleDifferenceCalculation = () => {
     const intervals = [
-        { cronTime: '0 * * * *', interval: 'hourly', intervalType: 'hour' }, // Every hour
-        { cronTime: '0 0 * * *', interval: 'daily', intervalType: 'day' }, // Every day
+        { cronTime: '*/5 * * * *', interval: 'test', intervalType: 'minute' }, // Test every 5 minutes
+        { cronTime: '0 0 * * *', interval: 'daily', intervalType: 'day' },    // Every day
     ];
 
     intervals.forEach(({ cronTime, interval, intervalType }) => {
         cron.schedule(cronTime, async () => {
             console.log(`Running ${interval} difference calculation...`);
             const users = await IotData.distinct('userName');
+            console.log('Users found:', users);
 
             for (const userName of users) {
                 const stackNames = await IotData.aggregate([
@@ -91,11 +103,17 @@ const scheduleDifferenceCalculation = () => {
                     { $unwind: '$stackData' },
                     { $group: { _id: '$stackData.stackName' } },
                 ]).then(result => result.map(item => item._id));
+                console.log(`Processing stacks for user ${userName}:`, stackNames);
 
                 for (const stackName of stackNames) {
                     const now = new Date();
-                    const startTime = new Date(now.getTime() - (intervalType === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000));
+                    const startTime = new Date(
+                        now.getTime() - (intervalType === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000)
+                    );
+                    console.log(`Calculating for stack: ${stackName}, interval: ${intervalType}, startTime: ${startTime}, endTime: ${now}`);
+
                     const stationType = await IotData.findOne({ userName, 'stackData.stackName': stackName }).select('stackData.stationType');
+                    console.log(`Station type for stack ${stackName}:`, stationType);
 
                     await calculateAndSaveDifferences(
                         userName,
@@ -114,23 +132,19 @@ const scheduleDifferenceCalculation = () => {
 
 
 
+
 // Controller to fetch difference data by userName and interval
 // Controller to fetch difference data by userName and interval with pagination
 const getDifferenceDataByUserNameAndInterval = async (userName, interval, page = 1, limit = 10) => {
     try {
-        if (!['daily', 'hourly'].includes(interval)) {
-            throw new Error('Invalid interval. Use "daily" or "hourly".');
-        }
-
         const skip = (page - 1) * limit;
 
-        // Query MongoDB to fetch relevant fields, including stackName and energy-related fields
         const data = await DifferenceData.find({ userName, interval })
-            .select('userName interval stackName date time initialEnergy lastEnergy energyDifference timestamp initialInflow lastInflow inflowDifference initialFinalFlow lastFinalFlow finalFlowDifference')
-            .sort({ timestamp: -1 }) // Sort by most recent timestamp
+            .select('userName interval stackName date time initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference initialFlowRate lastFlowRate flowRateDifference timestamp')
+            .sort({ timestamp: -1 })
             .skip(skip)
             .limit(limit)
-            .lean(); // Converts Mongoose documents to plain objects
+            .lean();
 
         const total = await DifferenceData.countDocuments({ userName, interval });
 
@@ -145,6 +159,7 @@ const getDifferenceDataByUserNameAndInterval = async (userName, interval, page =
         throw error;
     }
 };
+
 // Controller to fetch data by userName and time range with projections and limit
 // Controller to fetch data by userName and time range with pagination
 const getDifferenceDataByTimeRange = async (userName, interval, fromDate, toDate, page = 1, limit = 10) => {

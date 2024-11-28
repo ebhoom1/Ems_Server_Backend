@@ -27,7 +27,7 @@ const transporter=nodemailer.createTransport({
 
 
 const register = async (req, res) => {
-    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType, industryType, industryPollutionCategory, dataInterval, district, state, address, latitude, longitude, productID } = req.body;
+    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType,adminType, industryType, industryPollutionCategory, dataInterval, district, state, address, latitude, longitude, productID } = req.body;
 
     // Validate passwords
     if (password !== cpassword) {
@@ -63,6 +63,7 @@ const register = async (req, res) => {
             subscriptionDate,
             endSubscriptionDate: formattedEndSubscriptionDate,
             userType,
+            adminType,
             industryType,
             industryPollutionCategory,
             dataInterval,
@@ -114,7 +115,39 @@ const updateStackName = async (req, res) => {
     }
 };
 
+const updateAdminType = async (req, res) => {
+    const { userName, adminType } = req.body;
 
+    if (!userName || !adminType) {
+        return res.status(400).json({ error: "Please provide both userName and adminType" });
+    }
+
+    try {
+        // Find the user by userName
+        const user = await userdb.findOne({ userName }).exec();
+
+        // If user not found, return an error
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Check if adminType is already set
+        if (user.adminType) {
+            return res.status(409).json({ error: "AdminType is already set for this user" });
+        }
+
+        // Update the adminType
+        user.adminType = adminType;
+
+        // Save the updated user
+        await user.save();
+
+        return res.status(200).json({ status: 200, message: "AdminType updated successfully", user });
+    } catch (error) {
+        console.error(`Error in updating adminType: ${error.message}`);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
 
 
 // user login
@@ -485,6 +518,44 @@ const getStackNamesByUserName = async (req, res) => {
     }
 };
 
+const findUsersByAdminType = async (req, res) => {
+    const { adminType } = req.params;
+
+    if (!adminType) {
+        return res.status(400).json({ error: "Please provide an adminType" });
+    }
+
+    try {
+        let query = {};
+
+        if (adminType === 'ALL') {
+            // Fetch all users (no filter on adminType or userType)
+            query = {};
+        } else {
+            // Filter by adminType and include only users with userType === 'user'
+            query = { adminType, userType: 'user' };
+        }
+
+        // Find users based on the constructed query
+        const users = await userdb.find(
+            query,
+            {
+                password: 0, // Exclude sensitive fields
+                tokens: 0,   // Exclude tokens for security
+            }
+        ).lean();
+
+        if (!users || users.length === 0) {
+            return res.status(404).json({ message: "No users found matching the criteria" });
+        }
+
+        return res.status(200).json({ status: 200, users });
+    } catch (error) {
+        console.error(`Error fetching users by adminType: ${error.message}`);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
 
 //Change Current Password 
 const changeCurrentPassword = async (req, res) => {
@@ -556,5 +627,5 @@ const getAllDeviceCredentials = async (req, res) => {
 
 module.exports={register, updateStackName,login,validuser,logout,sendPasswordLink,forgotPassword,changePassword, getAllUsers, editUser, deleteUser,
     getAUser,changeCurrentPassword,getDeviceCredentidals,getAllDeviceCredentials,getAUserByUserName,getAUserByCompanyName,getStackNamesByCompanyName,
-    getStackNamesByUserName
+    getStackNamesByUserName,updateAdminType,findUsersByAdminType
 }
