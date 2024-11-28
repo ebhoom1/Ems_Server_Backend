@@ -526,22 +526,15 @@ const findUsersByAdminType = async (req, res) => {
     }
 
     try {
-        let query = {};
-
-        if (adminType === 'ALL') {
-            // Fetch all users (no filter on adminType or userType)
-            query = {};
-        } else {
-            // Filter by adminType and include only users with userType === 'user'
-            query = { adminType, userType: 'user' };
-        }
-
-        // Find users based on the constructed query
+        // Find users with the specified adminType, excluding those with userType === 'admin'
         const users = await userdb.find(
-            query,
+            {
+                adminType,
+                userType: 'user' // Only include users with userType === 'user'
+            },
             {
                 password: 0, // Exclude sensitive fields
-                tokens: 0,   // Exclude tokens for security
+                tokens: 0,    // Exclude tokens for security
             }
         ).lean();
 
@@ -555,6 +548,7 @@ const findUsersByAdminType = async (req, res) => {
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };
+
 
 
 //Change Current Password 
