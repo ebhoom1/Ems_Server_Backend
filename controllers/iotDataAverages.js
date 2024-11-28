@@ -395,7 +395,7 @@ const findAverageDataUsingUserNameAndStackNameAndIntervalType = async (req, res)
                 stackData: entry.stackData.filter(stack => stack.stackName === stackName),
             }))
             .filter(entry => entry.stackData.length > 0) // Ensure only non-empty stackData entries
-            .slice(0, 24); // Limit to the last 24 records
+            .slice(-24); // Limit to the last 24 records
 
         if (!filteredData || filteredData.length === 0) {
             return res.status(404).json({
