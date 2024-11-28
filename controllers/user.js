@@ -27,7 +27,7 @@ const transporter=nodemailer.createTransport({
 
 
 const register = async (req, res) => {
-    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType,adminType, industryType, industryPollutionCategory, dataInterval, district, state, address, latitude, longitude, productID } = req.body;
+    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType, adminType, industryType, industryPollutionCategory, dataInterval, district, state, address, latitude, longitude, productID } = req.body;
 
     // Validate passwords
     if (password !== cpassword) {
@@ -60,6 +60,7 @@ const register = async (req, res) => {
             email,
             mobileNumber,
             password: hashedPassword,
+            cpassword: hashedPassword, // Store the hashed version of cpassword as well
             subscriptionDate,
             endSubscriptionDate: formattedEndSubscriptionDate,
             userType,
@@ -199,7 +200,7 @@ const login = async (req, res) => {
 
     try {
         // Fetch user and validate userType without loading entire document
-        const user = await userdb.findOne({ email }).lean();
+        const user = await userdb.findOne({ email });
 
         if (!user) {
             return res.status(401).json({ message: "Invalid credentials" });
@@ -218,8 +219,11 @@ const login = async (req, res) => {
         // Generate a new token
         const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY, { expiresIn: "30d" });
 
-        // Update the token in the database directly
-        await userdb.updateOne({ _id: user._id }, { $set: { tokens: [{ token }] } });
+        // Update the token in the database, overwriting previous tokens
+        await userdb.updateOne(
+            { _id: user._id },
+            { $set: { tokens: [{ token }] } } // Overwrite the tokens array with the new token
+        );
 
         // Set the token in cookies
         res.cookie("usercookie", token, {
@@ -234,6 +238,7 @@ const login = async (req, res) => {
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };
+
 
 
 

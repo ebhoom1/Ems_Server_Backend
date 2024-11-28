@@ -54,6 +54,9 @@ const userSchema=new mongoose.Schema({
         required:true,
         minlength:8
     },
+    cpassword:{
+        type:String,
+    },
     subscriptionDate:{
         type:String,
         
