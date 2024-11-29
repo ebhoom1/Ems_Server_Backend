@@ -106,7 +106,7 @@ const calculateAndSaveDifferences = async (userName, stackName, stationType, int
 // Schedule the difference calculations
 const scheduleDifferenceCalculation = () => {
     const intervals = [
-        // { cronTime: '*/5 * * * *', interval: 'test', intervalType: 'minute' }, // Test every 5 minutes
+         { cronTime: '0 * * * *', interval: 'test', intervalType: 'minute' }, // Test every 5 minutes
         { cronTime: '0 0 * * *', interval: 'daily', intervalType: 'day' },    // Every day
     ];
 
