@@ -228,7 +228,7 @@ scheduleDailyDataSend()
 
 // Start the scheduling process
 console.log('scheduleDifferenceCalculation started');
-// scheduleDifferenceCalculation();
+scheduleDifferenceCalculation();
 
 //Save hourly data of the energy and cumulatingFlow
 setupCronJob()
@@ -287,7 +287,7 @@ setupCronJobS3Payment();
 
 
 //Schedule the difference data tranfer to S3 bucket in week
-setupWeeklyCronJobS3Difference();
+// setupWeeklyCronJobS3Difference();
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {

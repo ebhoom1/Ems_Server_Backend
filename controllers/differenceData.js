@@ -1,10 +1,29 @@
+const AWS = require('aws-sdk');
+const moment = require('moment');
+const DailyDifference = require('../models/differeneceData');
 const IotData = require('../models/iotData');
-const DifferenceData = require('../models/differeneceData'); // Ensure correct spelling of 'differenceData'
-const cron = require('node-cron');
-const { Parser } = require('json2csv'); // For CSV export
-const PDFDocument = require('pdfkit');
-const moment = require('moment-timezone');
+const cron = require('node-cron')
 
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+const fetchDataFromS3 = async () => {
+    const key = 'iot_data/iotData.json';
+    const params = { Bucket: 'ems-ebhoom-bucket', Key: key };
+
+    try {
+        const s3Object = await s3.getObject(params).promise();
+        return JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (error) {
+        console.error('Error fetching data from S3:', error);
+        throw new Error('Failed to fetch data from S3');
+    }
+};
 
 // Helper to fetch initial and last entries for a stack
 const getInitialAndLastEntries = async (userName, stackName, startTime, endTime) => {
@@ -87,7 +106,7 @@ const calculateAndSaveDifferences = async (userName, stackName, stationType, int
 // Schedule the difference calculations
 const scheduleDifferenceCalculation = () => {
     const intervals = [
-        { cronTime: '*/5 * * * *', interval: 'test', intervalType: 'minute' }, // Test every 5 minutes
+        // { cronTime: '*/5 * * * *', interval: 'test', intervalType: 'minute' }, // Test every 5 minutes
         { cronTime: '0 0 * * *', interval: 'daily', intervalType: 'day' },    // Every day
     ];
 
@@ -129,6 +148,7 @@ const scheduleDifferenceCalculation = () => {
         });
     });
 };
+
 
 
 
