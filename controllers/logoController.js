@@ -75,11 +75,11 @@ exports.createLogo = async (req, res) => {
 // Retrieve Logo
 exports.getLogoByUserName = async (req, res) => {
     try {
-        const { userName } = req.params;
+        const { userName, adminType } = req.params;
 
-        const logo = await Logo.findOne({ userName });
+        const logo = await Logo.findOne({ userName, adminType });
         if (!logo) {
-            return res.status(404).json({ message: 'Logo not found' });
+            return res.status(404).json({ message: 'Logo not found for the given userName and adminType' });
         }
 
         res.status(200).json({ message: 'Logo retrieved successfully', data: logo });
@@ -87,6 +87,7 @@ exports.getLogoByUserName = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
 
 // Update Logo
 exports.updateLogo = async (req, res) => {
