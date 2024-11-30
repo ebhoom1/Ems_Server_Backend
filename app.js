@@ -27,6 +27,7 @@ const hourlyDataRoutes = require('./routers/hourlyData');
 const primaryStationRoutes = require('./routers/primaryStationRoutes');
 const billRoutes = require('./routers/billRoutes');
 const liveStationRoutes = require('./routers/liveStationRoutes');
+const logoRouter = require('./routers/logoRouter');
 
 
 const { getAllDeviceCredentials } = require('./controllers/user');
@@ -131,6 +132,7 @@ app.use('/api',hourlyDataRoutes);
 app.use('/api', primaryStationRoutes);
 app.use('/api', billRoutes);
 app.use('/api', liveStationRoutes);
+app.use('/api', logoRouter);
 
 
 
