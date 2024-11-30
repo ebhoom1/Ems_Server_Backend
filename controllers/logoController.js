@@ -75,9 +75,9 @@ exports.createLogo = async (req, res) => {
 // Retrieve Logo
 exports.getLogoByUserName = async (req, res) => {
     try {
-        const { userName, adminType } = req.params;
+        const {adminType } = req.params;
 
-        const logo = await Logo.findOne({ userName, adminType });
+        const logo = await Logo.find({adminType});
         if (!logo) {
             return res.status(404).json({ message: 'Logo not found for the given userName and adminType' });
         }
