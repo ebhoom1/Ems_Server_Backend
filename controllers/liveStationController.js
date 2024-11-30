@@ -129,3 +129,31 @@ exports.deleteLiveStationByUserName = async (req, res) => {
       res.status(500).json({ message: 'Server error', error: error.message });
     }
   };
+
+
+
+  exports.deleteAllImages = (req, res) => {
+    const directoryPath = path.join(__dirname, '../uploads/liveStation');
+  
+    // Check if directory exists
+    if (!fs.existsSync(directoryPath)) {
+      return res.status(404).json({ message: 'Directory not found' });
+    }
+  
+    try {
+      // Read all files in the directory
+      const files = fs.readdirSync(directoryPath);
+  
+      // Iterate through the files and delete each
+      files.forEach((file) => {
+        const filePath = path.join(directoryPath, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      });
+  
+      res.status(200).json({ message: 'All images deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  };

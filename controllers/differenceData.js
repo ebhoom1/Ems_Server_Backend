@@ -26,79 +26,76 @@ const fetchDataFromS3 = async () => {
 };
 
 // Helper to fetch initial and last entries for a stack
-const getInitialAndLastEntries = async (userName, stackName, startTime, endTime) => {
-    const data = await IotData.find({
-        userName,
-        'stackData.stackName': stackName,
-        timestamp: { $gte: startTime, $lte: endTime },
-    }).sort({ timestamp: 1 });
-
-    if (!data.length) return null;
-
-    return { initialEntry: data[0], lastEntry: data[data.length - 1] };
-};
-
-const extractValues = (entry, stackName) => {
-    const stack = entry.stackData.find(stack => stack.stackName === stackName) || {};
-    const timestamp = moment(entry.timestamp);
-
-    return {
-        energy: stack.energy || 0,
-        cumulatingFlow: stack.cumulatingFlow || 0,
-        flowRate: stack.flowRate || 0,
-        date: timestamp.format('DD/MM/YYYY'),
-        time: timestamp.format('HH:mm'),
-    };
-};
-
-const calculateAndSaveDifferences = async (userName, stackName, stationType, interval, intervalType, startTime, endTime) => {
-    if (!['energy', 'effluent_flow'].includes(stationType)) {
-        console.log(`Skipping stack ${stackName} for user ${userName} due to stationType: ${stationType}`);
-        return;
-    }
-
-    const entries = await getInitialAndLastEntries(userName, stackName, startTime, endTime);
-    if (!entries) {
-        console.log(`No entries found for user: ${userName}, stack: ${stackName}, time range: ${startTime} - ${endTime}`);
-        return;
-    }
-
-    const { initialEntry, lastEntry } = entries;
-    const initialValues = extractValues(initialEntry, stackName);
-    const lastValues = extractValues(lastEntry, stackName);
-
-    const differenceDataEntry = {
-        stackName, // Ensure this field is included
-        stationType: stationType || 'NIL',
-        initialEnergy: initialValues.energy,
-        lastEnergy: lastValues.energy,
-        energyDifference: lastValues.energy - initialValues.energy,
-        initialCumulatingFlow: initialValues.cumulatingFlow,
-        lastCumulatingFlow: lastValues.cumulatingFlow,
-        cumulatingFlowDifference: lastValues.cumulatingFlow - initialValues.cumulatingFlow,
-        initialFlowRate: initialValues.flowRate,
-        lastFlowRate: lastValues.flowRate,
-        flowRateDifference: lastValues.flowRate - initialValues.flowRate,
-    };
-
-    console.log('Calculated differenceDataEntry:', differenceDataEntry);
-
-    const differenceEntry = new DifferenceData({
-        userName,
-        stackName, // Ensure this is saved correctly
-        stationType: differenceDataEntry.stationType,
-        interval,
-        intervalType,
-        date: initialValues.date,
-        time: initialValues.time,
-        ...differenceDataEntry,
-    });
-
+const calculateDailyDifference = async () => {
     try {
-        await differenceEntry.save();
-        console.log(`Saved difference data for ${userName} - ${stackName}`);
+        const s3Data = await fetchDataFromS3();
+        const today = moment().startOf('day').format('DD/MM/YYYY');
+
+        const filteredData = s3Data.filter(entry =>
+            entry.date === today && entry.stackData.some(stack =>
+                stack.stationType === 'energy' || stack.stationType === 'effluent_flow'
+            )
+        );
+
+        const results = [];
+
+        // Group data by `stackName` and `stationType`
+        const groupedData = {};
+        for (const entry of filteredData) {
+            for (const stack of entry.stackData) {
+                if (stack.stationType === 'energy' || stack.stationType === 'effluent_flow') {
+                    const key = `${entry.userName}_${stack.stackName}`;
+                    if (!groupedData[key]) {
+                        groupedData[key] = { initial: null, last: null };
+                    }
+
+                    // Check and assign initial and last entries
+                    if (!groupedData[key].initial) {
+                        groupedData[key].initial = stack;
+                    }
+                    groupedData[key].last = stack; // Keep updating to find the last
+                }
+            }
+        }
+
+        // Calculate differences for each grouped data
+        for (const [key, data] of Object.entries(groupedData)) {
+            const [userName, stackName] = key.split('_');
+            const initialData = data.initial;
+            const lastData = data.last;
+
+            if (initialData && lastData) {
+                const initialEnergy = initialData.energy || 0;
+                const initialCumulatingFlow = initialData.cumulatingFlow || 0;
+                const lastEnergy = lastData.energy || 0;
+                const lastCumulatingFlow = lastData.cumulatingFlow || 0;
+
+                const energyDifference = lastEnergy - initialEnergy;
+                const cumulatingFlowDifference = lastCumulatingFlow - initialCumulatingFlow;
+
+                results.push({
+                    userName,
+                    stackName,
+                    date: today,
+                    initialEnergy,
+                    initialCumulatingFlow,
+                    lastEnergy,
+                    lastCumulatingFlow,
+                    energyDifference,
+                    cumulatingFlowDifference,
+                    time: moment().format('HH:mm:ss'),
+                });
+            }
+        }
+
+        // Save results to the database
+        for (const result of results) {
+            await DailyDifference.create(result);
+        }
+
+        console.log('Daily differences calculated and saved successfully.');
     } catch (error) {
-        console.error('Error saving difference data:', error);
+        console.error('Error calculating daily differences:', error);
     }
 };
 

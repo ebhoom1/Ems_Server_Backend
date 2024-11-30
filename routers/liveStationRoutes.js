@@ -25,4 +25,6 @@ router.patch(
 // Route to delete a live station by userName
 router.delete('/delete-live-station/:userName', liveStationController.deleteLiveStationByUserName);
 
+router.delete('/liveStation/images/deleteAll',liveStationController.deleteAllImages);
+
 module.exports = router;
