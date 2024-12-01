@@ -33,7 +33,8 @@ const uploadToS3 = async (fileBuffer, fileName) => {
         Bucket: BUCKET_NAME,
         Key: `logo/${fileName}`,
         Body: fileBuffer,
-        ContentType: 'image/jpeg',
+        ContentType: mimeType,
+        ACL: 'public-read',
     };
     return s3.upload(params).promise();
 };
@@ -57,6 +58,7 @@ exports.createLogo = async (req, res) => {
         }
 
         const fileName = `${Date.now()}-${req.file.originalname}`;
+        const mimeType = req.file.mimetype;
         const s3Response = await uploadToS3(req.file.buffer, fileName);
 
         const newLogo = new Logo({
