@@ -177,13 +177,14 @@ async function calculatePredictions() {
 
 
 const setupCronJobPrediction = () => {
-    // Schedule the prediction calculation to run every hour
-cron.schedule('0 * * * *', async () => {
-    console.log('Cron job triggered: Calculate hourly predictions for all users and stacks');
-    await calculatePredictions();
-});
+    cron.schedule('0 * * * *', async () => {
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Cron job triggered: Calculate hourly predictions for all users and stacks at IST: ${currentTimeIST}`);
+        await calculatePredictions();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the cron job runs in IST
+    });
 };
-
 // Function to fetch and return prediction data for a given userName, date, hour, and stackName
 const getPredictionDataByStack = async (req, res) => {
     const { userName, month, stackName } = req.query;

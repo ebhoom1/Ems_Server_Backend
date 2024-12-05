@@ -184,9 +184,12 @@ const getPredictionSummaryByUserNameAndInterval = async (req, res) => {
 
 // Schedule: Run Prediction Calculation Every 5 Minutes
 const setupPredictionSummaryCronJob = () => {
-    cron.schedule('*/5 * * * *', () => {
-        console.log('Running prediction summary calculation from S3...');
+    cron.schedule('17 */1 * * *', () => {
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running prediction summary calculation from S3 at IST: ${currentTimeIST}`);
         calculateTotalPredictionSummaryFromS3();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the cron job runs in IST
     });
 };
 

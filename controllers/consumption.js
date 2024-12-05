@@ -4,7 +4,7 @@ const Consumption = require('../models/Consumption');
 const cron = require('node-cron');
 const AWS = require('aws-sdk');
 const { io, server } = require('../app');
-
+const moment = require('moment-timezone');
 
 
 // Helper function to ensure values are numeric, defaulting to 0 if missing
@@ -89,10 +89,12 @@ const calculateAndSaveConsumption = async () => {
 //Schedule the task to calculate and save consumption data at the beginning of every hour
 
 const setupCronJobConsumption = () => {
-    // Schedule the task to run at the beginning of every hour
     cron.schedule('0 * * * *', async () => {
-        console.log('Cron job triggered: saveHourlyData');
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Cron job triggered: saveHourlyData at IST: ${currentTimeIST}`);
         await calculateAndSaveConsumption();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the task runs in IST
     });
 };
 

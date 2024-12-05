@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const cron = require('node-cron');
 const DifferenceData = require('../models/differeneceData');
-const moment = require('moment');
+const moment = require('moment-timezone');
 
 // Configure AWS SDK
 AWS.config.update({
@@ -83,9 +83,15 @@ const uploadHourlyDataToS3 = async () => {
  * Schedule the job for hourly uploads
  */
 const setupCronJobsForHourlyS3Upload = () => {
-    // Hourly job: Runs every 1 hour and 15 minutes
-    cron.schedule('15 */1 * * *', uploadHourlyDataToS3);
-    console.log('Hourly S3 upload scheduled every 1 hour and 15 minutes.');
+    cron.schedule('15 */1 * * *', () => {
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Hourly S3 upload triggered at IST: ${currentTimeIST}`);
+        uploadHourlyDataToS3();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensures the cron job runs in IST
+    });
+
+    console.log('Hourly S3 upload scheduled every 1 hour and 15 minutes in IST.');
 };
 
 module.exports = {

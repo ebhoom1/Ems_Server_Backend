@@ -198,8 +198,11 @@ const deleteOldNotifications = async () => {
 // Schedule the task to run every day at midnight
 const setupCronJobNotificationDelete = () => {
     cron.schedule('0 0 * * *', () => {
-        console.log('Running cron job to delete notifications older than 3 days');
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running cron job to delete notifications older than 3 days at IST: ${currentTimeIST}`);
         deleteOldNotifications();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the task runs in IST
     });
 };
 module.exports ={addNotification,viewNotification,deleteNotification,getNotificationOfUser,createNotification,setupCronJobNotificationDelete};

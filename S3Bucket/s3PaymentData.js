@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const cron = require('node-cron');
 const payment = require('../models/payment');
-const moment = require('moment');
+const moment = require('moment-timezone');
 
 // Configure AWS SDK
 AWS.config.update({
@@ -87,9 +87,13 @@ const uploadDataToS3AndClearDB = async () => {
 // Schedule the job to run every hour at the top of the hour
 const setupCronJobS3Payment = () => {
     cron.schedule('0 * * * *', () => {
-        console.log('Running payment data upload and cleanup...');
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running payment data upload and cleanup at IST: ${currentTimeIST}`);
         uploadDataToS3AndClearDB();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensures the cron job runs in IST
     });
 };
+
 
 module.exports = { uploadDataToS3AndClearDB, setupCronJobS3Payment };

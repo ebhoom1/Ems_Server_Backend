@@ -1,6 +1,6 @@
 const AWS = require('aws-sdk');
 const cron = require('node-cron');
-const moment = require('moment');
+const moment = require('moment-timezone');
 const nodemailer = require('nodemailer');
 const { Parser } = require('json2csv');
 const User = require('../models/user');
@@ -124,15 +124,20 @@ const sendDataDaily = async (user) => {
 };
 
 // Scheduled function to send emails at 01:00 AM every day
+// Schedule the daily email report at 01:00 AM IST
 const scheduleDailyDataSend = () => {
     cron.schedule('0 1 * * *', async () => {
-        console.log('Running daily IoT data report send...');
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running daily IoT data report send at IST: ${currentTimeIST}`);
 
-        // Fetch users from the database and send data to each user
-        const users = await User.find({}); // Fetch all users
-        users.forEach(user => {
-            sendDataDaily(user); // Send the data to each user
-        });
+        try {
+            const users = await User.find({});
+            users.forEach(user => sendDataDaily(user));
+        } catch (error) {
+            console.error('Error fetching users for daily data send:', error);
+        }
+    }, {
+        timezone: 'Asia/Kolkata' // Set the cron job to run in IST
     });
 };
 

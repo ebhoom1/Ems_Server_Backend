@@ -86,16 +86,20 @@ const getStartAndEndTime = (intervalType) => {
 
     return { startTime: startTime.toDate(), endTime: endTime.toDate() };
 };
-
+/**
+ * Helper Function: Schedule Task with IST Timezone
+ * @param {String} cronTime - The cron expression
+ * @param {Function} task - The task function to run
+ * @param {String} predictionType - Type of prediction (hourly, daily, monthly)
+ */
 // Generic function to schedule tasks
-const scheduleTask = (cronTime, calculationFn, intervalType) => {
+const scheduleTask = (cronTime, task, predictionType) => {
     cron.schedule(cronTime, async () => {
-        //console.log(`Running ${intervalType} calculation...`);
-        try {
-            await calculationFn(intervalType);
-        } catch (error) {
-            console.error(`Error during ${intervalType} calculation:`, error);
-        }
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Cron job triggered: ${predictionType} prediction calculation at IST: ${currentTimeIST}`);
+        await task(predictionType);
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the task runs in IST
     });
 };
 

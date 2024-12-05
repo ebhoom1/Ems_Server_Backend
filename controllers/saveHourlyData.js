@@ -71,13 +71,14 @@ const saveHourlyData = async () => {
 // Schedule the task to run at the beginning of every hour
 // Function to setup cron job
 const setupCronJob = () => {
-    // Schedule the task to run at the beginning of every hour
     cron.schedule('0 * * * *', async () => {
-        console.log('Cron job triggered: saveHourlyData');
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Cron job triggered: saveHourlyData at IST: ${currentTimeIST}`);
         await saveHourlyData();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the cron job runs in IST
     });
 };
-
 
 
 // Configure AWS SDK

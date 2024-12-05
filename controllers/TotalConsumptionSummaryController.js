@@ -114,9 +114,12 @@ const calculateTotalConsumptionFromLastEntryS3 = async () => {
  * Schedule Cron Job: Calculate Total Consumption Summary (S3)
  */
 const setupCronJobTotalSummaryS3 = () => {
-    cron.schedule('*/5 * * * *', () => {
-        console.log('Running total consumption summary calculation from S3...');
+    cron.schedule('18 */1 * * *', () => {
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running total consumption summary calculation from S3 at IST: ${currentTimeIST}`);
         calculateTotalConsumptionFromLastEntryS3();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensure the cron job runs in IST
     });
 };
 

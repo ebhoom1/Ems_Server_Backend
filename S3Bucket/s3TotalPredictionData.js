@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const cron = require('node-cron');
 const TotalPrediction = require('../models/TotalPredictionSummary');
-const moment = require('moment');
+const moment = require('moment-timezone');
 
 // Configure AWS SDK
 AWS.config.update({
@@ -86,9 +86,12 @@ const uploadDataToS3AndClearDB = async () => {
 
 // Schedule the job to run every hour at the top of the hour
 const setupCronJobS3TotalPredictionData = () => {
-    cron.schedule('15 * * * *', () => {  // Run every 1 hour and 15 minutes
-        console.log('Running hourly data average data upload and cleanup...');
+    cron.schedule('15 * * * *', () => { // Runs at the 15th minute of every hour
+        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+        console.log(`Running total prediction data upload and cleanup at IST: ${currentTimeIST}`);
         uploadDataToS3AndClearDB();
+    }, {
+        timezone: 'Asia/Kolkata', // Ensures the cron job runs in IST
     });
 };
 
