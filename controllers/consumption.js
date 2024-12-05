@@ -1,4 +1,3 @@
-const moment = require('moment');
 const HourlyData = require('../models/hourlyData');
 const Consumption = require('../models/Consumption');
 const cron = require('node-cron');
