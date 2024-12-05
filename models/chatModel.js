@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const chatSchema = new mongoose.Schema({
     from: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', // Ensure this matches the name of your user model
+        ref: 'User',
         required: true
     },
     to: {
@@ -12,8 +12,11 @@ const chatSchema = new mongoose.Schema({
         required: true
     },
     message: {
-        type: String,
-        required: true
+        type: String
+    },
+    files: {
+        type: [String], // Array of file URLs saved in S3
+        default: []
     },
     timestamp: {
         type: Date,

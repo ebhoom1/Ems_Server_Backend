@@ -187,9 +187,9 @@ io.on('connection', (socket) => {
     });
 
     // Listen for chat messages
-    socket.on('chatMessage', async ({ from, to, message }) => {
+    socket.on('chatMessage', async ({ from, to, message, files }) => {
         try {
-            const chat = new Chat({ from, to, message });
+            const chat = new Chat({ from, to, message, files });
             await chat.save();
             io.to(from).emit('newChatMessage', chat); // Emit to sender
             io.to(to).emit('newChatMessage', chat);   // Emit to recipient
@@ -263,7 +263,7 @@ setupCronJobS3()
 setupCronJobS3Average()
 
 // Schedule the chatData transfer to S3 bucket
-setupCronJobS3Chat()
+//setupCronJobS3Chat()
 
 // Schedule the Paramter Exceed data transfer to S3 bucket
 setupCronJobS3ParameterExceed()

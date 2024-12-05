@@ -1,24 +1,7 @@
 const Chat = require('../models/chatModel');
 const AWS = require('aws-sdk');
 const moment = require('moment');
-
-
-exports.sendMessage = async (req, res) => {
-    const { from, to, message } = req.body;
-
-    try {
-        const chat = new Chat({
-            from,
-            to,
-            message
-        });
-
-        await chat.save();
-        res.status(201).send(chat);
-    } catch (error) {
-        res.status(400).json({ message: "Error sending message", error: error.message });
-    }
-};
+const multer = require('multer');
 
 // Configure AWS SDK
 AWS.config.update({
@@ -28,6 +11,49 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
+
+// Multer setup for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+
+exports.sendMessage = async (req, res) => {
+    const { from, to, message } = req.body;
+    const files = req.files;
+
+    try {
+        // Upload files to S3
+        const uploadedFiles = [];
+        for (const file of files) {
+            const params = {
+                Bucket: 'ems-ebhoom-bucket',
+                Key: `chat/chatFile/${Date.now()}_${file.originalname}`,
+                Body: file.buffer,
+                ContentType: file.mimetype,
+            };
+
+            const s3Upload = await s3.upload(params).promise();
+            uploadedFiles.push(s3Upload.Location); // Save the S3 URL
+        }
+
+        // Save message and files in MongoDB
+        const chat = new Chat({
+            from,
+            to,
+            message,
+            files: uploadedFiles,
+        });
+
+        await chat.save();
+
+        res.status(201).json(chat);
+    } catch (error) {
+        console.error('Error sending message with files:', error);
+        res.status(500).json({ message: 'Error sending message with files', error: error.message });
+    }
+};
+
+
 
 /**
  * Fetch chat data from S3 bucket.
