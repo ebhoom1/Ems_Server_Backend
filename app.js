@@ -22,7 +22,7 @@ const iotDataAveragesRoutes = require('./routers/iotDataAveragesRoute')
 const consumptionRoutes = require('./routers/consumptionRouter');
 const predictionRoutes = require('./routers/predictionRouter');
 const totalConsumptionSummaryRoutes = require('./routers/totalConsumptionSummaryRouter');
-// const totalPredictionSummaryRoutes = require('./routers/totalPredictionSummaryRouter');
+const totalPredictionSummaryRoutes = require('./routers/totalPredictionSummaryRouter');
 const hourlyDataRoutes = require('./routers/hourlyData');
 const primaryStationRoutes = require('./routers/primaryStationRoutes');
 const billRoutes = require('./routers/billRoutes');
@@ -41,7 +41,7 @@ const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages')
 const {schedulePredictionCalculation} = require('./controllers/predictionController')
 const {scheduleTotalConsumptionCalculation} = require('./controllers/consumptionController');
 const {setupCronJobTotalSummary} =require('./controllers/TotalConsumptionSummaryController');
-const {setupCronJobPredictionSummary} = require('./controllers/TotalPredictionSummaryController');
+const {calculateTotalPredictionSummaryFromS3} = require('./controllers/TotalPredictionSummaryController');
 // const totalPredictionSummaryController = require('./controllers/TotalPredictionSummaryController');
 const {scheduleExceedanceAveragesCalculation} = require('./controllers/averageExceedanceController');
 const {  scheduleDailyDataSend,sendDataDaily } = require('./controllers/DataSend');
@@ -50,6 +50,7 @@ const {setupCronJobConsumption}= require('./controllers/consumption');
 const {setupCronJobPrediction} = require('./controllers/PredictionOfConsumption');
 const {scheduleDifferenceCalculation } = require('./controllers/differenceData');
 const {setupCronJobBillDelete} = require('./controllers/BillController');
+const {setupCronJobTotalSummaryS3} = require('./controllers/TotalConsumptionSummaryController')
 
 // S3 bucket data 
 const {setupCronJobS3} = require('./S3Bucket/s3IotData')
@@ -63,7 +64,7 @@ const {setupCronJobS3TotalConsumptionData} = require('./S3Bucket/s3TotalConsumpt
 const {setupCronJobS3HourlyData} = require('./S3Bucket/s3HourlyData');
 const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
 const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
-const {setupWeeklyCronJobS3Difference} = require('./S3Bucket/s3differenceData');
+const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 
 
 
@@ -127,7 +128,7 @@ app.use('/api', iotDataAveragesRoutes);
 app.use('/api', consumptionRoutes);
 app.use('/api', predictionRoutes);  
 app.use('/api', totalConsumptionSummaryRoutes);
-// app.use('/api', totalPredictionSummaryRoutes);
+app.use('/api', totalPredictionSummaryRoutes);
 app.use('/api',hourlyDataRoutes);
 app.use('/api', primaryStationRoutes);
 app.use('/api', billRoutes);
@@ -214,12 +215,13 @@ scheduleTotalConsumptionCalculation();
 schedulePredictionCalculation();
 
 //Start the TotalSummaryOfConsumption
-setupCronJobTotalSummary();
+// setupCronJobTotalSummary();
+setupCronJobTotalSummaryS3();
 
 //Start the TotalPedictionSummaryCalculation
 // Start the TotalPredictionSummary Calculation
-setupCronJobPredictionSummary();
-
+//setupCronJobPredictionSummary();
+calculateTotalPredictionSummaryFromS3()
 //Start the Average of exceedence
 scheduleExceedanceAveragesCalculation();
 
@@ -289,7 +291,7 @@ setupCronJobS3Payment();
 
 
 //Schedule the difference data tranfer to S3 bucket in week
-//setupWeeklyCronJobS3Difference();
+setupCronJobsForHourlyS3Upload();
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {

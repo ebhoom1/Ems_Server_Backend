@@ -1,94 +1,94 @@
-// const AWS = require('aws-sdk');
-// const cron = require('node-cron');
-// const difference = require('../models/differeneceData');
-// const moment = require('moment');
+const AWS = require('aws-sdk');
+const cron = require('node-cron');
+const DifferenceData = require('../models/differeneceData');
+const moment = require('moment');
 
-// // Configure AWS SDK
-// AWS.config.update({
-//     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-//     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-//     region: process.env.AWS_REGION
-// });
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
 
-// const s3 = new AWS.S3();
+const s3 = new AWS.S3();
 
-// // Function to fetch weekly data, append to JSON, and upload it to S3
-// const uploadWeeklyDataToS3AndClearDB = async () => {
-//     try {
-//         const now = new Date();
-//         const startOfWeek = new Date(now.setDate(now.getDate() - 7)); // 7 days ago
+/**
+ * Upload data to S3 and clear the uploaded data from the database.
+ * @param {Date} startTime - Start time of the range.
+ * @param {Date} endTime - End time of the range.
+ * @param {String} s3Key - S3 file key to upload data.
+ */
+const uploadHourlyDataToS3 = async () => {
+    try {
+        const now = new Date();
+        const oneHourFifteenMinutesAgo = new Date(now.getTime() - 75 * 60 * 1000); // 1 hour 15 minutes
+        const s3Key = 'difference_data/hourlyDifferenceData.json';
 
-//         // Fetch all data from the past week up to the current time
-//         const data = await difference.find({ timestamp: { $gte: startOfWeek, $lte: now } }).lean();
+        console.log('Starting hourly upload to S3...');
+        
+        // Fetch data from the MongoDB collection for the specified time range
+        const data = await DifferenceData.find({
+            timestamp: { $gte: oneHourFifteenMinutesAgo, $lte: now }
+        }).lean();
 
-//         if (data.length === 0) {
-//             console.log('No data found for the past week.');
-//             return;
-//         }
+        if (!data || data.length === 0) {
+            console.log('No hourly data found for the specified time range.');
+            return;
+        }
 
-//         // Prepare the JSON data to be added to the existing file
-//         const newJsonData = data;
+        console.log(`Found ${data.length} hourly records.`);
 
-//         // Prepare the S3 parameters
-//         const fileName = 'difference_data/weeklyDifferenceData.json';
+        // Prepare S3 parameters
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Replace with your S3 bucket name
+            Key: s3Key,
+        };
 
-//         try {
-//             // Attempt to get the existing file from S3
-//             const s3Params = {
-//                 Bucket: 'ems-ebhoom-bucket', // Your bucket name
-//                 Key: fileName
-//             };
+        let updatedData = data;
 
-//             const existingFile = await s3.getObject(s3Params).promise();
-//             const existingJsonData = JSON.parse(existingFile.Body.toString('utf-8'));
+        // Check if the S3 file already exists
+        try {
+            const existingFile = await s3.getObject(params).promise();
+            const existingData = JSON.parse(existingFile.Body.toString('utf-8'));
+            updatedData = [...existingData, ...data];
+        } catch (err) {
+            if (err.code !== 'NoSuchKey') {
+                console.error(`Error reading existing S3 file (${s3Key}):`, err);
+                throw err;
+            }
+            console.log(`No existing S3 file found. A new file will be created.`);
+        }
 
-//             // Append the new data to the existing data
-//             const updatedJsonData = [...existingJsonData, ...newJsonData];
+        // Upload data to S3
+        await s3.upload({
+            Bucket: 'ems-ebhoom-bucket',
+            Key: s3Key,
+            Body: JSON.stringify(updatedData, null, 2), // Pretty-printed JSON
+            ContentType: 'application/json',
+        }).promise();
 
-//             // Upload the updated JSON to S3
-//             const uploadParams = {
-//                 Bucket: 'ems-ebhoom-bucket',
-//                 Key: fileName,
-//                 Body: JSON.stringify(updatedJsonData, null, 2), // Pretty print JSON
-//                 ContentType: 'application/json',
-//             };
+        console.log('Hourly data uploaded to S3 successfully.');
 
-//             await s3.upload(uploadParams).promise();
-//             console.log('Updated weekly JSON file uploaded to S3:', fileName);
-//         } catch (getError) {
-//             // If the file does not exist (NoSuchKey error), create a new one
-//             if (getError.code === 'NoSuchKey') {
-//                 // Upload the new data as a new file
-//                 const uploadParams = {
-//                     Bucket: 'ems-ebhoom-bucket',
-//                     Key: fileName,
-//                     Body: JSON.stringify(newJsonData, null, 2), // Pretty print JSON
-//                     ContentType: 'application/json'
-//                 };
+        // Clear data from MongoDB
+        const deleteResult = await DifferenceData.deleteMany({
+            timestamp: { $gte: oneHourFifteenMinutesAgo, $lte: now }
+        });
+        console.log(`Deleted ${deleteResult.deletedCount} hourly records from MongoDB.`);
+    } catch (err) {
+        console.error('Error in uploading hourly data to S3:', err);
+    }
+};
 
-//                 await s3.upload(uploadParams).promise();
-//                 console.log('New weekly JSON file created and uploaded to S3:', fileName);
-//             } else {
-//                 // Handle other errors
-//                 console.error('Error fetching existing weekly JSON from S3:', getError);
-//                 return;
-//             }
-//         }
+/**
+ * Schedule the job for hourly uploads
+ */
+const setupCronJobsForHourlyS3Upload = () => {
+    // Hourly job: Runs every 1 hour and 15 minutes
+    cron.schedule('15 */1 * * *', uploadHourlyDataToS3);
+    console.log('Hourly S3 upload scheduled every 1 hour and 15 minutes.');
+};
 
-//         // Delete the uploaded data from MongoDB
-//         const deleteResult = await difference.deleteMany({ timestamp: { $gte: startOfWeek, $lte: now } });
-//         console.log(`Deleted ${deleteResult.deletedCount} records from MongoDB for the past week.`);
-//     } catch (error) {
-//         console.error('Error in uploading weekly data to S3 and clearing DB:', error);
-//     }
-// };
-
-// // Schedule the job to run weekly on Sunday at midnight
-// const setupWeeklyCronJobS3Difference = () => {
-//     cron.schedule('0 0 * * 0', () => {
-//         console.log('Running weekly data upload and cleanup...');
-//         uploadWeeklyDataToS3AndClearDB();
-//     });
-// };
-
-// module.exports = { uploadWeeklyDataToS3AndClearDB, setupWeeklyCronJobS3Difference };
+module.exports = {
+    setupCronJobsForHourlyS3Upload,
+    uploadHourlyDataToS3,
+};

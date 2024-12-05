@@ -59,34 +59,37 @@ const fetchChatDataFromS3 = async () => {
 /**
  * Retrieve messages between two users, first from MongoDB and fallback to S3.
  */
+
+
 exports.getMessages = async (req, res) => {
     const { from, to } = req.query;
 
     try {
-        // Step 1: Fetch messages from MongoDB
-        const messages = await Chat.find({
-            $or: [
-                { from, to },
-                { from: to, to: from },
-            ],
-        }).sort('timestamp');
+        // Step 1: Fetch data from MongoDB and S3 concurrently
+        const [mongoMessages, s3Data] = await Promise.all([
+            Chat.find({
+                $or: [
+                    { from, to },
+                    { from: to, to: from },
+                ],
+            }).sort('timestamp'),
+            fetchChatDataFromS3(),
+        ]);
 
-        if (messages.length > 0) {
-            return res.status(200).json(messages);
-        }
-
-        // Step 2: Fallback to fetching messages from S3 if MongoDB has no data
-        console.log('No messages found in MongoDB. Attempting to fetch from S3...');
-        const s3Data = await fetchChatDataFromS3();
-
-        // Filter the S3 data to match the "from" and "to" criteria
+        // Step 2: Filter S3 data for the specific "from" and "to" criteria
         const filteredS3Data = s3Data.filter(
             (chat) =>
                 (chat.from === from && chat.to === to) || (chat.from === to && chat.to === from)
         );
 
-        if (filteredS3Data.length > 0) {
-            return res.status(200).json(filteredS3Data);
+        // Step 3: Combine messages from MongoDB and S3
+        const combinedMessages = [...mongoMessages, ...filteredS3Data];
+
+        // Step 4: Sort the combined messages by timestamp
+        const sortedMessages = combinedMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (sortedMessages.length > 0) {
+            return res.status(200).json(sortedMessages);
         }
 
         res.status(404).json({ message: 'No chat messages found for the specified criteria.' });
@@ -95,3 +98,5 @@ exports.getMessages = async (req, res) => {
         res.status(500).json({ message: 'Error retrieving chat messages', error: error.message });
     }
 };
+
+
