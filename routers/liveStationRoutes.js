@@ -19,7 +19,7 @@ router.get(
 router.patch(
   '/edit-live-station/:userName',
   liveStationController.uploadImage, // Middleware to handle image upload
-  liveStationController.editLiveStationImage // Controller function to update live station image
+  liveStationController.editLiveStation // Controller function to update live station image
 );
 
 // Route to delete a live station by userName

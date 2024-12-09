@@ -6,7 +6,15 @@ const liveStationSchema = new mongoose.Schema({
     required: true,
   },
   liveStationImage: {
-    type: String, // This will store the path of the uploaded image
+    type: String, // Path of the uploaded image
+    required: true,
+  },
+  nodes: {
+    type: Array, // Store nodes configuration
+    required: true,
+  },
+  edges: {
+    type: Array, // Store edges configuration
     required: true,
   },
 });

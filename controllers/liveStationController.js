@@ -2,7 +2,7 @@ const AWS = require('aws-sdk');
 const multer = require('multer');
 const LiveStation = require('../models/LiveStation');
 
-// Configure AWS SDK
+// AWS Configuration
 AWS.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -10,13 +10,13 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
-const BUCKET_NAME = 'ems-ebhoom-bucket' ; // Replace with your bucket name
+const BUCKET_NAME = 'ems-ebhoom-bucket';
 
-// Multer configuration for in-memory storage
+// Multer configuration
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 1024 * 1024 * 5 }, // 5MB limit
+  limits: { fileSize: 1024 * 1024 * 5 }, // 5MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
       cb(null, true);
@@ -26,7 +26,6 @@ const upload = multer({
   },
 });
 
-// Middleware for image upload
 exports.uploadImage = upload.single('liveStationImage');
 
 // Upload image to S3
@@ -35,7 +34,7 @@ const uploadToS3 = async (fileBuffer, fileName) => {
     Bucket: BUCKET_NAME,
     Key: `liveStation/${fileName}`,
     Body: fileBuffer,
-    ContentType: 'image/jpeg', // Adjust as needed
+    ContentType: 'image/jpeg',
   };
   return s3.upload(params).promise();
 };
@@ -49,31 +48,28 @@ const deleteFromS3 = async (fileKey) => {
   return s3.deleteObject(params).promise();
 };
 
-// Controller function to create a LiveStation
+// Create a new LiveStation
 exports.createLiveStation = async (req, res) => {
   try {
-    const { userName } = req.body;
+    const { userName, nodes, edges } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ message: 'Image is required' });
     }
 
-    // Check if the userName already exists in the database
     const existingLiveStation = await LiveStation.findOne({ userName });
     if (existingLiveStation) {
-      return res.status(400).json({
-        message: 'This userName already exists. Please use the edit method to update it or delete it and create a new one.',
-      });
+      return res.status(400).json({ message: 'UserName already exists. Use edit to update.' });
     }
 
-    // Upload the image to S3
     const fileName = `${Date.now()}-${req.file.originalname}`;
     const s3Response = await uploadToS3(req.file.buffer, fileName);
 
-    // Create a new LiveStation
     const newLiveStation = new LiveStation({
       userName,
-      liveStationImage: s3Response.Location, // Save the S3 file URL
+      liveStationImage: s3Response.Location,
+      nodes,
+      edges,
     });
 
     const savedLiveStation = await newLiveStation.save();
@@ -82,14 +78,13 @@ exports.createLiveStation = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
 // Controller function to get data by userName
+// Get LiveStation by userName
 exports.getLiveStationByUserName = async (req, res) => {
   try {
     const { userName } = req.params;
 
     const liveStation = await LiveStation.findOne({ userName });
-
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
@@ -101,66 +96,49 @@ exports.getLiveStationByUserName = async (req, res) => {
 };
 
 // Controller function to edit the image by userName
-exports.editLiveStationImage = async (req, res) => {
+exports.editLiveStation = async (req, res) => {
   try {
     const { userName } = req.params;
+    const { nodes, edges } = req.body;
 
-    // Find the live station by userName
     const liveStation = await LiveStation.findOne({ userName });
-
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
-    // Handle existing image deletion from S3
-    if (liveStation.liveStationImage) {
-      const oldKey = liveStation.liveStationImage.includes('.amazonaws.com')
-        ? liveStation.liveStationImage.split('.amazonaws.com/')[1]
-        : null;
+    // Update image if provided
+    if (req.file) {
+      const oldKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
+      await deleteFromS3(oldKey);
 
-      if (oldKey) {
-        console.log('Deleting old image from S3 with Key:', oldKey);
-        await deleteFromS3(oldKey);
-      } else {
-        console.warn('Invalid or missing S3 URL. Skipping delete operation.');
-      }
+      const fileName = `${Date.now()}-${req.file.originalname}`;
+      const s3Response = await uploadToS3(req.file.buffer, fileName);
+      liveStation.liveStationImage = s3Response.Location;
     }
 
-    // Upload the new image to S3
-    const fileName = `${Date.now()}-${req.file.originalname}`;
-    const s3Response = await uploadToS3(req.file.buffer, fileName);
+    liveStation.nodes = JSON.parse(nodes); // Parse nodes if it's a JSON string
+    liveStation.edges = JSON.parse(edges); // Parse edges if it's a JSON string
 
-    // Update the database with the new image URL
-    liveStation.liveStationImage = s3Response.Location;
     const updatedLiveStation = await liveStation.save();
-
-    res.status(200).json({
-      message: 'Live Station image updated successfully',
-      data: updatedLiveStation,
-    });
+    res.status(200).json({ message: 'Live Station updated successfully', data: updatedLiveStation });
   } catch (error) {
-    console.error('Error updating Live Station image:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-
 // Controller function to delete a LiveStation by userName
+// Delete LiveStation
 exports.deleteLiveStationByUserName = async (req, res) => {
   try {
     const { userName } = req.params;
 
     const liveStation = await LiveStation.findOne({ userName });
-
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
-    // Delete the image from S3
-    if (liveStation.liveStationImage) {
-      const fileKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
-      await deleteFromS3(fileKey);
-    }
+    const fileKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
+    await deleteFromS3(fileKey);
 
     await LiveStation.deleteOne({ userName });
 
