@@ -87,13 +87,11 @@ const calculateAndSaveConsumption = async () => {
 
 //Schedule the task to calculate and save consumption data at the beginning of every hour
 
-const setupCronJobConsumption = () => {
+
+const setupCronJobConsumption =() => {
     cron.schedule('0 * * * *', async () => {
-        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
-        console.log(`Cron job triggered: saveHourlyData at IST: ${currentTimeIST}`);
+        console.log('Running hourly consumption calculation from S3...');
         await calculateAndSaveConsumption();
-    }, {
-        timezone: 'Asia/Kolkata', // Ensure the task runs in IST
     });
 };
 
@@ -318,4 +316,3 @@ const getAllConsumptionDataByUser = async (req, res) => {
 };
 
 module.exports = { calculateAndSaveConsumption, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData};
-  
