@@ -53,31 +53,37 @@ exports.createLiveStation = async (req, res) => {
   try {
     const { userName, nodes, edges } = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Image is required' });
-    }
-
+    // Check if userName already exists
     const existingLiveStation = await LiveStation.findOne({ userName });
     if (existingLiveStation) {
       return res.status(400).json({ message: 'UserName already exists. Use edit to update.' });
     }
 
-    const fileName = `${Date.now()}-${req.file.originalname}`;
-    const s3Response = await uploadToS3(req.file.buffer, fileName);
+    let liveStationImage = null;
 
+    // If an image is uploaded, handle S3 upload
+    if (req.file) {
+      const fileName = `${Date.now()}-${req.file.originalname}`;
+      const s3Response = await uploadToS3(req.file.buffer, fileName);
+      liveStationImage = s3Response.Location; // Set image URL from S3
+    }
+
+    // Create new LiveStation
     const newLiveStation = new LiveStation({
       userName,
-      liveStationImage: s3Response.Location,
-      nodes,
-      edges,
+      liveStationImage, // Save image URL or null
+      nodes: nodes ? JSON.parse(nodes) : [], // Parse nodes if provided
+      edges: edges ? JSON.parse(edges) : [], // Parse edges if provided
     });
 
     const savedLiveStation = await newLiveStation.save();
     res.status(201).json({ message: 'Live Station created successfully', data: savedLiveStation });
   } catch (error) {
+    console.error('Error creating Live Station:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 // Controller function to get data by userName
 // Get LiveStation by userName
 exports.getLiveStationByUserName = async (req, res) => {
@@ -101,6 +107,7 @@ exports.editLiveStation = async (req, res) => {
     const { userName } = req.params;
     const { nodes, edges } = req.body;
 
+    // Find the live station by userName
     const liveStation = await LiveStation.findOne({ userName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
@@ -108,23 +115,35 @@ exports.editLiveStation = async (req, res) => {
 
     // Update image if provided
     if (req.file) {
-      const oldKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
-      await deleteFromS3(oldKey);
+      // Delete the old image from S3 if it exists
+      if (liveStation.liveStationImage) {
+        const oldKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
+        await deleteFromS3(oldKey);
+      }
 
+      // Upload the new image to S3
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const s3Response = await uploadToS3(req.file.buffer, fileName);
-      liveStation.liveStationImage = s3Response.Location;
+      liveStation.liveStationImage = s3Response.Location; // Update the image URL
     }
 
-    liveStation.nodes = JSON.parse(nodes); // Parse nodes if it's a JSON string
-    liveStation.edges = JSON.parse(edges); // Parse edges if it's a JSON string
+    // Update nodes and edges if provided
+    if (nodes) {
+      liveStation.nodes = typeof nodes === 'string' ? JSON.parse(nodes) : nodes;
+    }
+    if (edges) {
+      liveStation.edges = typeof edges === 'string' ? JSON.parse(edges) : edges;
+    }
 
+    // Save the updated LiveStation
     const updatedLiveStation = await liveStation.save();
     res.status(200).json({ message: 'Live Station updated successfully', data: updatedLiveStation });
   } catch (error) {
+    console.error('Error editing Live Station:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 // Controller function to delete a LiveStation by userName
 // Delete LiveStation

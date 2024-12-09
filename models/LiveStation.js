@@ -7,7 +7,6 @@ const liveStationSchema = new mongoose.Schema({
   },
   liveStationImage: {
     type: String, // Path of the uploaded image
-    required: true,
   },
   nodes: {
     type: Array, // Store nodes configuration
