@@ -42,6 +42,7 @@ exports.sendMessage = async (req, res) => {
             to,
             message,
             files: uploadedFiles,
+            timestamp: new Date(),
         });
 
         await chat.save();
