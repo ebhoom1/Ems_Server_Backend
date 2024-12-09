@@ -151,21 +151,23 @@ exports.deleteLiveStationByUserName = async (req, res) => {
   try {
     const { userName } = req.params;
 
+    // Find the live station by userName
     const liveStation = await LiveStation.findOne({ userName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
-    const fileKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
-    await deleteFromS3(fileKey);
-
+    // Delete the live station from the database
     await LiveStation.deleteOne({ userName });
 
     res.status(200).json({ message: 'Live Station deleted successfully' });
   } catch (error) {
+    console.error('Error deleting Live Station:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
 
 // Controller function to delete all images from S3
 exports.deleteAllImages = async (req, res) => {
