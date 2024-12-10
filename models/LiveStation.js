@@ -14,7 +14,6 @@ const liveStationSchema = new mongoose.Schema({
   },
   edges: {
     type: Array, // Store edges configuration
-    required: true,
   },
 });
 

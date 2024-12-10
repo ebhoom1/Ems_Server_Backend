@@ -72,8 +72,8 @@ exports.createLiveStation = async (req, res) => {
     const newLiveStation = new LiveStation({
       userName,
       liveStationImage, // Save image URL or null
-      nodes: nodes ? JSON.parse(nodes) : [], // Parse nodes if provided
-      edges: edges ? JSON.parse(edges) : [], // Parse edges if provided
+      nodes: nodes, 
+      edges: edges, 
     });
 
     const savedLiveStation = await newLiveStation.save();
