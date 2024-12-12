@@ -142,26 +142,19 @@ const checkTimeInterval = async (data, user) => {
         const time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
     
         // Emit real-time data before saving
-req.io.to(data.userName).emit('stackDataUpdate', {
-    userName: data.userName, // Send userName at top level
-    // date: date,             // Send date at top level
-    // time: time,             // Send time at top level
-    exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits', // General exceedance comment
-    ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green', // General color coding for exceedance
-    timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval', // General time interval comment
-    timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green', // General color coding for time interval
-    // validationMessage: data.validationMessage || 'Validated',
-    // validationStatus: data.validationStatus || 'Valid',
-    stackData: stacks.map(stack => ({
-        ...stack,
-    })),
-    timestamp: new Date(),
-});
-
+        req.io.to(data.userName).emit('stackDataUpdate', {
+            userName: data.userName, // Send userName at top level
+            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits', // General exceedance comment
+            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green', // General color coding for exceedance
+            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval', // General time interval comment
+            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green', // General color coding for time interval
+            stackData: stacks.map(stack => ({ ...stack })), // Include stack data
+            timestamp: new Date(),
+        });
     
-        // Remove power and current before saving to database
+        // Remove power, current, and other unnecessary fields before saving to the database
         const sanitizedStackData = stacks.map(stack => {
-            const { power, current,voltage,flowRate, ...restOfStack } = stack;
+            const { power, current, voltage, flowRate, ...restOfStack } = stack;
             return restOfStack;
         });
     
@@ -169,7 +162,7 @@ req.io.to(data.userName).emit('stackDataUpdate', {
             ...data,
             stackData: sanitizedStackData,
             date,
-            time,  
+            time,
             timestamp: new Date(),
             exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
             ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
@@ -179,25 +172,29 @@ req.io.to(data.userName).emit('stackDataUpdate', {
             validationStatus: data.validationStatus || 'Valid',
         };
     
-        // Save to database
+        // Save to database and update max/min values
         try {
             const newEntry = new IotData(newEntryData);
             await newEntry.save();
+    
+            // Update max and min values for stack data
+            await updateMaxMinValues(data);
+    
+            // Handle additional functionalities
+            handleExceedValues();
+            await saveOrUpdateLastEntryByUserName(newEntryData);
+    
             res.status(200).json({
                 success: true,
                 message: 'New Entry data saved successfully',
                 newEntry,
             });
-            handleExceedValues()
-            await saveOrUpdateLastEntryByUserName(newEntryData);
-            await updateMaxMinValues(data);
-
-
         } catch (error) {
             console.error('Error saving data:', error);
             res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
         }
     };
+    
     
     
 // Configure AWS SDK

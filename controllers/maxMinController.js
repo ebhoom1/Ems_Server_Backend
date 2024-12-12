@@ -3,6 +3,11 @@ const moment = require('moment-timezone'); // Import moment-timezone for timezon
 
 const updateMaxMinValues = async (data) => {
     try {
+        if (!Array.isArray(data.stackData)) {
+            console.error('stackData is not an array or is undefined:', data.stackData);
+            return;
+        }
+
         const formattedDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
         const formattedTime = moment().tz('Asia/Kolkata').format('hh:mm A'); // 12-hour format with AM/PM
 
@@ -53,5 +58,6 @@ const updateMaxMinValues = async (data) => {
         console.error('Error updating max/min values:', error);
     }
 };
+
 
 module.exports = { updateMaxMinValues };
