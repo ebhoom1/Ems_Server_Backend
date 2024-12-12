@@ -1,6 +1,7 @@
 const MaxMinData = require('../models/MaxMinData');
 const moment = require('moment-timezone'); // Import moment-timezone for timezone handling
 
+
 const updateMaxMinValues = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {
@@ -18,39 +19,51 @@ const updateMaxMinValues = async (data) => {
                 stackName,
             });
 
-            const newMaxValues = { ...existingData?.maxValues };
-            const newMinValues = { ...existingData?.minValues };
+            let newMaxValues = existingData?.maxValues || {};
+            let newMinValues = existingData?.minValues || {};
+            let maxTimestamps = existingData?.maxTimestamps || {};
+            let minTimestamps = existingData?.minTimestamps || {};
+
+            let maxChanged = false;
+            let minChanged = false;
 
             for (const [key, value] of Object.entries(values)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
+
+                    // Check and update max values and timestamps
                     if (!newMaxValues[key] || numValue > newMaxValues[key]) {
                         newMaxValues[key] = numValue;
+                        maxTimestamps[key] = { date: formattedDate, time: formattedTime };
+                        maxChanged = true;
                     }
+
+                    // Check and update min values and timestamps
                     if (!newMinValues[key] || numValue < newMinValues[key]) {
                         newMinValues[key] = numValue;
+                        minTimestamps[key] = { date: formattedDate, time: formattedTime };
+                        minChanged = true;
                     }
                 }
             }
 
+            const updateData = {
+                maxValues: newMaxValues,
+                minValues: newMinValues,
+                maxTimestamps,
+                minTimestamps,
+            };
+
             if (existingData) {
                 await MaxMinData.updateOne(
                     { userName: data.userName, stackName },
-                    { 
-                        maxValues: newMaxValues,
-                        minValues: newMinValues,
-                        date: formattedDate,
-                        time: formattedTime
-                    }
+                    updateData
                 );
             } else {
                 await MaxMinData.create({
                     userName: data.userName,
                     stackName,
-                    maxValues: newMaxValues,
-                    minValues: newMinValues,
-                    date: formattedDate,
-                    time: formattedTime
+                    ...updateData,
                 });
             }
         }
@@ -59,5 +72,30 @@ const updateMaxMinValues = async (data) => {
     }
 };
 
+const getMaxMinDataByUserAndStack = async (userName, stackName) => {
+    try {
+        const data = await MaxMinData.findOne({ userName, stackName });
+        if (!data) {
+            return { success: false, message: `No data found for user: ${userName} and stack: ${stackName}` };
+        }
+        return { success: true, data };
+    } catch (error) {
+        console.error('Error fetching max/min data by user and stack:', error);
+        return { success: false, message: 'Error fetching data', error: error.message };
+    }
+};
 
-module.exports = { updateMaxMinValues };
+const getMaxMinDataByUser = async (userName) => {
+    try {
+        const data = await MaxMinData.find({ userName });
+        if (!data || data.length === 0) {
+            return { success: false, message: `No data found for user: ${userName}` };
+        }
+        return { success: true, data };
+    } catch (error) {
+        console.error('Error fetching max/min data by user:', error);
+        return { success: false, message: 'Error fetching data', error: error.message };
+    }
+};
+
+module.exports = { updateMaxMinValues,getMaxMinDataByUserAndStack,getMaxMinDataByUser };

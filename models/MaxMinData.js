@@ -5,8 +5,8 @@ const MaxMinDataSchema = new mongoose.Schema({
     stackName: { type: String, required: true },
     maxValues: { type: Object, default: {} },
     minValues: { type: Object, default: {} },
-    date: { type: String, required: true }, // Format: dd/mm/yyyy
-    time: { type: String, required: true }, // Format: HH:mm
+    maxTimestamps: { type: Object, default: {} }, // Store timestamps for max values
+    minTimestamps: { type: Object, default: {} }, // Store timestamps for min values
     timestamp: { type: Date, default: Date.now },
 });
 
