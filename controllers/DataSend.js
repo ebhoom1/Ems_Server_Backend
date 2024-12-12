@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const moment = require('moment');
 const nodemailer = require('nodemailer');
 const { Parser } = require('json2csv');
-const User = require('../models/user');
+const User = require('../models/user'); // User model
 
 // Configure AWS SDK
 AWS.config.update({
@@ -26,15 +26,15 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Fetch data from S3 bucket.
+ * Fetch data from S3 bucket for the previous day.
  * @param {String} userName - The userName to filter data for.
  * @returns {Promise<Array>} - Parsed data from S3 file.
  */
 const fetchDataFromS3 = async (userName) => {
     try {
-        const key = 'average_data/averageData.json'; // S3 file key where data is stored
+        const key = 'average_data/averageData.json'; // S3 file key
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Bucket: 'ems-ebhoom-bucket',
             Key: key
         };
 
@@ -44,10 +44,17 @@ const fetchDataFromS3 = async (userName) => {
         // Parse JSON content
         const jsonData = JSON.parse(fileContent);
 
-        // Filter data for the specific user
-        const userData = jsonData.filter(entry => entry.userName === userName);
-        console.log("Fetched S3 Data Length:", userData.length);
+        // Get start and end timestamps for the previous day
+        const startOfDay = moment().subtract(1, 'day').startOf('day').toISOString();
+        const endOfDay = moment().subtract(1, 'day').endOf('day').toISOString();
 
+        // Filter data for the specific user and previous day
+        const userData = jsonData.filter(entry =>
+            entry.userName === userName &&
+            moment(entry.timestamp).isBetween(startOfDay, endOfDay, null, '[]')
+        );
+
+        console.log(`Fetched S3 Data Length for ${userName}:`, userData.length);
         return userData;
     } catch (error) {
         console.error('Error fetching data from S3:', error);
@@ -56,54 +63,61 @@ const fetchDataFromS3 = async (userName) => {
 };
 
 /**
+ * Prepare CSV from fetched data, flattening stackData and excluding specific fields.
+ * @param {Array} data - Data to convert to CSV.
+ * @returns {String} - CSV formatted data.
+ */
+const prepareCSV = (data) => {
+    const flattenedData = [];
+
+    data.forEach(entry => {
+        entry.stackData.forEach(stack => {
+            const flattenedEntry = {
+                ...entry,
+                stackName: stack.stackName,
+                ...stack.parameters
+            };
+
+            // Remove unwanted fields
+            delete flattenedEntry.stackData;
+            delete flattenedEntry._id;
+            delete flattenedEntry.__v;
+            delete flattenedEntry.timestamp;
+
+            flattenedData.push(flattenedEntry);
+        });
+    });
+
+    const fields = Object.keys(flattenedData[0] || {});
+    const parser = new Parser({ fields });
+    return parser.parse(flattenedData);
+};
+
+/**
  * Send daily IoT data report via email.
  * @param {Object} user - The user to whom the data should be sent.
  */
 const sendDataDaily = async (user) => {
-    const today = moment().format('DD/MM/YYYY'); // Current date in the format stored in the DB
     const userName = user.userName;
 
     try {
-        // Fetch data for today for the specific user from S3
-        const data = await fetchDataFromS3(userName);
+        // Fetch data from S3
+        const s3Data = await fetchDataFromS3(userName);
 
-        // Filter data for today's date
-        const todayData = data.filter(item => item.date === today);
-
-        if (todayData.length === 0) {
-            console.log(`No IoT data found for today for user ${userName}`);
+        if (s3Data.length === 0) {
+            console.log(`No IoT data found for user ${userName}`);
             return;
         }
 
-        // Reduce data to collect all unique keys in stackData
-        const stackKeys = todayData.reduce((keys, entry) => {
-            entry.stackData.forEach(stack => {
-                Object.keys(stack).forEach(key => {
-                    if (!keys.includes(key) && key !== '_id') keys.push(key);
-                });
-            });
-            return keys;
-        }, ['Date', 'Time', 'Stack Name']);
-
         // Prepare CSV data
-        const csvData = todayData.flatMap(item =>
-            item.stackData.map(stack => ({
-                Date: item.date,
-                Time: item.time,
-                'Stack Name': stack.stackName,
-                ...stack
-            }))
-        );
-
-        const parser = new Parser({ fields: stackKeys });
-        const csv = parser.parse(csvData);
+        const csv = prepareCSV(s3Data);
 
         // Email setup
         const mailOptions = {
             from: '"IoT Data Service" <iot@example.com>',
             to: user.email,
             subject: 'Daily IoT Data Report',
-            text: 'Please find attached the latest IoT data in CSV format.',
+            text: 'Please find attached the IoT data for the previous day in CSV format.',
             attachments: [{
                 filename: 'iotData.csv',
                 content: csv
@@ -119,24 +133,32 @@ const sendDataDaily = async (user) => {
             }
         });
     } catch (error) {
-        console.error(`Error while fetching or sending IoT data for today for user ${userName}:`, error);
+        console.error(`Error while fetching or sending IoT data for user ${userName}:`, error);
     }
 };
 
-// Scheduled function to send emails at 01:00 AM every day
-// Schedule the daily email report at 01:00 AM IST
+/**
+ * Schedule the daily email report at 1:00 AM.
+ */
 const scheduleDailyDataSend = () => {
-    cron.schedule('*/5 * * * *', async () => {
+    cron.schedule('0 1 * * *', async () => {
         try {
-            const users = await User.find({});
-            users.forEach(user => sendDataDaily(user)); // Adjust sendDataDaily to reflect the new timing if necessary
+            // Fetch all users from the database
+            const users = await User.find({}, { userName: 1, email: 1 });
+
+            if (users.length === 0) {
+                console.log("No users found to send daily IoT data reports.");
+                return;
+            }
+
+            const emailPromises = users.map(user => sendDataDaily(user));
+            await Promise.all(emailPromises);
+
+            console.log("All daily IoT data reports for the previous day have been successfully sent!");
         } catch (error) {
-            console.error('Error fetching users for 15-minute data send:', error);
+            console.error('Error fetching users for daily data send:', error);
         }
     });
 };
-
-
-
 
 module.exports = { sendDataDaily, scheduleDailyDataSend };
