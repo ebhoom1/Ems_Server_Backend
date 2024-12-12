@@ -1,10 +1,10 @@
 const MaxMinData = require('../models/MaxMinData');
-const moment = require('moment'); // Import moment.js for date and time formatting
+const moment = require('moment-timezone'); // Import moment-timezone for timezone handling
 
 const updateMaxMinValues = async (data) => {
     try {
-        const formattedDate = moment().format('DD/MM/YYYY');
-        const formattedTime = moment().format('HH:mm');
+        const formattedDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
+        const formattedTime = moment().tz('Asia/Kolkata').format('hh:mm A'); // 12-hour format with AM/PM
 
         for (const stack of data.stackData) {
             const { stackName, ...values } = stack;
