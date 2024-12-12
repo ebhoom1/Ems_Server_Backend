@@ -8,6 +8,7 @@
     const DifferenceData = require(`../models/differeneceData`);
     const { handleExceedValues } = require('./calibrationExceed');
     const CalibrationExceedValues = require('../models/calibrationExceedValues');
+    const  { updateMaxMinValues }  = require('./maxMinController')
     const { io, server } = require('../app');
     const { calculateTotalUsage } = require('./consumptionController');
     const { saveOrUpdateLastEntryByUserName } = require('./lastIotDataController');
@@ -189,6 +190,8 @@ req.io.to(data.userName).emit('stackDataUpdate', {
             });
             handleExceedValues()
             await saveOrUpdateLastEntryByUserName(newEntryData);
+            await updateMaxMinValues(data);
+
 
         } catch (error) {
             console.error('Error saving data:', error);

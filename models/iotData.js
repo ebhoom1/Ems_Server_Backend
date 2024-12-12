@@ -48,6 +48,14 @@ const StackSchema = new mongoose.Schema({
     current: { type: Number,  }, //default: 0
     power: { type: Number,  }, //default: 0
     weight:{type:Number},
+    maxValues: {
+        type: Object,
+        default: {},
+    },
+    minValues: {
+        type: Object,
+        default: {},
+    },
 });
     
 // IoT Data Schema to store all incoming data

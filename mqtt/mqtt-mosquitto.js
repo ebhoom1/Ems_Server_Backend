@@ -111,7 +111,7 @@ const setupMqttClient = (io) => {
                     timestamp: new Date(),
                 };
 
-                await axios.post('http://localhost:5555/api/handleSaveMessage', payload); //https://api.ocems.ebhoom.com
+                await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload); //https://api.ocems.ebhoom.com
                 io.to(product_id.toString()).emit('data', payload);
                 //console.log('Data successfully sent:', payload);
             }
