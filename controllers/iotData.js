@@ -178,7 +178,7 @@ const checkTimeInterval = async (data, user) => {
             await newEntry.save();
     
             // Update max and min values for stack data
-            await updateMaxMinValues(data);
+            await updateMaxMinValues(newEntryData);
     
             // Handle additional functionalities
             handleExceedValues();
