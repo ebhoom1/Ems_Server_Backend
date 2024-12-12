@@ -18,17 +18,13 @@ const upload = multer({
     storage: storage,
     limits: { fileSize: 1024 * 1024 * 5 }, // 5MB limit
     fileFilter: (req, file, cb) => {
-        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Only JPEG and PNG are allowed!'), false);
-        }
+        cb(null, true); // Allow all file types
     },
 });
 exports.uploadLogoImage = upload.single('logo');
 
 // Upload to S3
-const uploadToS3 = async (fileBuffer, fileName) => {
+const uploadToS3 = async (fileBuffer, fileName, mimeType) => {
     const params = {
         Bucket: BUCKET_NAME,
         Key: `logo/${fileName}`,
@@ -58,8 +54,8 @@ exports.createLogo = async (req, res) => {
         }
 
         const fileName = `${Date.now()}-${req.file.originalname}`;
-        const mimeType = req.file.mimetype;
-        const s3Response = await uploadToS3(req.file.buffer, fileName);
+        const mimeType = req.file.mimetype; // Correctly define mimeType here
+        const s3Response = await uploadToS3(req.file.buffer, fileName, mimeType);
 
         const newLogo = new Logo({
             userName,
@@ -73,6 +69,7 @@ exports.createLogo = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
 
 // Retrieve Logo
 exports.getLogoByUserName = async (req, res) => {
@@ -92,23 +89,38 @@ exports.getLogoByUserName = async (req, res) => {
 
 
 // Update Logo
+// Update Logo
 exports.updateLogo = async (req, res) => {
     try {
         const { userName } = req.params;
 
+        // Find the existing logo entry
         const logo = await Logo.findOne({ userName });
         if (!logo) {
             return res.status(404).json({ message: 'Logo not found' });
         }
 
+        // Delete the old logo from S3 if it exists
         if (logo.logoUrl) {
             const oldKey = logo.logoUrl.split('.amazonaws.com/')[1];
-            await deleteFromS3(oldKey);
+            if (oldKey) {
+                await deleteFromS3(oldKey);
+            }
         }
 
-        const fileName = `${Date.now()}-${req.file.originalname}`;
-        const s3Response = await uploadToS3(req.file.buffer, fileName);
+        // Check if a new file is provided
+        if (!req.file) {
+            return res.status(400).json({ message: 'New logo image is required' });
+        }
 
+        // Extract file information
+        const fileName = `${Date.now()}-${req.file.originalname}`;
+        const mimeType = req.file.mimetype; // Extract MIME type from uploaded file
+
+        // Upload new logo to S3
+        const s3Response = await uploadToS3(req.file.buffer, fileName, mimeType);
+
+        // Update the logo entry in the database
         logo.logoUrl = s3Response.Location;
         const updatedLogo = await logo.save();
 

@@ -1,6 +1,6 @@
 const AWS = require('aws-sdk');
 const cron = require('node-cron');
-const moment = require('moment-timezone');
+const moment = require('moment');
 const nodemailer = require('nodemailer');
 const { Parser } = require('json2csv');
 const User = require('../models/user');
@@ -32,7 +32,7 @@ const transporter = nodemailer.createTransport({
  */
 const fetchDataFromS3 = async (userName) => {
     try {
-        const key = 'iot_data/iotData.json'; // S3 file key where data is stored
+        const key = 'average_data/averageData.json'; // S3 file key where data is stored
         const params = {
             Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
             Key: key
@@ -126,19 +126,17 @@ const sendDataDaily = async (user) => {
 // Scheduled function to send emails at 01:00 AM every day
 // Schedule the daily email report at 01:00 AM IST
 const scheduleDailyDataSend = () => {
-    cron.schedule('0 1 * * *', async () => {
-        const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
-        console.log(`Running daily IoT data report send at IST: ${currentTimeIST}`);
-
+    cron.schedule('*/5 * * * *', async () => {
         try {
             const users = await User.find({});
-            users.forEach(user => sendDataDaily(user));
+            users.forEach(user => sendDataDaily(user)); // Adjust sendDataDaily to reflect the new timing if necessary
         } catch (error) {
-            console.error('Error fetching users for daily data send:', error);
+            console.error('Error fetching users for 15-minute data send:', error);
         }
-    }, {
-        timezone: 'Asia/Kolkata' // Set the cron job to run in IST
     });
 };
+
+
+
 
 module.exports = { sendDataDaily, scheduleDailyDataSend };

@@ -139,24 +139,134 @@ const AWS = require('aws-sdk');
 //scheduleAveragesCalculation();
 
 // Adjust calculation to use IST (Indian Standard Time)
-const calculateAverages = async (userName, product_id, startTime, endTime, interval, intervalType) => {
-    //console.log(`Calculating averages for ${userName} - ${intervalType}: ${startTime} to ${endTime}`);
+// const calculateAverages = async (userName, product_id, startTime, endTime, interval, intervalType) => {
+//     //console.log(`Calculating averages for ${userName} - ${intervalType}: ${startTime} to ${endTime}`);
 
+//     const nowIST = moment().tz('Asia/Kolkata');
+
+//     // Check if an entry already exists for this user, interval, and intervalType
+//     const existingRecord = await IotDataAverage.findOne({
+//         userName,
+//         product_id,
+//         interval,
+//         intervalType,
+//         dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'),
+//     });
+
+//     if (existingRecord) {
+//         console.log(`Average entry already exists for ${userName} - ${intervalType}. Skipping save operation.`);
+//         return; // Prevent duplicate save
+//     }
+
+//     // Aggregation query to fetch data
+//     const data = await IotData.aggregate([
+//         {
+//             $match: {
+//                 userName,
+//                 product_id,
+//                 timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
+//             },
+//         },
+//         { $unwind: '$stackData' },
+//         {
+//             $match: {
+//                 'stackData.stackName': { $exists: true, $ne: null },
+//             },
+//         },
+//     ]);
+
+//     //console.log(`Extracted ${data.length} entries for ${userName} - ${intervalType}`);
+//     if (data.length === 0) return;
+
+//     // Grouping and calculating averages
+//     const stackGroups = data.reduce((acc, entry) => {
+//         const { stackName, stationType, ...parameters } = entry.stackData;
+//         if (!acc[stackName]) acc[stackName] = { stationType, parameters: {} };
+
+//         Object.entries(parameters).forEach(([key, value]) => {
+//             acc[stackName].parameters[key] = acc[stackName].parameters[key] || [];
+//             acc[stackName].parameters[key].push(parseFloat(value || 0));
+//         });
+
+//         return acc;
+//     }, {});
+
+//     const stackData = Object.entries(stackGroups).map(([stackName, { stationType, parameters }]) => {
+//         const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
+//             const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+//             acc[key] = parseFloat(avg.toFixed(2));
+//             return acc;
+//         }, {});
+
+//         return {
+//             stackName,
+//             stationType,
+//             parameters: averagedParameters,
+//         };
+//     });
+
+//     //console.log(`Averages for ${userName}:`, stackData);
+
+//     // Prepare and save the new average entry
+//     const averageEntry = new IotDataAverage({
+//         userName,
+//         product_id,
+//         interval,
+//         intervalType,
+//         dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'), // Save in IST
+//         timestamp: nowIST.toDate(),
+//         stackData,
+//     });
+
+//     try {
+//         await averageEntry.save();
+//         //console.log(`Average entry saved for ${userName} - ${intervalType}`);
+//     } catch (error) {
+//         console.error(`Error saving average entry for ${userName} - ${intervalType}:`, error);
+//     }
+// };
+
+// // Schedule calculations for all intervals
+// const scheduleAveragesCalculation = () => {
+//     const intervals = [
+//         { cronTime: '0 * * * *', interval: 'hour', duration: 60 * 60 * 1000 }, // Every hour
+//         { cronTime: '0 0 * * *', interval: 'day', duration: 24 * 60 * 60 * 1000 }, // Every day
+//         { cronTime: '0 0 * * 1', interval: 'week', duration: 7 * 24 * 60 * 60 * 1000 }, // Every week (Monday)
+//         { cronTime: '0 0 1 * *', interval: 'month', duration: 30 * 24 * 60 * 60 * 1000 }, // Every month
+//         { cronTime: '0 0 1 */6 *', interval: 'sixmonths', duration: 6 * 30 * 24 * 60 * 60 * 1000 }, // Every 6 months
+//         { cronTime: '0 0 1 1 *', interval: 'year', duration: 365 * 24 * 60 * 60 * 1000 }, // Every year
+//     ];
+
+//     intervals.forEach(({ cronTime, interval, duration }) => {
+//         cron.schedule(cronTime, async () => {
+//            // console.log(`Running ${interval} average calculation...`);
+
+//             const now = moment().tz('Asia/Kolkata');
+//             const startTime = new Date(now.clone().subtract(duration, 'milliseconds').toDate());
+//             const endTime = new Date(now.toDate());
+
+//             const users = await IotData.distinct('userName');
+//             for (const userName of users) {
+//                 const productIds = await IotData.distinct('product_id', { userName });
+//                 for (const product_id of productIds) {
+//                     const stackNames = await IotData.aggregate([
+//                         { $match: { userName, product_id } },
+//                         { $unwind: '$stackData' },
+//                         { $group: { _id: '$stackData.stackName' } },
+//                     ]).then(result => result.map(item => item._id));
+
+//                     for (const stackName of stackNames) {
+//                         await calculateAverages(userName, product_id, stackName, startTime, endTime, interval);
+//                     }
+//                 }
+//             }
+//         });
+//     });
+// };
+
+// Adjust calculation to use IST (Indian Standard Time)
+const calculateAverages = async (userName, product_id, stackName, startTime, endTime, interval) => {
     const nowIST = moment().tz('Asia/Kolkata');
-
-    // Check if an entry already exists for this user, interval, and intervalType
-    const existingRecord = await IotDataAverage.findOne({
-        userName,
-        product_id,
-        interval,
-        intervalType,
-        dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'),
-    });
-
-    if (existingRecord) {
-        console.log(`Average entry already exists for ${userName} - ${intervalType}. Skipping save operation.`);
-        return; // Prevent duplicate save
-    }
 
     // Aggregation query to fetch data
     const data = await IotData.aggregate([
@@ -170,97 +280,161 @@ const calculateAverages = async (userName, product_id, startTime, endTime, inter
         { $unwind: '$stackData' },
         {
             $match: {
-                'stackData.stackName': { $exists: true, $ne: null },
+                'stackData.stackName': stackName,
             },
         },
     ]);
 
-    //console.log(`Extracted ${data.length} entries for ${userName} - ${intervalType}`);
     if (data.length === 0) return;
 
     // Grouping and calculating averages
     const stackGroups = data.reduce((acc, entry) => {
         const { stackName, stationType, ...parameters } = entry.stackData;
-        if (!acc[stackName]) acc[stackName] = { stationType, parameters: {} };
+        if (!acc.parameters) acc.parameters = {};
 
         Object.entries(parameters).forEach(([key, value]) => {
-            acc[stackName].parameters[key] = acc[stackName].parameters[key] || [];
-            acc[stackName].parameters[key].push(parseFloat(value || 0));
+            acc.parameters[key] = acc.parameters[key] || [];
+            acc.parameters[key].push(parseFloat(value || 0));
         });
 
         return acc;
     }, {});
 
-    const stackData = Object.entries(stackGroups).map(([stackName, { stationType, parameters }]) => {
-        const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
-            const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-            acc[key] = parseFloat(avg.toFixed(2));
-            return acc;
-        }, {});
+    const averagedParameters = Object.entries(stackGroups.parameters).reduce((acc, [key, values]) => {
+        const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+        acc[key] = parseFloat(avg.toFixed(2));
+        return acc;
+    }, {});
 
-        return {
-            stackName,
-            stationType,
-            parameters: averagedParameters,
-        };
-    });
-
-    //console.log(`Averages for ${userName}:`, stackData);
-
-    // Prepare and save the new average entry
     const averageEntry = new IotDataAverage({
         userName,
         product_id,
         interval,
-        intervalType,
+        intervalType: interval,
         dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'), // Save in IST
         timestamp: nowIST.toDate(),
-        stackData,
+        stackData: [{
+            stackName,
+            stationType: stackGroups.stationType || null,
+            parameters: averagedParameters,
+        }],
     });
 
     try {
         await averageEntry.save();
-        //console.log(`Average entry saved for ${userName} - ${intervalType}`);
+
+        // Remove the raw data for the hour
+        if (interval === 'hour') {
+            await IotData.deleteMany({
+                userName,
+                product_id,
+                timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
+            });
+        }
     } catch (error) {
-        console.error(`Error saving average entry for ${userName} - ${intervalType}:`, error);
+        console.error(`Error saving average entry for ${userName} - ${interval}:`, error);
     }
 };
 
-// Schedule calculations for all intervals
-const scheduleAveragesCalculation = () => {
-    const intervals = [
-        { cronTime: '0 * * * *', interval: 'hour', duration: 60 * 60 * 1000 }, // Every hour
-        { cronTime: '0 0 * * *', interval: 'day', duration: 24 * 60 * 60 * 1000 }, // Every day
-        { cronTime: '0 0 * * 1', interval: 'week', duration: 7 * 24 * 60 * 60 * 1000 }, // Every week (Monday)
-        { cronTime: '0 0 1 * *', interval: 'month', duration: 30 * 24 * 60 * 60 * 1000 }, // Every month
-        { cronTime: '0 0 1 */6 *', interval: 'sixmonths', duration: 6 * 30 * 24 * 60 * 60 * 1000 }, // Every 6 months
-        { cronTime: '0 0 1 1 *', interval: 'year', duration: 365 * 24 * 60 * 60 * 1000 }, // Every year
-    ];
+const calculateDailyOrMonthlyAverages = async (interval, startTime, endTime) => {
+    const users = await IotDataAverage.distinct('userName', { interval: 'hour' });
+    for (const userName of users) {
+        const productIds = await IotDataAverage.distinct('product_id', { userName, interval: 'hour' });
+        for (const product_id of productIds) {
+            const stackNames = await IotDataAverage.aggregate([
+                { $match: { userName, product_id, interval: 'hour' } },
+                { $unwind: '$stackData' },
+                { $group: { _id: '$stackData.stackName' } },
+            ]).then(result => result.map(item => item._id));
 
-    intervals.forEach(({ cronTime, interval, duration }) => {
-        cron.schedule(cronTime, async () => {
-           // console.log(`Running ${interval} average calculation...`);
+            for (const stackName of stackNames) {
+                const data = await IotDataAverage.find({
+                    userName,
+                    product_id,
+                    'stackData.stackName': stackName,
+                    interval: interval === 'day' ? 'hour' : 'day',
+                    timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
+                });
 
-            const now = moment().tz('Asia/Kolkata');
-            const startTime = new Date(now.clone().subtract(duration, 'milliseconds').toDate());
-            const endTime = new Date(now.toDate());
+                if (data.length === 0) continue;
 
-            const users = await IotData.distinct('userName');
-            for (const userName of users) {
-                const productIds = await IotData.distinct('product_id', { userName });
-                for (const product_id of productIds) {
-                    const stackNames = await IotData.aggregate([
-                        { $match: { userName, product_id } },
-                        { $unwind: '$stackData' },
-                        { $group: { _id: '$stackData.stackName' } },
-                    ]).then(result => result.map(item => item._id));
+                // Calculate averages
+                const parameters = {};
+                data.forEach(entry => {
+                    entry.stackData.forEach(stack => {
+                        Object.entries(stack.parameters).forEach(([key, value]) => {
+                            parameters[key] = parameters[key] || [];
+                            parameters[key].push(value);
+                        });
+                    });
+                });
 
-                    for (const stackName of stackNames) {
-                        await calculateAverages(userName, product_id, stackName, startTime, endTime, interval);
-                    }
+                const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
+                    const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+                    acc[key] = parseFloat(avg.toFixed(2));
+                    return acc;
+                }, {});
+
+                const averageEntry = new IotDataAverage({
+                    userName,
+                    product_id,
+                    interval,
+                    intervalType: interval,
+                    dateAndTime: moment(startTime).tz('Asia/Kolkata').format('DD/MM/YYYY HH:mm'),
+                    timestamp: new Date(startTime),
+                    stackData: [{
+                        stackName,
+                        parameters: averagedParameters,
+                    }],
+                });
+
+                try {
+                    await averageEntry.save();
+                } catch (error) {
+                    console.error(`Error saving ${interval} average for ${userName}:`, error);
                 }
             }
-        });
+        }
+    }
+};
+
+const scheduleAveragesCalculation = () => {
+    cron.schedule('0 * * * *', async () => {
+        const now = moment().tz('Asia/Kolkata');
+        const startTime = now.clone().subtract(1, 'hour').startOf('hour').toDate();
+        const endTime = now.startOf('hour').toDate();
+
+        const users = await IotData.distinct('userName');
+        for (const userName of users) {
+            const productIds = await IotData.distinct('product_id', { userName });
+            for (const product_id of productIds) {
+                const stackNames = await IotData.aggregate([
+                    { $match: { userName, product_id } },
+                    { $unwind: '$stackData' },
+                    { $group: { _id: '$stackData.stackName' } },
+                ]).then(result => result.map(item => item._id));
+
+                for (const stackName of stackNames) {
+                    await calculateAverages(userName, product_id, stackName, startTime, endTime, 'hour');
+                }
+            }
+        }
+    });
+
+    cron.schedule('0 0 * * *', async () => {
+        const now = moment().tz('Asia/Kolkata');
+        const startTime = now.clone().subtract(1, 'day').startOf('day').toDate();
+        const endTime = now.startOf('day').toDate();
+
+        await calculateDailyOrMonthlyAverages('day', startTime, endTime);
+    });
+
+    cron.schedule('0 0 1 * *', async () => {
+        const now = moment().tz('Asia/Kolkata');
+        const startTime = now.clone().subtract(1, 'month').startOf('month').toDate();
+        const endTime = now.startOf('month').toDate();
+
+        await calculateDailyOrMonthlyAverages('month', startTime, endTime);
     });
 };
 
