@@ -109,7 +109,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                 `).join('')}
             </tbody>
         </table>
-    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
+    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quanitity data available.</p>';
 
     return `
         <!DOCTYPE html>
@@ -232,7 +232,7 @@ const generatePDFForUser = async (companyName, userName, stackNames, industryTyp
             waterTables.push(generateWaterTable(stackName.name, waterParameters));
         }
 
-        const combinedWaterTables = waterTables.join('') || '<p>No water quality data available.</p>';
+        const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
 
         const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
 
