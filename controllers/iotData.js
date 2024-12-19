@@ -585,12 +585,37 @@ const getDifferenceDataByUserName = async (req, res) => {
     const { userName } = req.params;
 
     try {
-        const differenceData = await DifferenceData.find({ userName });
-        if (differenceData.length === 0) {
+        // Fetch data from MongoDB
+        const mongoData = await DifferenceData.find({ userName }).lean();
+
+        // Fetch data from S3
+        const s3Params = {
+            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Key: 'difference_data/hourlyDifferenceData.json', // Replace with your S3 file path
+        };
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject(s3Params).promise();
+            s3Data = JSON.parse(s3Object.Body.toString('utf-8')).filter(
+                (item) => item.userName === userName
+            );
+        } catch (err) {
+            if (err.code === 'NoSuchKey') {
+                console.log('No data found in S3 for the specified userName.');
+            } else {
+                throw err;
+            }
+        }
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3Data];
+
+        if (combinedData.length === 0) {
             return res.status(404).json({
                 status: 404,
                 success: false,
-                message: 'No difference data found for the specified userID'
+                message: 'No difference data found for the specified userName',
             });
         }
 
@@ -598,15 +623,15 @@ const getDifferenceDataByUserName = async (req, res) => {
             status: 200,
             success: true,
             message: `Difference data for userName ${userName} fetched successfully`,
-            data: differenceData
+            data: combinedData,
         });
     } catch (error) {
-        console.error(`Error Fetching difference data by userName:`, error);
+        console.error(`Error fetching difference data by userName:`, error);
         res.status(500).json({
             status: 500,
             success: false,
             message: `Error fetching difference data by userName`,
-            error: error.message
+            error: error.message,
         });
     }
 };
