@@ -24,9 +24,10 @@ const transporter = nodemailer.createTransport({
 });
 
 // Helper to generate water quality table
+// Helper to generate water quality table
 const generateWaterTable = (stackName, waterParameters) => {
     return `
-        <h2> Quality Report for Station: ${stackName}</h2>
+        <h2 style="color: #236a80; font-size: 1.5rem; text-align: left; margin-top: 20px; border-bottom: 2px solid #ddd;">Quality Report for Station: ${stackName}</h2>
         <table class="report-table">
             <thead>
                 <tr>
@@ -57,7 +58,7 @@ const generateWaterTable = (stackName, waterParameters) => {
 // Helper to generate combined PDF content
 const generateCombinedPDFContent = (companyName, waterTables, energyData, qualityData) => {
     const energyTable = energyData.length ? `
-        <h1>Energy Report</h1>
+        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
         <table class="report-table">
             <thead>
                 <tr>
@@ -67,7 +68,6 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                     <th>Initial Meter Reading</th>
                     <th>Final Meter Reading</th>
                     <th>Difference</th>
-                   
                 </tr>
             </thead>
             <tbody>
@@ -83,10 +83,10 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                 `).join('')}
             </tbody>
         </table>
-    ` : '<p>No energy data available.</p>';
+    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No energy data available.</p>';
 
     const qualityTable = qualityData.length ? `
-        <h1>Quality Report</h1>
+        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quality Report</h1>
         <table class="report-table">
             <thead>
                 <tr>
@@ -109,7 +109,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                 `).join('')}
             </tbody>
         </table>
-    ` : '<p>No quality data available.</p>';
+    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
 
     return `
         <!DOCTYPE html>
@@ -117,7 +117,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
         <head>
             <title>Combined Report</title>
             <style>
-                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
                 .report-table {
                     width: 100%;
                     border-collapse: collapse;
@@ -132,10 +132,16 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                     background-color: #236a80;
                     color: white;
                 }
+                .report-table tbody tr:nth-child(even) {
+                    background-color: #f2f2f2;
+                }
+                .report-table tbody tr:hover {
+                    background-color: #e0f7fa;
+                }
             </style>
         </head>
         <body>
-            <h1>Combined Report for ${companyName}</h1>
+            <h1 style="color: #0d47a1; font-size: 2.5rem; text-align: center; margin-bottom: 40px;">Report for ${companyName}</h1>
             ${waterTables}
             ${energyTable}
             ${qualityTable}
@@ -143,6 +149,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
         </html>
     `;
 };
+
 
 // Helper to generate a PDF file
 const generatePDF = (htmlContent, filePath) => {
@@ -232,7 +239,7 @@ const generatePDFForUser = async (companyName, userName, stackNames, industryTyp
         const dir = path.join(__dirname, 'PDFs');
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-        const filePath = path.join(dir, `${userName}_combined.pdf`);
+        const filePath = path.join(dir, `${userName}.pdf`);
         await generatePDF(htmlContent, filePath);
         console.log(`PDF generated: ${filePath}`);
         return filePath;
@@ -273,7 +280,7 @@ const sendEmail = async (userEmail, pdfFiles) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('25 18 * * *', async () => { // 18:25 UTC is 11:55 PM IST25 18
         try {
             const users = await User.find();
 
