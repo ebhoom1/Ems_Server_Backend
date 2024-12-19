@@ -1,61 +1,77 @@
-const calculateAndSaveConsumption = async () => {
-    const now = moment().subtract(1, 'hours');
-    const currentHour = now.format('HH');
-    const currentDate = now.format('DD/MM/YYYY');
-
-    console.log(`Fetching data for current hour: ${currentHour}, Date: ${currentDate}`);
-
-    try {
-        const [currentHourData, previousHourData, startOfDay, startOfMonth, startOfYear] = await Promise.all([
-            fetchDataForCalculation(currentDate, currentHour),
-            fetchDataForCalculation(currentDate, currentHour - 1),
-            fetchDataForCalculation(currentDate, "00"),
-            fetchDataForCalculation(moment().startOf('month').format('DD/MM/YYYY'), "00"),
-            fetchDataForCalculation(moment().startOf('year').format('DD/MM/YYYY'), "00")
-        ]);
-
-        if (!currentHourData || !currentHourData.userName || !currentHourData.product_id) {
-            console.error('No valid current hour data found or required fields are missing.');
-            return; // Exit if data is missing or incomplete
+  const handleSaveMessage = async (req, res) => {
+        const data = req.body;
+    
+        // Perform validations
+        const requiredFieldsCheck = checkRequiredFields(data, ['product_id', 'companyName', 'industryType', 'userName', 'mobileNumber', 'email']);
+        if (!requiredFieldsCheck.success) {
+            return res.status(400).json(requiredFieldsCheck);
         }
-
-        const newConsumptionData = new Consumption({
-            userName: currentHourData.userName,
-            product_id: currentHourData.product_id,
-            date: currentDate,
-            hour: currentHour,
-            stacks: currentHourData.stacks.map(stack => {
-                const stackName = stack.stackName;
-                const findStack = (data, name) => data.stacks.find(s => s.stackName === name) || {};
-                return {
-                    stackName: stackName,
-                    stationType: stack.stationType,
-                    energyHourlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(previousHourData, stackName).energy),
-                    flowHourlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(previousHourData, stackName).cumulatingFlow),
-                    energyDailyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfDay, stackName).energy),
-                    flowDailyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfDay, stackName).cumulatingFlow),
-                    energyMonthlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfMonth, stackName).energy),
-                    flowMonthlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfMonth, stackName).cumulatingFlow),
-                    energyYearlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfYear, stackName).energy),
-                    flowYearlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfYear, stackName).cumulatingFlow),
-                };
-            })
+    
+        const stacks = data.stacks || data.stackData;
+        if (!Array.isArray(stacks) || stacks.length === 0) {
+            return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
+        }
+    
+        const user = await userdb.findOne({ userName: data.userName });
+        const exceedanceCheck = await checkExceedance(stacks, user);
+        const timeIntervalCheck = await checkTimeInterval(data, user);
+    
+        // Format date and time
+        const date = moment().format('DD/MM/YYYY');
+        const time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
+    
+        // Emit real-time data before saving
+        req.io.to(data.userName).emit('stackDataUpdate', {
+            userName: data.userName, // Send userName at top level
+            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits', // General exceedance comment
+            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green', // General color coding for exceedance
+            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval', // General time interval comment
+            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green', // General color coding for time interval
+            stackData: stacks.map(stack => ({ ...stack })), // Include stack data"
+           
+            timestamp: new Date(),
         });
-
-        await newConsumptionData.save();
-        console.log(`New consumption data saved for ${currentHourData.userName} at hour: ${currentHour} on date: ${currentDate}`);
-
-        // Emit the new consumption data to a specific room or globally
-        io.emit('consumptionDataUpdate', {
-            userName: currentHourData.userName,
-            product_id: currentHourData.product_id,
-            date: currentDate,
-            hour: currentHour,
-            stacks: newConsumptionData.stacks,
-            timestamp: new Date()
+    
+        // Remove power, current, and other unnecessary fields before saving to the database
+        const sanitizedStackData = stacks.map(stack => {
+            const { power, current, voltage, flowRate, ...restOfStack } = stack;
+            return restOfStack;
         });
-
-    } catch (error) {
-        console.error('Error during consumption calculation:', error);
-    }
-};
+    
+        const newEntryData = {
+            ...data,
+            stackData: sanitizedStackData,
+            date,
+            time,
+            timestamp: new Date(),
+            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
+            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
+            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
+            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
+            validationMessage: data.validationMessage || 'Validated',
+            validationStatus: data.validationStatus || 'Valid',
+        };
+    
+        // Save to database and update max/min values
+        try {
+            const newEntry = new IotData(newEntryData);
+            await newEntry.save();
+    
+            // Update max and min values for stack data
+            await updateMaxMinValues(newEntryData);
+    
+            // Handle additional functionalities
+            handleExceedValues();
+            await saveOrUpdateLastEntryByUserName(newEntryData);
+    
+            res.status(200).json({
+                success: true,
+                message: 'New Entry data saved successfully',
+                newEntry,
+            });
+        } catch (error) {
+            console.error('Error saving data:', error);
+            res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
+        }
+    };
+    

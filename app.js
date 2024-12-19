@@ -29,6 +29,7 @@ const billRoutes = require('./routers/billRoutes');
 const liveStationRoutes = require('./routers/liveStationRoutes');
 const logoRouter = require('./routers/logoRouter');
 const maxMinRoutes = require('./routers/maxMinRoutes');
+const avoidUsersRoutes = require('./routers/avoidUsers');
 
 
 const { getAllDeviceCredentials } = require('./controllers/user');
@@ -66,6 +67,10 @@ const {setupCronJobS3HourlyData} = require('./S3Bucket/s3HourlyData');
 const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
 const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
 const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
+
+
+const {scheduleDailyReports} = require('./controllers/DailyReport/DailyReport')
+
 
 
 
@@ -136,6 +141,8 @@ app.use('/api', billRoutes);
 app.use('/api', liveStationRoutes);
 app.use('/api', logoRouter);
 app.use('/api', maxMinRoutes);
+
+app.use('/api', avoidUsersRoutes);
 
 
 
@@ -294,6 +301,15 @@ setupCronJobS3Payment();
 
 //Schedule the difference data tranfer to S3 bucket in week
 setupCronJobsForHourlyS3Upload();
+
+
+
+// Scheduling the Daily Report to the user
+// Scheduling the Daily Report to the user
+console.log('Starting Daily Report Scheduling...');
+scheduleDailyReports();
+console.log('Daily Report Scheduling Initialized.');
+
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {

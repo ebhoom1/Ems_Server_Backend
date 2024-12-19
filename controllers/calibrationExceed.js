@@ -10,6 +10,7 @@ const IotData = require('../models/iotData')
 const Chat = require('../models/chatModel')
 const User = require('../models/user');
 const AWS = require('aws-sdk');
+const AvoidUser = require('../models/avoidUsers')
 
 
 // Create a new Twilio client
@@ -190,6 +191,21 @@ const fetchExceedDataFromS3 = async (key) => {
         return JSON.parse(data.Body.toString('utf-8'));
     } catch (error) {
         console.error('Error fetching data from S3:', error);
+        throw error;
+    }
+};
+// Function to delete data from S3
+const deleteDataFromS3 = async (key) => {
+    const params = {
+        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Key: key, // Replace with your object key
+    };
+
+    try {
+        await s3.deleteObject(params).promise();
+        console.log(`Data with key ${key} deleted successfully from S3`);
+    } catch (error) {
+        console.error('Error deleting data from S3:', error);
         throw error;
     }
 };
@@ -391,7 +407,7 @@ const getExceedDataByUserName = async (req, res) => {
   
 
 /* try */
-const handleExceedValues = async () => {
+ const handleExceedValues = async () => {
     try {
         // Fetch the latest IoT data entry
         const latestData = await IotData.findOne().sort({ timestamp: -1 });
@@ -402,9 +418,19 @@ const handleExceedValues = async () => {
             return;
         }
 
-        // Find the user based on the latestData's userName
-        const user = await userdb.findOne({ userName: latestData.userName });
-        // console.log('User:', user);
+         // Check if the user is in the avoid list
+    const isAvoided = await AvoidUser.findOne({ userName: latestData.userName });
+    if (isAvoided) {
+      console.log(`User ${latestData.userName} is in the avoid list. Skipping exceedance check.`);
+      return;
+    }
+
+    // Proceed with exceedance checks as usual
+    const user = await userdb.findOne({ userName: latestData.userName });
+    if (!user) {
+      console.error('User not found');
+      return;
+    }
 
         if (!user) {
             console.error('User not found');
@@ -525,6 +551,125 @@ const handleExceedValues = async () => {
    
 };
 
+// const handleExceedValues = async () => {
+//     try {
+//         // Fetch the latest IoT data entry
+//         const latestData = await IotData.findOne().sort({ timestamp: -1 });
+
+//         if (!latestData) {
+//             console.error('No IoT data found');
+//             return;
+//         }
+
+//         // Check if the user is in the avoid list
+//         const isAvoided = await AvoidUser.findOne({ userName: latestData.userName });
+//         if (isAvoided) {
+//             console.log(`User ${latestData.userName} is in the avoid list. Skipping exceedance check.`);
+//             return; // Skip further processing
+//         }
+
+//         // Fetch the user from the user database
+//         const user = await userdb.findOne({ userName: latestData.userName });
+//         if (!user) {
+//             console.error(`User not found for userName: ${latestData.userName}`);
+//             return;
+//         }
+
+//         if (user.userType === 'user') {
+//             if (!user.industryType) {
+//                 console.error(`User with ID ${user.userName} has no industry type specified.`);
+//                 return;
+//             }
+//         }
+
+//         // Fetch the industry thresholds
+//         const industryThresholds = await CalibrationExceedValues.findOne({ industryType: user.industryType });
+//         if (!industryThresholds) {
+//             console.error(`No thresholds found for industry type: ${user.industryType}`);
+//             return;
+//         }
+
+//         const exceedances = [];
+
+//         // Iterate through each stack in stackData
+//         for (const stack of latestData.stackData) {
+//             console.log(`Checking stack: ${stack.stackName}`);
+
+//             // Define the parameters to be checked for this stack
+//             const exceedParameters = [
+//                 { parameter: 'ph', value: stack.ph, aboveThreshold: industryThresholds.phAbove, belowThreshold: industryThresholds.phBelow },
+//                 { parameter: 'turbidity', value: stack.turbidity, threshold: industryThresholds.turbidity },
+//                 { parameter: 'ORP', value: stack.ORP, threshold: industryThresholds.ORP },
+//                 { parameter: 'TDS', value: stack.TDS, threshold: industryThresholds.TDS },
+//                 { parameter: 'temperature', value: stack.temperature, threshold: industryThresholds.temperature },
+//                 { parameter: 'BOD', value: stack.BOD, threshold: industryThresholds.BOD },
+//                 { parameter: 'COD', value: stack.COD, threshold: industryThresholds.COD },
+//                 { parameter: 'TSS', value: stack.TSS, threshold: industryThresholds.TSS },
+//                 { parameter: 'PM', value: stack.PM, threshold: industryThresholds.PM },
+//                 { parameter: 'nitrate', value: stack.nitrate, threshold: industryThresholds.nitrate },
+//                 { parameter: 'ammonicalNitrogen', value: stack.ammonicalNitrogen, threshold: industryThresholds.ammonicalNitrogen },
+//                 { parameter: 'DO', value: stack.DO, threshold: industryThresholds.DO },
+//                 { parameter: 'chloride', value: stack.chloride, threshold: industryThresholds.chloride },
+//                 { parameter: 'SO2', value: stack.SO2, threshold: industryThresholds.SO2 },
+//                 { parameter: 'NO2', value: stack.NO2, threshold: industryThresholds.NO2 },
+//                 { parameter: 'Mercury', value: stack.Mercury, threshold: industryThresholds.Mercury },
+//                 { parameter: 'PM10', value: stack.PM10, threshold: industryThresholds.PM10 },
+//                 { parameter: 'PM25', value: stack.PM25, threshold: industryThresholds.PM25 },
+//                 { parameter: 'NOH', value: stack.NOH, threshold: industryThresholds.NOH },
+//                 { parameter: 'NH3', value: stack.NH3, threshold: industryThresholds.NH3 },
+//                 { parameter: 'WindSpeed', value: stack.WindSpeed, threshold: industryThresholds.WindSpeed },
+//                 { parameter: 'WindDir', value: stack.WindDir, threshold: industryThresholds.WindDir },
+//                 { parameter: 'AirTemperature', value: stack.AirTemperature, threshold: industryThresholds.AirTemperature },
+//                 { parameter: 'Humidity', value: stack.Humidity, threshold: industryThresholds.Humidity },
+//                 { parameter: 'solarRadiation', value: stack.solarRadiation, threshold: industryThresholds.solarRadiation },
+//                 { parameter: 'DB', value: stack.DB, threshold: industryThresholds.DB },
+//                 { parameter: 'inflow', value: stack.inflow, threshold: industryThresholds.inflow },
+//                 { parameter: 'finalflow', value: stack.finalflow, threshold: industryThresholds.finalflow },
+//                 { parameter: 'energy', value: stack.energy, threshold: industryThresholds.energy }
+//             ];
+
+//             // Check each parameter for exceedances
+//             for (const { parameter, value, aboveThreshold, belowThreshold, threshold } of exceedParameters) {
+//                 if (value === null || value === undefined) continue;
+
+//                 // Special case for 'ph' with above/below thresholds
+//                 if (parameter === 'ph' && 
+//                     ((aboveThreshold && value >= aboveThreshold) || (belowThreshold && value <= belowThreshold))) {
+//                     console.log(`Exceed detected for ${parameter}: ${value} in ${stack.stackName}`);
+//                     exceedances.push({ parameter, value, stackName: stack.stackName });
+//                 }
+//                 // General case for parameters with a single threshold
+//                 else if (threshold && value >= threshold) {
+//                     console.log(`Exceed detected for ${parameter}: ${value} in ${stack.stackName}`);
+//                     exceedances.push({ parameter, value, stackName: stack.stackName });
+//                 }
+//             }
+//         }
+
+//         // Save exceedances and send notifications + chat messages
+//         const adminUser = await User.findOne({ userName: 'Admin-Developer' });
+//         if (!adminUser) {
+//             console.error('Admin user not found.');
+//             return;
+//         }
+
+//         for (const exceed of exceedances) {
+//             await saveExceedValue(exceed.parameter, exceed.value, user, exceed.stackName);
+
+//             const messageContent = `Exceedance detected for ${exceed.parameter} with value ${exceed.value} in ${exceed.stackName}.`;
+//             const chatMessage = new Chat({
+//                 from: adminUser._id,
+//                 to: user._id,
+//                 message: messageContent,
+//             });
+
+//             await chatMessage.save();
+//             console.log(`Chat message sent: ${messageContent}`);
+//         }
+//     } catch (err) {
+//         console.log('Error handling exceed values:', err);
+//     }
+// };
 
 
    
@@ -601,6 +746,50 @@ const saveExceedValue = async (parameter, value, user,stackName) => {
     }
 };
 
+//Delete parameter exceed data 
+// Function to fetch and delete data by userName
+const fetchAndDeleteDataByUserName = async (userName) => {
+    const key = 'parameterExceed_data/exceedData.json'; // Replace with the correct S3 object key
+
+    try {
+        // Fetch data from S3
+        const data = await fetchDataFromS3(key);
+
+        // Filter data by userName
+        const remainingData = data.filter(entry => entry.userName.trim().toLowerCase() !== userName.trim().toLowerCase());
+        const deletedData = data.filter(entry => entry.userName.trim().toLowerCase() === userName.trim().toLowerCase());
+
+        if (deletedData.length === 0) {
+            console.log(`No data found for userName: ${userName}`);
+            return {
+                success: false,
+                message: `No data found for userName: ${userName}`,
+            };
+        }
+
+        // Save the filtered data back to S3
+        const params = {
+            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Key: key, // Replace with your object key
+            Body: JSON.stringify(remainingData), // Save the remaining data
+            ContentType: 'application/json',
+        };
+
+        await s3.putObject(params).promise();
+        console.log(`Filtered data saved successfully to S3 for userName: ${userName}`);
+
+        // Return response
+        return {
+            success: true,
+            message: `Data for userName: ${userName} deleted successfully from S3`,
+            deletedData,
+        };
+    } catch (error) {
+        console.error('Error fetching and deleting data by userName:', error);
+        throw error;
+    }
+};
 
 
-module.exports = { addComment, getAllExceedData, editComments, getAUserExceedData, handleExceedValues,getExceedDataByUserName }
+
+module.exports = { addComment, getAllExceedData, editComments, getAUserExceedData, handleExceedValues,getExceedDataByUserName,fetchAndDeleteDataByUserName }

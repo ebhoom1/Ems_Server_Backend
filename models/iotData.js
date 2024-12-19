@@ -58,6 +58,13 @@ const StackSchema = new mongoose.Schema({
     },
 });
     
+// Pump Schema to store pump information
+const PumpSchema = new mongoose.Schema({
+    pumpName: { type: String, required: true }, // Name of the pump
+    status: { type: String, enum: ['ON', 'OFF'], required: true }, // Status can only be ON or OFF
+    timestamp: { type: Date, default: Date.now }, // Timestamp of the last update
+});
+
 // IoT Data Schema to store all incoming data
 const IotDataSchema = new mongoose.Schema({
     product_id: { type: String, required: true }, // Ensure product_id is mandatory
@@ -67,6 +74,10 @@ const IotDataSchema = new mongoose.Schema({
             validator: (v) => Array.isArray(v) && v.length > 0,
             message: 'stackData must contain at least one stack.',
         },
+    },
+    pumps: {
+        type: [PumpSchema], // Array of pumps
+        default: [],
     },
     date: { type: String, required: true },
     time: { type: String, required: true },

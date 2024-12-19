@@ -14,6 +14,14 @@ const updateMaxMinValues = async (data) => {
 
         for (const stack of data.stackData) {
             const { stackName, ...values } = stack;
+
+            // Filter out 'Turbidity' and 'pH'
+            const filteredValues = Object.fromEntries(
+                Object.entries(values).filter(
+                    ([key]) => key !== 'Turbidity' && key !== 'pH'
+                )
+            );
+
             const existingData = await MaxMinData.findOne({
                 userName: data.userName,
                 stackName,
@@ -27,7 +35,7 @@ const updateMaxMinValues = async (data) => {
             let maxChanged = false;
             let minChanged = false;
 
-            for (const [key, value] of Object.entries(values)) {
+            for (const [key, value] of Object.entries(filteredValues)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
 
@@ -71,6 +79,7 @@ const updateMaxMinValues = async (data) => {
         console.error('Error updating max/min values:', error);
     }
 };
+
 
 const getMaxMinDataByUserAndStack = async (userName, stackName) => {
     try {

@@ -133,6 +133,8 @@ const checkTimeInterval = async (data, user) => {
             return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
         }
     
+        const pumps = data.pumps || []; // Extract pumps array, default to empty
+    
         const user = await userdb.findOne({ userName: data.userName });
         const exceedanceCheck = await checkExceedance(stacks, user);
         const timeIntervalCheck = await checkTimeInterval(data, user);
@@ -143,16 +145,17 @@ const checkTimeInterval = async (data, user) => {
     
         // Emit real-time data before saving
         req.io.to(data.userName).emit('stackDataUpdate', {
-            userName: data.userName, // Send userName at top level
-            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits', // General exceedance comment
-            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green', // General color coding for exceedance
-            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval', // General time interval comment
-            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green', // General color coding for time interval
+            userName: data.userName,
+            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
+            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
+            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
+            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
             stackData: stacks.map(stack => ({ ...stack })), // Include stack data
+            pumps: pumps.map(pump => ({ ...pump })), // Include pump data
             timestamp: new Date(),
         });
     
-        // Remove power, current, and other unnecessary fields before saving to the database
+        // Remove unnecessary fields before saving to the database
         const sanitizedStackData = stacks.map(stack => {
             const { power, current, voltage, flowRate, ...restOfStack } = stack;
             return restOfStack;
@@ -161,6 +164,11 @@ const checkTimeInterval = async (data, user) => {
         const newEntryData = {
             ...data,
             stackData: sanitizedStackData,
+            pumps: pumps.map(pump => ({
+                pumpName: pump.pumpName,
+                status: pump.status,
+                timestamp: new Date(),
+            })),
             date,
             time,
             timestamp: new Date(),

@@ -25,7 +25,7 @@ const calculateTotalConsumption = async (userName, product_id, startTime, endTim
                     _id: '$stackData.stackName',
                     stationType: { $first: '$stackData.stationType' },
                     inflow: { $sum: { $ifNull: ['$stackData.inflow', 0] } },
-                    finalflow: { $sum: { $ifNull: ['$stackData.finalflow', 0] } },
+                    finalflow: { $sum: { $ifNull: ['$stackData.cumulatingFlow', 0] } },
                     energy: { $sum: { $ifNull: ['$stackData.energy', 0] } }
                 }
             }
@@ -62,7 +62,7 @@ const calculateTotalConsumption = async (userName, product_id, startTime, endTim
                 stackName: stack._id,
                 stationType: stack.stationType || 'NIL',
                 inflow: stack.inflow || 0,
-                finalflow: stack.finalflow || 0,
+                finalflow: stack.cumulatingFlow || 0,
                 energy: stack.energy || 0
             }))
         });

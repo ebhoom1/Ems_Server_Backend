@@ -9,7 +9,7 @@ const RETRY_DELAY = 5000; // 5 seconds
 const options = {
     host: '3.110.40.48',
     port: 1883,
-    clientId:`EbhoomSubscriber-${Math.random().toString(16).substring(2, 10)}`,
+    clientId: `EbhoomSubscriber-${Math.random().toString(16).substring(2, 10)}`,
     protocol: 'mqtt',
     keepalive: 300,
     reconnectPeriod: RETRY_DELAY,
@@ -18,12 +18,11 @@ const options = {
     pingTimeout: 120000,
 };
 
-
-
+let client; // Declare client globally
 const lastProcessedTime = {}; // Cache to store the last processed time for each user
 
 const setupMqttClient = (io) => {
-    const client = mqtt.connect(options);
+    client = mqtt.connect(options); // Initialize client here
 
     client.on('connect', () => {
         console.log('Connected to MQTT broker');
@@ -36,12 +35,22 @@ const setupMqttClient = (io) => {
                 console.log('Subscribed to topic: ebhoomPub');
             }
         });
+
+        // Subscribe to pump control feedback
+        client.subscribe('ebhoomSub', (err) => {
+            if (err) {
+                console.error('Subscription error:', err);
+            } else {
+                console.log('Subscribed to topic: ebhoomSub for pump control feedback');
+            }
+        });
     });
 
     // Handle Incoming Messages
     client.on('message', async (topic, message) => {
         try {
             const messageString = message.toString();
+            // console.log(`Message received on topic '${topic}':`, messageString);
 
             let data;
             try {
@@ -52,6 +61,24 @@ const setupMqttClient = (io) => {
                 data = [{ message: messageString }];
             }
 
+            // Process pump control feedback (ebhoomSub topic)
+            if (topic === 'ebhoomSub') {
+                data.forEach((feedback) => {
+                    if (feedback.pumps && Array.isArray(feedback.pumps)) {
+                        feedback.pumps.forEach((pump) => {
+                            console.log(
+                                `Pump Feedback Received: Product ID: ${feedback.product_id}, Pump: ${pump.pumpName}, Status: ${pump.status}`
+                            );
+                        });
+                    } else {
+                        console.error('Invalid pump feedback format:', feedback);
+                    }
+                });
+                
+                return; // Skip further processing for pump control feedback
+            }
+
+            // Process regular data from 'ebhoomPub' topic
             for (const item of data) {
                 const { product_id, userName, stacks } = item;
 
@@ -61,30 +88,26 @@ const setupMqttClient = (io) => {
                 }
 
                 const currentTime = moment().tz('Asia/Kolkata').toDate();
-                const timeKey = `${product_id}_${userName}`; // Create a unique key based on product_id and userName
+                const timeKey = `${product_id}_${userName}`;
 
-                // Check if this user has a recorded last processed time
                 if (lastProcessedTime[timeKey]) {
                     const lastTime = lastProcessedTime[timeKey];
-
-                    // Check if the current message is too close in time to the last one processed
                     const timeDifference = currentTime - lastTime;
-                    const timeThreshold = 1000; // 1000 ms = 1 second
+                    const timeThreshold = 1000;
 
                     if (timeDifference < timeThreshold) {
                         console.log('Ignoring duplicate message:', item);
-                        continue; // Skip saving as it's considered a duplicate
+                        continue;
                     }
                 }
 
-                // Update the last processed time for this user
                 lastProcessedTime[timeKey] = currentTime;
 
                 const userDetails = await userdb.findOne({
                     productID: product_id,
                     userName,
                     stackName: {
-                        $elemMatch: { name: { $in: stacks.map(stack => stack.stackName) } }
+                        $elemMatch: { name: { $in: stacks.map((stack) => stack.stackName) } },
                     },
                 });
 
@@ -100,7 +123,7 @@ const setupMqttClient = (io) => {
                     mobileNumber: userDetails.mobileNumber,
                     companyName: userDetails.companyName,
                     industryType: userDetails.industryType,
-                    stackData: stacks.map(stack => ({
+                    stackData: stacks.map((stack) => ({
                         stackName: stack.stackName,
                         ...Object.fromEntries(
                             Object.entries(stack).filter(([key, value]) => key !== 'stackName' && value !== 'N/A')
@@ -111,7 +134,7 @@ const setupMqttClient = (io) => {
                     timestamp: new Date(),
                 };
 
-                await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload); //https://api.ocems.ebhoom.com
+                await axios.post('http://localhost:5555/api/handleSaveMessage', payload); //https://api.ocems.ebhoom.com
                 io.to(product_id.toString()).emit('data', payload);
                 //console.log('Data successfully sent:', payload);
             }
@@ -119,8 +142,55 @@ const setupMqttClient = (io) => {
             console.error('Error handling MQTT message:', error);
         }
     });
-}
-// Initialize MQTT Clients at Server Startup
+
+    // Function to send ON/OFF messages for pumps (multiple pumps)
+    // Function to send 1/0 messages for pumps based on ON/OFF status
+// Function to send 1/0 messages for pumps based on ON/OFF status and include pumpId
+const sendPumpControlMessage = (product_id, pumps) => {
+    const topic = 'ebhoomSub'; // MQTT topic for controlling pumps
+
+    // Convert ON/OFF status to 1/0 for each pump and include pumpId
+    const formattedPumps = pumps.map((pump) => ({
+        pumpId: pump.pumpId,           // Include pumpId for each pump
+        pumpName: pump.pumpName,       // Include pumpName
+        status: pump.status === 'ON' ? 1 : 0, // Convert ON to 1 and OFF to 0
+    }));
+
+    // Prepare MQTT message
+    const message = JSON.stringify({
+        product_id,
+        pumps: formattedPumps,
+    });
+
+    // Publish the message to MQTT broker
+    client.publish(topic, message, (err) => {
+        if (err) {
+            console.error('Error publishing message:', err);
+        } else {
+            console.log(`Sent pump control commands for product ${product_id}:`, message);
+        }
+    });
+};
+
+
+
+    io.on('connection', (socket) => {
+        console.log('Socket connected');
+
+        // Listen for pump control requests
+        socket.on('controlPump', ({ product_id, pumps }) => {
+            console.log(`Control Pump Request Received for product ${product_id}:`, pumps);
+
+            if (!product_id || !Array.isArray(pumps) || pumps.length === 0) {
+                console.error('Invalid pump control request');
+                return;
+            }
+
+            sendPumpControlMessage(product_id, pumps);
+        });
+    });
+};
+
 const initializeMqttClients = async (io) => {
     try {
         setupMqttClient(io);
