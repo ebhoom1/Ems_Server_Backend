@@ -5,6 +5,7 @@ const {
         downloadIotData,
         handleSaveMessage,
         getDifferenceDataByUserName,
+        getDifferenceDataByUserNameAndDateRange,
         downloadIotDataByUserName,
         deleteIotDataByDateAndUser,
         downloadIotDataByUserNameAndStackName,
@@ -36,6 +37,9 @@ router.get('/latest/:userName', getLatestDataByUserName);
 
 // Add the route for fetching difference data by userName
 router.get('/differenceData/:userName', getDifferenceDataByUserName);
+
+// Route for fetching difference data by userName and date range
+router.get('/differenceDataByDateRange', getDifferenceDataByUserNameAndDateRange);
 
 //Route to download the Iot VAlue
 router.get('/downloadIotData',downloadIotData);

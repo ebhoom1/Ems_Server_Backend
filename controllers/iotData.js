@@ -636,6 +636,96 @@ const getDifferenceDataByUserName = async (req, res) => {
     }
 };
 
+const getDifferenceDataByUserNameAndDateRange = async (req, res) => {
+    const { userName, fromDate, toDate } = req.query;
+
+    try {
+        if (!userName || !fromDate || !toDate) {
+            return res.status(400).json({
+                status: 400,
+                success: false,
+                message: 'Missing required query parameters: userName, fromDate, toDate',
+            });
+        }
+
+        // Convert fromDate and toDate to proper date objects
+        const startDate = moment.tz(fromDate, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day').toDate();
+        const endDate = moment.tz(toDate, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day').toDate();
+
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            return res.status(400).json({
+                status: 400,
+                success: false,
+                message: 'Invalid date format. Use "DD-MM-YYYY".',
+            });
+        }
+
+        // Fetch data from MongoDB
+        const mongoData = await DifferenceData.find({
+            userName,
+            timestamp: { $gte: startDate, $lte: endDate }, // Ensure timestamp is properly filtered
+        }).lean();
+
+        // Fetch data from S3
+        const s3Params = {
+            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Key: 'difference_data/hourlyDifferenceData.json', // Replace with your S3 file path
+        };
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject(s3Params).promise();
+            const s3RawData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            // Filter S3 data based on date range
+            s3Data = s3RawData.filter((item) => {
+                const itemTimestamp = moment(item.timestamp).toDate();
+                return (
+                    item.userName === userName &&
+                    itemTimestamp >= startDate &&
+                    itemTimestamp <= endDate
+                );
+            });
+        } catch (err) {
+            if (err.code === 'NoSuchKey') {
+                console.log('No data found in S3 for the specified userName and date range.');
+            } else {
+                throw err;
+            }
+        }
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...s3Data];
+
+        if (combinedData.length === 0) {
+            return res.status(404).json({
+                status: 404,
+                success: false,
+                message: 'No difference data found for the specified userName and date range',
+            });
+        }
+
+        // Sort combined data by timestamp (if needed)
+        combinedData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        res.status(200).json({
+            status: 200,
+            success: true,
+            message: `Difference data for userName ${userName} from ${fromDate} to ${toDate} fetched successfully`,
+            data: combinedData,
+        });
+    } catch (error) {
+        console.error(`Error fetching difference data by userName and date range:`, error);
+        res.status(500).json({
+            status: 500,
+            success: false,
+            message: `Error fetching difference data by userName and date range`,
+            error: error.message,
+        });
+    }
+};
+
+
 const downloadIotDataByUserName = async (req, res) => {
     try {
         let { userName, fromDate, toDate, format } = req.query;
@@ -1144,7 +1234,7 @@ const deleteIotDataByDateAndUser = async (req, res) => {
 module.exports ={handleSaveMessage,  getLatestIoTData,getIotDataByUserName,
     downloadIotData,getDifferenceDataByUserName,downloadIotDataByUserName,
     deleteIotDataByDateAndUser,downloadIotDataByUserNameAndStackName,getIotDataByUserNameAndStackName,getIotDataByCompanyNameAndStackName,
-    getIotDataByCompanyName,viewDataByDateUserAndStackName
+    getIotDataByCompanyName,viewDataByDateUserAndStackName,getDifferenceDataByUserNameAndDateRange
  }
 
 

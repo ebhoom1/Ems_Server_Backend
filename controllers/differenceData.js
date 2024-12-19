@@ -117,15 +117,23 @@ const calculateDailyDifferenceFromS3 = async () => {
 //     console.log('Daily difference calculation scheduled at midnight.');
 // };
 
+// const scheduleDifferenceCalculation = () => {
+//     cron.schedule('0 * * * *', async () => { // Runs every 5 minutes
+//         console.log('Running difference calculation every 5 minutes...');
+//         await calculateDailyDifferenceFromS3();
+//     });
+
+//     console.log('Difference calculation scheduled to run every 5 minutes.');
+// };
 const scheduleDifferenceCalculation = () => {
-    cron.schedule('0 * * * *', async () => { // Runs every 5 minutes
-        console.log('Running difference calculation every 5 minutes...');
+
+    cron.schedule('45 23 * * *', async () => { // Runs at 11:45 PM every night
+        console.log('Running difference calculation at 11:45 PM...');
         await calculateDailyDifferenceFromS3();
     });
 
-    console.log('Difference calculation scheduled to run every 5 minutes.');
+    console.log('Difference calculation scheduled to run at 11:45 PM every night.');
 };
-
 
 
 
