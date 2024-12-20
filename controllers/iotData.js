@@ -8,7 +8,7 @@
     const DifferenceData = require(`../models/differeneceData`);
     const { handleExceedValues } = require('./calibrationExceed');
     const CalibrationExceedValues = require('../models/calibrationExceedValues');
-    const  { updateMaxMinValues }  = require('./maxMinController')
+    const  { updateMaxMinValues,saveDailyMinMaxValues }  = require('./maxMinController')
     const { io, server } = require('../app');
     const { calculateTotalUsage } = require('./consumptionController');
     const { saveOrUpdateLastEntryByUserName } = require('./lastIotDataController');
@@ -191,6 +191,7 @@ const checkTimeInterval = async (data, user) => {
             // Handle additional functionalities
             handleExceedValues();
             await saveOrUpdateLastEntryByUserName(newEntryData);
+            await saveDailyMinMaxValues(newEntryData)
     
             res.status(200).json({
                 success: true,

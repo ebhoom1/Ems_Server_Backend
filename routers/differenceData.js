@@ -4,6 +4,7 @@ const {
   getDifferenceDataByUserNameAndInterval, 
   getAllDifferenceDataByUserName,
   getDifferenceDataByTimeRange,
+  getLastDataByDateRange,
   downloadDifferenceData
 } = require('../controllers/differenceData');
 
@@ -159,6 +160,43 @@ router.get('/downloadDifferenceData/', async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to download data.' });
   }
 });;
+
+// Route to fetch the last data for each date in the given range
+router.get('/lastDataByDateRange/:userName/:interval/:fromDate/:toDate', async (req, res) => {
+  const { userName, interval, fromDate, toDate } = req.params;
+
+  try {
+      if (!isValidInterval(interval)) {
+          return res.status(400).json({
+              success: false,
+              message: 'Invalid interval. Use "daily" or "hourly".',
+          });
+      }
+
+      const data = await getLastDataByDateRange(userName, interval, fromDate, toDate);
+
+      if (!data.data.length) {
+          return res.status(404).json({
+              success: false,
+              message: `No data found for ${userName} within the specified date range.`,
+          });
+      }
+
+      res.status(200).json({
+          success: true,
+          message: 'Last data for each date fetched successfully.',
+          data: data.data,
+      });
+  } catch (error) {
+      console.error('Error fetching last data by date range:', error);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to fetch last data for each date.',
+          error: error.message,
+      });
+  }
+});
+
 
 
 module.exports = router;

@@ -213,6 +213,67 @@ const getDifferenceDataByTimeRange = async (userName, interval, fromDate, toDate
     }
 };
 
+// get the data using the userName interval fromDate toDate last data of every day mentioned
+const getLastDataByDateRange = async (userName, interval, fromDate, toDate) => {
+    try {
+        if (!['daily', 'hourly'].includes(interval)) {
+            throw new Error('Invalid interval. Use "daily" or "hourly".');
+        }
+
+        const startIST = moment.tz(fromDate, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day');
+        const endIST = moment.tz(toDate, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day');
+
+        const startUTC = startIST.utc().toDate();
+        const endUTC = endIST.utc().toDate();
+
+        if (isNaN(startUTC) || isNaN(endUTC)) {
+            throw new Error('Invalid date format. Use "DD-MM-YYYY".');
+        }
+
+        // Fetch distinct dates within the range for the user
+        const distinctDates = await DifferenceData.aggregate([
+            {
+                $match: {
+                    userName,
+                    interval,
+                    timestamp: { $gte: startUTC, $lte: endUTC },
+                },
+            },
+            {
+                $addFields: {
+                    dateOnly: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+                },
+            },
+            {
+                $group: {
+                    _id: '$dateOnly',
+                    lastEntry: { $last: '$$ROOT' }, // Get the last entry for each date
+                },
+            },
+            {
+                $sort: { _id: 1 }, // Sort by date
+            },
+        ]);
+
+        if (!distinctDates || distinctDates.length === 0) {
+            throw new Error('No data found for the specified criteria.');
+        }
+
+        // Extract the last entry for each date
+        const results = distinctDates.map(entry => entry.lastEntry);
+
+        return {
+            success: true,
+            message: `Last data for each date fetched successfully.`,
+            data: results,
+        };
+    } catch (error) {
+        console.error('Error fetching last data by date range:', error);
+        throw error;
+    }
+};
+
+
 // Controller to fetch both hourly and daily difference data by userName
 // Controller to fetch all difference data by userName with pagination and interval filtering
 const getAllDifferenceDataByUserName = async (userName, interval, page = 1, limit = 10) => {
@@ -331,6 +392,7 @@ module.exports = {
     getAllDifferenceDataByUserName,
     getDifferenceDataByTimeRange,
     downloadDifferenceData,
-    scheduleDifferenceCalculation
+    scheduleDifferenceCalculation,
+    getLastDataByDateRange
 };
 

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getMaxMinDataByUserAndStack, getMaxMinDataByUser } = require('../controllers/maxMinController');
+const { getMaxMinDataByUserAndStack, getMaxMinDataByUser,
+    getMaxMinDataByDateRange
+ } = require('../controllers/maxMinController');
 
 // Route to get data by userName and stackName
 router.get('/minMax/:userName/stack/:stackName', async (req, res) => {
@@ -33,5 +35,7 @@ router.get('/minMax/:userName', async (req, res) => {
         res.status(500).json({ success: false, message: 'Error fetching data', error: error.message });
     }
 });
+
+router.get('/maxmin/:userName/:stackName', getMaxMinDataByDateRange);
 
 module.exports = router;
