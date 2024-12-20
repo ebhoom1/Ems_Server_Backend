@@ -1,5 +1,5 @@
 const MaxMinData = require('../models/MaxMinData');
-const MinandMax = require('../models/MinandMax');
+const MaxandMinData = require('../models/MinandMax');
 const moment = require('moment-timezone'); // Import moment-timezone for timezone handling
 
 
