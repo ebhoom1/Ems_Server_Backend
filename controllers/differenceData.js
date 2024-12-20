@@ -143,26 +143,48 @@ const getDifferenceDataByUserNameAndInterval = async (userName, interval, page =
     try {
         const skip = (page - 1) * limit;
 
-        const data = await DifferenceData.find({ userName, interval })
+        // Fetch data from MongoDB
+        const dbData = await DifferenceData.find({ userName, interval })
             .select('userName interval stackName date time initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference initialFlowRate lastFlowRate flowRateDifference timestamp')
             .sort({ timestamp: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        const total = await DifferenceData.countDocuments({ userName, interval });
+        // Fetch data from S3
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const s3Key = 'difference_data/hourlyDifferenceData.json'; // Path to S3 file
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject({ Bucket: bucketName, Key: s3Key }).promise();
+            const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            // Filter data based on userName and interval
+            s3Data = fileData.filter(entry => entry.userName === userName && entry.interval === interval);
+        } catch (err) {
+            if (err.code !== 'NoSuchKey') throw err; // If the file doesn't exist, ignore; otherwise, rethrow
+        }
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...dbData, ...s3Data];
+        const total = combinedData.length;
+
+        // Paginate combined data
+        const paginatedData = combinedData.slice(skip, skip + limit);
 
         return {
-            data,
+            data: paginatedData,
             total,
             page,
             totalPages: Math.ceil(total / limit),
         };
     } catch (error) {
-        console.error('Error fetching difference data:', error);
+        console.error('Error fetching data by userName and interval:', error);
         throw error;
     }
 };
+
 
 // Controller to fetch data by userName and time range with projections and limit
 // Controller to fetch data by userName and time range with pagination
@@ -184,25 +206,44 @@ const getDifferenceDataByTimeRange = async (userName, interval, fromDate, toDate
 
         const skip = (page - 1) * limit;
 
-        const data = await DifferenceData.find({
+        // Fetch data from MongoDB
+        const dbData = await DifferenceData.find({
             userName,
             interval,
             timestamp: { $gte: startUTC, $lte: endUTC },
         })
             .select('userName interval stackName date time initialEnergy lastEnergy energyDifference timestamp')
             .sort({ timestamp: -1 })
-            .skip(skip)
-            .limit(limit)
             .lean();
 
-        const total = await DifferenceData.countDocuments({
-            userName,
-            interval,
-            timestamp: { $gte: startUTC, $lte: endUTC },
-        });
+        // Fetch data from S3
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const s3Key = 'difference_data/hourlyDifferenceData.json'; // Path to S3 file
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject({ Bucket: bucketName, Key: s3Key }).promise();
+            const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            // Filter data based on userName, interval, and timestamp range
+            s3Data = fileData.filter(entry => {
+                const entryDate = moment(entry.date, 'DD/MM/YYYY').utc().toDate();
+                return entry.userName === userName && entry.interval === interval &&
+                    entryDate >= startUTC && entryDate <= endUTC;
+            });
+        } catch (err) {
+            if (err.code !== 'NoSuchKey') throw err; // If the file doesn't exist, ignore; otherwise, rethrow
+        }
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...dbData, ...s3Data];
+        const total = combinedData.length;
+
+        // Paginate combined data
+        const paginatedData = combinedData.slice(skip, skip + limit);
 
         return {
-            data,
+            data: paginatedData,
             total,
             page,
             totalPages: Math.ceil(total / limit),
@@ -230,8 +271,8 @@ const getLastDataByDateRange = async (userName, interval, fromDate, toDate) => {
             throw new Error('Invalid date format. Use "DD-MM-YYYY".');
         }
 
-        // Fetch distinct dates within the range for the user
-        const distinctDates = await DifferenceData.aggregate([
+        // Fetch distinct dates within the range from MongoDB
+        const dbData = await DifferenceData.aggregate([
             {
                 $match: {
                     userName,
@@ -247,31 +288,68 @@ const getLastDataByDateRange = async (userName, interval, fromDate, toDate) => {
             {
                 $group: {
                     _id: '$dateOnly',
-                    lastEntry: { $last: '$$ROOT' }, // Get the last entry for each date
+                    lastEntry: { $last: '$$ROOT' },
                 },
             },
             {
-                $sort: { _id: 1 }, // Sort by date
+                $sort: { _id: 1 },
             },
         ]);
 
-        if (!distinctDates || distinctDates.length === 0) {
-            throw new Error('No data found for the specified criteria.');
+        // Fetch data from S3 bucket
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const fileKey = 'difference_data/hourlyDifferenceData.json'; // Path to the S3 file
+        let s3Data = [];
+
+        try {
+            console.log('Fetching data from S3...');
+            const s3Object = await s3.getObject({
+                Bucket: bucketName,
+                Key: fileKey,
+            }).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            s3Data = s3FileData.filter(entry => {
+                const entryDate = moment(entry.date, 'DD/MM/YYYY').utc().toDate();
+                return entry.userName === userName && entryDate >= startUTC && entryDate <= endUTC;
+            });
+        } catch (s3Error) {
+            if (s3Error.code === 'NoSuchKey') {
+                console.warn('No data file found in S3 bucket.');
+            } else {
+                console.error('Error fetching data from S3:', s3Error.message);
+            }
         }
 
-        // Extract the last entry for each date
-        const results = distinctDates.map(entry => entry.lastEntry);
+        // Process S3 data to get the last entry for each day
+        const s3GroupedData = s3Data.reduce((acc, entry) => {
+            const dateOnly = moment(entry.timestamp).format('YYYY-MM-DD');
+            if (!acc[dateOnly] || moment(entry.timestamp).isAfter(acc[dateOnly].timestamp)) {
+                acc[dateOnly] = entry;
+            }
+            return acc;
+        }, {});
+
+        const s3LastEntries = Object.values(s3GroupedData);
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...dbData.map(entry => entry.lastEntry), ...s3LastEntries];
+
+        if (combinedData.length === 0) {
+            throw new Error('No data found for the specified criteria.');
+        }
 
         return {
             success: true,
             message: `Last data for each date fetched successfully.`,
-            data: results,
+            data: combinedData,
         };
     } catch (error) {
         console.error('Error fetching last data by date range:', error);
         throw error;
     }
 };
+
 const getTodayDifferenceData = async (req, res) => {
     try {
         const { userName } = req.query;
@@ -287,16 +365,46 @@ const getTodayDifferenceData = async (req, res) => {
         const todayStartUTC = todayStartIST.utc().toDate();
         const todayEndUTC = todayEndIST.utc().toDate();
 
-        // Query the database for today's difference data for the user
-        const todayData = await DifferenceData.find({
+        // Fetch today's data from the database
+        const dbData = await DifferenceData.find({
             userName,
             timestamp: { $gte: todayStartUTC, $lte: todayEndUTC },
         })
             .select('userName interval stackName date time initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference timestamp')
-            .sort({ timestamp: -1 }) // Sort to get the latest records first
+            .sort({ timestamp: -1 })
             .lean();
 
-        if (!todayData || todayData.length === 0) {
+        // Fetch data from S3 bucket
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const fileKey = 'difference_data/hourlyDifferenceData.json'; // Replace with your S3 key
+        const params = {
+            Bucket: bucketName,
+            Key: fileKey,
+        };
+
+        let s3Data = [];
+        try {
+            console.log('Fetching hourly data from S3...');
+            const s3Object = await s3.getObject(params).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            // Filter S3 data for today and the given userName
+            s3Data = s3FileData.filter(entry => {
+                const entryDate = moment(entry.date, 'DD/MM/YYYY').utc().toDate();
+                return entry.userName === userName && entryDate >= todayStartUTC && entryDate <= todayEndUTC;
+            });
+        } catch (s3Error) {
+            if (s3Error.code === 'NoSuchKey') {
+                console.warn('No data file found in S3 bucket for the given key.');
+            } else {
+                console.error('Error fetching data from S3:', s3Error.message);
+            }
+        }
+
+        // Combine database and S3 data
+        const combinedData = [...dbData, ...s3Data];
+
+        if (combinedData.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: `No difference data found for ${userName} today.`,
@@ -305,11 +413,11 @@ const getTodayDifferenceData = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: `Today's difference data for ${userName} fetched successfully.`,
-            data: todayData,
+            message: `Today's combined difference data for ${userName} fetched successfully.`,
+            data: combinedData,
         });
     } catch (error) {
-        console.error('Error fetching today\'s difference data:', error);
+        console.error('Error fetching today\'s combined difference data:', error);
         res.status(500).json({
             success: false,
             message: 'Internal Server Error',
@@ -317,6 +425,7 @@ const getTodayDifferenceData = async (req, res) => {
         });
     }
 };
+
 
 
 // Controller to fetch both hourly and daily difference data by userName

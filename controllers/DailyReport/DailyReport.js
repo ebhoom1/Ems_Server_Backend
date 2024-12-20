@@ -87,7 +87,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
     ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No energy data available.</p>';
 
     const qualityTable = qualityData.length ? `
-        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quality Report</h1>
+        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quantity Report</h1>
         <table class="report-table">
             <thead>
                 <tr>
@@ -116,7 +116,7 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Combined Report</title>
+            <title>Daily Report</title>
             <style>
                 body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
                 .report-table {

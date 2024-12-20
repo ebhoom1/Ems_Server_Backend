@@ -855,29 +855,43 @@ const getTodayLastAverageDataByStackName = async (req, res) => {
     const { userName, stackName } = req.params;
 
     try {
-        // Validate userName and stackName
+        // Validate input
         if (!userName || !stackName) {
             return res.status(400).json({ success: false, message: 'userName and stackName are required.' });
         }
 
-        // Get today's date range in IST
+        // Define today's date range in IST
         const startOfToday = moment().tz('Asia/Kolkata').startOf('day').toDate();
         const endOfToday = moment().tz('Asia/Kolkata').endOf('day').toDate();
 
-        console.log(
-            `Fetching last average data for user: ${userName}, stack: ${stackName} from ${startOfToday} to ${endOfToday}`
-        );
-
-        // Fetch data for the specified user, stack, and today
-        const data = await IotDataAverage.find({
+        // Fetch data from MongoDB
+        const mongoData = await IotDataAverage.find({
             userName,
+            'stackData.stackName': stackName,
             timestamp: { $gte: startOfToday, $lte: endOfToday },
-            'stackData.stackName': stackName, // Match stackName within the stackData
         })
-            .sort({ timestamp: -1 }) // Sort by timestamp in descending order
-            .limit(1); // Get the last entry
+            .sort({ timestamp: -1 })
+            .limit(1)
+            .lean();
 
-        if (!data || data.length === 0) {
+        // Fetch data from S3
+        const s3Data = await fetchAverageDataFromS3();
+        const filteredS3Data = s3Data
+            .filter(entry => {
+                const entryDate = new Date(entry.timestamp);
+                return (
+                    entry.userName === userName &&
+                    entry.stackData.some(stack => stack.stackName === stackName) &&
+                    entryDate >= startOfToday && entryDate <= endOfToday
+                );
+            })
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Sort S3 data by timestamp
+
+        // Combine results and select the latest entry
+        const combinedData = [...mongoData, ...filteredS3Data];
+        const latestData = combinedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+
+        if (!latestData) {
             return res.status(404).json({
                 success: false,
                 message: `No average data found for userName: ${userName} and stackName: ${stackName} today.`,
@@ -887,13 +901,10 @@ const getTodayLastAverageDataByStackName = async (req, res) => {
         res.status(200).json({
             success: true,
             message: `Last average data for userName: ${userName} and stackName: ${stackName} fetched successfully.`,
-            data: data[0], // Return the last entry
+            data: latestData,
         });
     } catch (error) {
-        console.error(
-            `Error fetching last average data for userName: ${userName} and stackName: ${stackName}:`,
-            error
-        );
+        console.error('Error fetching last average IoT data:', error);
         res.status(500).json({
             success: false,
             message: 'Internal Server Error while fetching last average data.',
