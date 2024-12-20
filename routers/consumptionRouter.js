@@ -4,9 +4,11 @@ const {
     getConsumptionDataByUserNameAndStackName,
     getConsumptionDataByUserName,
     getAllConsumptionData,
-    getConsumptionDataByUserNameAndStackNameAndInterval
+    getConsumptionDataByUserNameAndStackNameAndInterval,
+    getConsumptionDataByUserNameAndDateRange 
+    
 } = require('../controllers/consumptionController');
-const {getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData} = require('../controllers/consumption');
+const {getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData, getConsumptionDataByDateRange,} = require('../controllers/consumption');
 
 // Route to get data by userName and stackName
 router.get('/consumptionData/:userName/:stackName', getConsumptionDataByUserNameAndStackName);
@@ -20,6 +22,10 @@ router.get('/consumptionData/:userName', getConsumptionDataByUserName);
 // Route to get all data
 router.get('/allConsumptionData', getAllConsumptionData);
 
+// Define the route to fetch data by userName, intervalType, and date range
+router.get("/consumption/:userName/:intervalType/date-range", getConsumptionDataByUserNameAndDateRange);
+
+
 // Define the route for getting consumption data
 router.get('/consumption-data', getConsumptionData);
 
@@ -28,4 +34,9 @@ router.get('/consumptionDataByStacks', getConsumptionDataByStacks);
 router.get('/consumptionDataByStackName',getConsumptionDataStackName)
 
 router.get ('/consumptionDataByUserName', getLatestConsumptionData);
+
+
+// Route to get consumption data by userName and date range
+router.get('/consumptionDataByDateRange', getConsumptionDataByDateRange);
+
 module.exports = router;

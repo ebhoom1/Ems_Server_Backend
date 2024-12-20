@@ -177,6 +177,145 @@ const getConsumptionDataByUserName = async (req, res) => {
     }
 };
 
+// Controller to fetch consumption data by userName, fromDate, and toDate
+// Controller to fetch consumption data by userName, fromDate, and toDate
+// Controller to fetch consumption data by userName, fromDate, and toDate
+// const getConsumptionDataByUserNameAndDateRange = async (req, res) => {
+//     const { userName,intervalType } = req.params;
+//     const { fromDate, toDate } = req.query;
+
+//     if (!fromDate || !toDate) {
+//         return res.status(400).json({ message: "Both 'fromDate' and 'toDate' are required." });
+//     }
+
+//     try {
+//         // Convert fromDate and toDate from dd/mm/yyyy to Date objects
+//         const fromParts = fromDate.split('/');
+//         const toParts = toDate.split('/');
+
+//         if (fromParts.length !== 3 || toParts.length !== 3) {
+//             return res.status(400).json({ message: "Invalid date format. Use 'dd/mm/yyyy'." });
+//         }
+
+//         const from = new Date(`${fromParts[2]}-${fromParts[1]}-${fromParts[0]}T00:00:00Z`);
+//         const to = new Date(`${toParts[2]}-${toParts[1]}-${toParts[0]}T23:59:59Z`);
+
+//         if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+//             return res.status(400).json({ message: "Invalid date format. Use 'dd/mm/yyyy'." });
+//         }
+
+//         // Find the last entered data for each day within the specified date range
+//         const data = await ConsumptionData.aggregate([
+//             {
+//                 $match: {
+//                     userName,
+//                     timestamp: { $gte: from, $lte: to },
+//                 },
+//             },
+//             {
+//                 $group: {
+//                     _id: {
+//                         day: { $dayOfMonth: "$timestamp" },
+//                         month: { $month: "$timestamp" },
+//                         year: { $year: "$timestamp" },
+//                     },
+//                     lastEntry: { $last: "$$ROOT" },
+//                 },
+//             },
+//             {
+//                 $replaceRoot: { newRoot: "$lastEntry" },
+//             },
+//             {
+//                 $sort: { timestamp: 1 },
+//             },
+//         ]);
+
+//         if (!data || data.length === 0) {
+//             return res.status(404).json({ message: "No data found for the specified user and date range." });
+//         }
+
+//         res.status(200).json(data);
+//     } catch (error) {
+//         console.error(
+//             `Error fetching data for user ${userName} from ${fromDate} to ${toDate}:`,
+//             error
+//         );
+//         res.status(500).json({ message: "Error fetching consumption data.", error });
+//     }
+// };
+
+const getConsumptionDataByUserNameAndDateRange = async (req, res) => {
+    const { userName, intervalType } = req.params;
+    const { fromDate, toDate } = req.query;
+
+    if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "Both 'fromDate' and 'toDate' are required." });
+    }
+
+    try {
+        // Convert fromDate and toDate from dd/mm/yyyy to Date objects
+        const fromParts = fromDate.split('/');
+        const toParts = toDate.split('/');
+
+        if (fromParts.length !== 3 || toParts.length !== 3) {
+            return res.status(400).json({ message: "Invalid date format. Use 'dd/mm/yyyy'." });
+        }
+
+        const from = new Date(`${fromParts[2]}-${fromParts[1]}-${fromParts[0]}T00:00:00Z`);
+        const to = new Date(`${toParts[2]}-${toParts[1]}-${toParts[0]}T23:59:59Z`);
+
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+            return res.status(400).json({ message: "Invalid date format. Use 'dd/mm/yyyy'." });
+        }
+
+        // Find the last entered data for each day within the specified date range
+        const data = await ConsumptionData.aggregate([
+            {
+                $match: {
+                    userName,
+                    intervalType,
+                    timestamp: { $gte: from, $lte: to },
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        day: { $dayOfMonth: "$timestamp" },
+                        month: { $month: "$timestamp" },
+                        year: { $year: "$timestamp" },
+                    },
+                    lastEntry: { $last: "$$ROOT" },
+                },
+            },
+            // Filter out groups where the last entry is null
+            {
+                $match: { lastEntry: { $ne: null } },
+            },
+            {
+                $replaceRoot: { newRoot: "$lastEntry" },
+            },
+            {
+                $sort: { timestamp: 1 },
+            },
+        ]);
+
+        if (!data || data.length === 0) {
+            return res.status(404).json({
+                message: "No data found for the specified user, intervalType, and date range.",
+            });
+        }
+
+        res.status(200).json(data);
+    } catch (error) {
+        console.error(
+            `Error fetching data for user ${userName} with intervalType ${intervalType} from ${fromDate} to ${toDate}:`,
+            error
+        );
+        res.status(500).json({ message: "Error fetching consumption data.", error });
+    }
+};
+
+
 // Get all consumption data (no filter)
 const getAllConsumptionData = async (req, res) => {
     try {
@@ -234,5 +373,6 @@ module.exports = {
     getConsumptionDataByUserNameAndStackName,
     getConsumptionDataByUserName,
     getAllConsumptionData,
-    getConsumptionDataByUserNameAndStackNameAndInterval 
+    getConsumptionDataByUserNameAndStackNameAndInterval,
+    getConsumptionDataByUserNameAndDateRange 
 };

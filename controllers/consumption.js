@@ -314,5 +314,68 @@ const getAllConsumptionDataByUser = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+const getConsumptionDataByDateRange = async (req, res) => {
+    const { userName, fromDate, toDate } = req.query;
 
-module.exports = { calculateAndSaveConsumption, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData};
+    try {
+        // Validate required parameters
+        if (!userName || !fromDate || !toDate) {
+            return res.status(400).json({ message: "Missing required query parameters: userName, fromDate, or toDate." });
+        }
+
+        const startIST = moment.tz(fromDate, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day').toDate();
+        const endIST = moment.tz(toDate, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day').toDate();
+
+        if (isNaN(startIST) || isNaN(endIST)) {
+            return res.status(400).json({ message: "Invalid date format. Use 'DD-MM-YYYY'." });
+        }
+
+        // Fetch data from MongoDB
+        const mongoData = await Consumption.find({
+            userName,
+            timestamp: { $gte: startIST, $lte: endIST },
+        }).lean();
+
+        console.log(`Fetched ${mongoData.length} records from MongoDB.`);
+
+        // Fetch data from S3
+        const s3Data = await fetchConsumptionDataFromS3();
+        const filteredS3Data = s3Data.filter(entry => {
+            const entryDate = moment(entry.date, 'DD/MM/YYYY').toDate();
+            return (
+                entry.userName === userName &&
+                entryDate >= startIST &&
+                entryDate <= endIST
+            );
+        });
+
+        console.log(`Fetched ${filteredS3Data.length} records from S3.`);
+
+        // Combine MongoDB and S3 data
+        const combinedData = [...mongoData, ...filteredS3Data];
+
+        // Sort combined data by date and hour
+        combinedData.sort((a, b) => {
+            const dateA = moment(a.date, 'DD/MM/YYYY').toDate();
+            const dateB = moment(b.date, 'DD/MM/YYYY').toDate();
+            if (dateA.getTime() === dateB.getTime()) {
+                return parseInt(a.hour, 10) - parseInt(b.hour, 10);
+            }
+            return dateA - dateB;
+        });
+
+        if (combinedData.length === 0) {
+            return res.status(404).json({ message: "No consumption data found for the specified range." });
+        }
+
+        res.json({
+            message: "Consumption data fetched successfully.",
+            data: combinedData,
+        });
+    } catch (error) {
+        console.error("Error fetching consumption data by date range:", error);
+        res.status(500).json({ message: "Internal server error.", error: error.message });
+    }
+};
+
+module.exports = { calculateAndSaveConsumption, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData,getConsumptionDataByDateRange};
