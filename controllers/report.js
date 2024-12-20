@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const { Parser } = require('json2csv');
 const fs = require('fs');
 const AWS = require('aws-sdk');
+const pdf = require('html-pdf');
 
 // Create Report
 
@@ -234,71 +235,71 @@ const deletedReport = async(req,res)=>{
     }
 }
 
-const generatePDF = (report, res) => {
-    const doc = new PDFDocument({ margin: 30 });
+// const generatePDF = (report, res) => {
+//     const doc = new PDFDocument({ margin: 30 });
 
-    // Pipe the PDF document to the response
-    doc.pipe(res);
+//     // Pipe the PDF document to the response
+//     doc.pipe(res);
 
-    // Header: Report Details
-    doc.fontSize(16).text('Report Details', { align: 'center', underline: true });
+//     // Header: Report Details
+//     doc.fontSize(16).text('Report Details', { align: 'center', underline: true });
 
-    // Move down and display the basic report details
-    doc.moveDown();
-    doc.fontSize(12).text(`Industry Type: ${report.industryType}`);
-    doc.text(`Company Name: ${report.companyName}`);
-    doc.text(`Stack Name: ${report.stackName}`);
-    doc.text(`From Date: ${report.fromDate}`);
-    doc.text(`To Date: ${report.toDate}`);
-    doc.text(`Engineer Name: ${report.engineerName}`);
-    doc.text(`User Name: ${report.userName}`);
-    doc.text(`Report Approved: ${report.reportApproved ? 'Approved' : 'Denied'}`);
+//     // Move down and display the basic report details
+//     doc.moveDown();
+//     doc.fontSize(12).text(`Industry Type: ${report.industryType}`);
+//     doc.text(`Company Name: ${report.companyName}`);
+//     doc.text(`Stack Name: ${report.stackName}`);
+//     doc.text(`From Date: ${report.fromDate}`);
+//     doc.text(`To Date: ${report.toDate}`);
+//     doc.text(`Engineer Name: ${report.engineerName}`);
+//     doc.text(`User Name: ${report.userName}`);
+//     doc.text(`Report Approved: ${report.reportApproved ? 'Approved' : 'Denied'}`);
 
-    doc.moveDown(); 
+//     doc.moveDown(); 
 
-    // Calibration Exceeds Table Header
-    doc.fontSize(14).text('Calibration Exceeds', { underline: true, align: 'left' });
+//     // Calibration Exceeds Table Header
+//     doc.fontSize(14).text('Calibration Exceeds', { underline: true, align: 'left' });
 
-    // Draw table column headers
-    doc.moveDown();
-    const headers = ['Parameter', 'Value', 'Date', 'Time', 'Message'];
-    drawTableHeaders(doc, headers);
+//     // Draw table column headers
+//     doc.moveDown();
+//     const headers = ['Parameter', 'Value', 'Date', 'Time', 'Message'];
+//     drawTableHeaders(doc, headers);
 
-    // Iterate over exceedances and render them in rows
-    report.calibrationExceeds.forEach((exceed, index) => {
-        drawTableRow(doc, [
-            exceed.parameter,
-            exceed.value,
-            exceed.formattedDate,
-            exceed.formattedTime,
-            exceed.message,
-        ]);
-    });
+//     // Iterate over exceedances and render them in rows
+//     report.calibrationExceeds.forEach((exceed, index) => {
+//         drawTableRow(doc, [
+//             exceed.parameter,
+//             exceed.value,
+//             exceed.formattedDate,
+//             exceed.formattedTime,
+//             exceed.message,
+//         ]);
+//     });
 
-    doc.end(); // Finalize the PDF and send it
-};
+//     doc.end(); // Finalize the PDF and send it
+// };
 
-// Helper function to draw table headers
-const drawTableHeaders = (doc, headers) => {
-    headers.forEach((header, i) => {
-        doc
-            .fontSize(12)
-            .text(header, 72 + i * 100, doc.y, { width: 90, align: 'left' });
-    });
-    doc.moveDown();
-    doc.moveTo(70, doc.y).lineTo(520, doc.y).stroke(); // Draw a line under the headers
-};
+// // Helper function to draw table headers
+// const drawTableHeaders = (doc, headers) => {
+//     headers.forEach((header, i) => {
+//         doc
+//             .fontSize(12)
+//             .text(header, 72 + i * 100, doc.y, { width: 90, align: 'left' });
+//     });
+//     doc.moveDown();
+//     doc.moveTo(70, doc.y).lineTo(520, doc.y).stroke(); // Draw a line under the headers
+// };
 
-// Helper function to draw a table row
-const drawTableRow = (doc, row) => {
-    row.forEach((cell, i) => {
-        doc
-            .fontSize(10)
-            .text(cell, 72 + i * 100, doc.y, { width: 90, align: 'left' });
-    });
-    doc.moveDown();
-    doc.moveTo(70, doc.y).lineTo(520, doc.y).stroke(); // Draw a line after each row
-};
+// // Helper function to draw a table row
+// const drawTableRow = (doc, row) => {
+//     row.forEach((cell, i) => {
+//         doc
+//             .fontSize(10)
+//             .text(cell, 72 + i * 100, doc.y, { width: 90, align: 'left' });
+//     });
+//     doc.moveDown();
+//     doc.moveTo(70, doc.y).lineTo(520, doc.y).stroke(); // Draw a line after each row
+// };
 
 
 //Function to generate CSV
@@ -326,28 +327,139 @@ const generateCSV = (report,res)=>{
 
 }
 
+// Helper to generate HTML content for the report
+const generateHTMLContentForReport = (report) => {
+    const exceedancesTable = report.calibrationExceeds.map((exceed) => `
+      <tr>
+        <td>${exceed.parameter}</td>
+        <td>${exceed.value}</td>
+        <td>${exceed.formattedDate}</td>
+        <td>${exceed.formattedTime}</td>
+        <td>${exceed.message}</td>
+        <td>${exceed.commentByUser|| ''}</td>
+        <td>${exceed.commentByAdmin|| ''}</td>
+      </tr>
+    `).join('');
+  
+    const approvalStatus = report.reportApproved
+      ? `<span style="
+          display: inline-block;
+          padding: 10px;
+          color: #fff;
+          background-color: #28a745;
+          border-radius: 5px;
+          font-weight: bold;
+          ">Approved</span>`
+      : `<span style="
+          display: inline-block;
+          padding: 10px;
+          color: #fff;
+          background-color: #dc3545;
+          border-radius: 5px;
+          font-weight: bold;
+          ">Declined</span>`;
+  
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Report PDF</title>
+          <style>
+              body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; }
+              h1 { color: #0d47a1; text-align: center; }
+              h2 { color: #236a80; text-align: left; }
+              p { font-size: 1rem; margin: 5px 0; }
+              .company-name { font-size: 1.5rem; font-weight: bold; color: #1a73e8; }
+              table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 20px 0;
+              }
+              table, th, td {
+                  border: 1px solid #ddd;
+              }
+              th, td {
+                  text-align: left;
+                  padding: 8px;
+              }
+              th {
+                  background-color: #236a80;
+                  color: white;
+              }
+              tr:nth-child(even) {
+                  background-color: #f2f2f2;
+              }
+          </style>
+      </head>
+      <body>
+          <h1>Report Details</h1>
+          <p class="company-name">${report.companyName}</p>
+          <p><strong>Industry Type:</strong> ${report.industryType}</p>
+          <p><strong>Station Name:</strong> ${report.stackName}</p>
+          <p><strong>From Date:</strong> ${report.fromDate}</p>
+          <p><strong>To Date:</strong> ${report.toDate}</p>
+          <p><strong>Engineer Name:</strong> ${report.engineerName}</p>
+          <p><strong>User Name:</strong> ${report.userName}</p>
+          <p><strong>Report Approved:</strong> ${approvalStatus}</p>
+          <h2>Calibration Exceeds</h2>
+          <table>
+              <thead>
+                  <tr>
+                      <th>Parameter</th>
+                      <th>Value</th>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Message</th>
+                      <th>Comment By User</th>
+                      <th>Comment By Admin</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  ${exceedancesTable}
+              </tbody>
+          </table>
+      </body>
+      </html>
+    `;
+  };
+  
+
 //Download Report as PDF
 
-const downloadReportAsPDF =async(req,res)=>{
+// Updated downloadReportAsPDF function
+const downloadReportAsPDF = async (req, res) => {
     try {
-        const {userId} = req.params
-        const report = await Report.findById(userId);
-        if(!report){
-            return res.status(404).json({message:'Report not found'});
+      const { userId } = req.params;
+      const report = await Report.findById(userId);
+  
+      if (!report) {
+        return res.status(404).json({ message: 'Report not found' });
+      }
+  
+      // Generate HTML content for the report
+      const htmlContent = generateHTMLContentForReport(report);
+  
+      // Generate PDF from the HTML content
+      const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
+      pdf.create(htmlContent, options).toStream((err, stream) => {
+        if (err) {
+          console.error('Error generating PDF:', err);
+          return res.status(500).json({ message: 'Error generating PDF' });
         }
-
-        res.header('Content-Type','application/pdf');
-        res.attachment('report.pdf');
-        generatePDF(report,res);
+  
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
+        stream.pipe(res);
+      });
     } catch (error) {
-        res.status(500).json({
-            status:500,
-            success:false,
-            message:'Error downloading report',
-            error:error.message
-        })
+      res.status(500).json({
+        status: 500,
+        success: false,
+        message: 'Error downloading report',
+        error: error.message,
+      });
     }
-}
+  };
 
 //Download report as CSV
 
