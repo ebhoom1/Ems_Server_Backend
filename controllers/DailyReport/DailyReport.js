@@ -280,7 +280,7 @@ const sendEmail = async (userEmail, pdfFiles) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('25 18 * * *', async () => { // 18:25 UTC is 11:55 PM IST25 18
+    cron.schedule('0 1 * * *', async () => {
         try {
             const users = await User.find();
 
