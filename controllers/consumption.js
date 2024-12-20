@@ -378,4 +378,28 @@ const getConsumptionDataByDateRange = async (req, res) => {
     }
 };
 
-module.exports = { calculateAndSaveConsumption, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData,getConsumptionDataByDateRange};
+const getTodayConsumptionData = async (req, res) => {
+    const { userName } = req.query;
+
+    try {
+        if (!userName) {
+            return res.status(400).json({ message: "Missing required query parameter: userName." });
+        }
+
+        const today = moment().format('DD/MM/YYYY');
+        const todayData = await Consumption.find({ userName, date: today }).sort({ hour: -1 }).limit(1);
+
+        if (!todayData || todayData.length === 0) {
+            return res.status(404).json({ message: "No consumption data found for today." });
+        }
+
+        res.json({
+            message: "Last consumption data of the day fetched successfully.",
+            data: todayData[0],
+        });
+    } catch (error) {
+        console.error("Error fetching last consumption data of the day:", error);
+        res.status(500).json({ message: "Internal server error.", error: error.message });
+    }
+};
+module.exports = { calculateAndSaveConsumption,getTodayConsumptionData, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData,getConsumptionDataByDateRange};
