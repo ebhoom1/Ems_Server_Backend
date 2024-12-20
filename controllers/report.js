@@ -5,63 +5,90 @@ const moment = require('moment-timezone');
 const PDFDocument = require('pdfkit');
 const { Parser } = require('json2csv');
 const fs = require('fs');
+const AWS = require('aws-sdk');
 
 // Create Report
 
-const createReport = async (req, res) => {
-    const { 
-      userName, 
-      industryType, 
-      companyName, 
-      fromDate, 
-      toDate, 
-      engineerName, 
-      reportApproved, 
-      stackName 
+// Configure AWS SDK
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+  });
+  
+  const s3 = new AWS.S3();
+  
+  const createReport = async (req, res) => {
+    const {
+      userName,
+      industryType,
+      companyName,
+      fromDate,
+      toDate,
+      engineerName,
+      reportApproved,
+      stackName,
     } = req.body;
   
     try {
-      // Helper function to parse 'dd-mm-yyyy' with UTC timezone handling
       const parseDate = (dateString) => {
         return moment.tz(dateString, 'DD-MM-YYYY', 'UTC').startOf('day').toDate();
       };
   
-      console.log("Received Dates:", fromDate, toDate); // Debugging log
+      const start = parseDate(fromDate);
+      const end = moment.tz(toDate, 'DD-MM-YYYY', 'UTC').endOf('day').toDate();
   
-      const start = parseDate(fromDate); // Start of the day
-      const end = moment.tz(toDate, 'DD-MM-YYYY', 'UTC').endOf('day').toDate(); // End of the same day
+      // Fetch data from MongoDB
+      const mongoData = await CalibrationExceeded.find({
+        userName,
+        industryType,
+        companyName,
+        stackName,
+        timestamp: { $gte: start, $lte: end },
+      }).lean();
   
-      console.log("Parsed Start and End Dates (UTC):", start, end); // Debugging log
-  
-      // Construct the query object
-      const query = { 
-        userName, 
-        industryType, 
-        companyName, 
-        stackName, 
-        timestamp: { $gte: start, $lte: end } 
+      // Fetch data from S3
+      const s3Params = {
+        Bucket: 'ems-ebhoom-bucket',
+        Key: 'parameterExceed_data/exceedData.json',
       };
   
-      // Fetch calibration exceeds from MongoDB
-      const calibrationExceeds = await CalibrationExceeded.find(query).sort({ timestamp: -1 });
+      let s3Data = [];
+      try {
+        const s3File = await s3.getObject(s3Params).promise();
+        const s3FileData = JSON.parse(s3File.Body.toString('utf-8'));
   
-      if (!calibrationExceeds || calibrationExceeds.length === 0) {
-        return res.status(404).json({ success: false, message: 'No exceeds found' });
+        // Filter S3 data by date range
+        s3Data = s3FileData.filter(
+          (item) =>
+            new Date(item.timestamp) >= start && new Date(item.timestamp) <= end
+        );
+      } catch (err) {
+        if (err.code !== 'NoSuchKey') {
+          throw err;
+        }
       }
   
-      // Extract and format exceedances
-      const exceedances = calibrationExceeds.map((exceed) => ({
+      // Combine MongoDB and S3 data
+      const combinedData = [...mongoData, ...s3Data];
+  
+      if (combinedData.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: 'No exceeds found' });
+      }
+  
+      // Format the combined data
+      const exceedances = combinedData.map((exceed) => ({
         parameter: exceed.parameter,
         value: exceed.value,
         stackName: exceed.stackName,
-        formattedDate: moment(exceed.timestamp).format('DD/MM/YYYY'), // Format as 'dd/mm/yyyy'
-        formattedTime: moment(exceed.timestamp).format('HH:mm:ss'), // Extract time in 'HH:MM:SS'
-        message: exceed.message
+        formattedDate: moment(exceed.timestamp).format('DD/MM/YYYY'),
+        formattedTime: moment(exceed.timestamp).format('HH:mm:ss'),
+        message: exceed.message,
       }));
   
-      console.log('Exceedances:', exceedances); // Debugging log
-  
-      // Create the report
+      // Create and save the report
       const report = new Report({
         userName,
         industryType,
@@ -71,7 +98,7 @@ const createReport = async (req, res) => {
         engineerName,
         stackName,
         calibrationExceeds: exceedances,
-        reportApproved
+        reportApproved,
       });
   
       await report.save();
@@ -80,7 +107,7 @@ const createReport = async (req, res) => {
         status: 201,
         success: true,
         message: 'Report Created Successfully',
-        report
+        report,
       });
     } catch (error) {
       console.error('Error creating report:', error);
@@ -88,7 +115,7 @@ const createReport = async (req, res) => {
         status: 500,
         success: false,
         message: 'Error in creating report',
-        error: error.message
+        error: error.message,
       });
     }
   };
