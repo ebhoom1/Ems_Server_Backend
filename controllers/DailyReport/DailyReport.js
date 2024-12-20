@@ -74,11 +74,12 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                 ${energyData.map(data => `
                     <tr>
                         <td>${data.stackName}</td>
+                        <td>kWh</td>
                         <td>${data.total}</td>
                         <td>${data.initialEnergy}</td>
                         <td>${data.lastEnergy}</td>
                         <td>${data.energyDifference}</td>
-                        <td>kWh</td>
+                        
                     </tr>
                 `).join('')}
             </tbody>
