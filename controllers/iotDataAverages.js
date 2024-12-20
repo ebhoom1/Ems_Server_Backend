@@ -851,11 +851,62 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
     }
 };
 
+const getTodayLastAverageDataByStackName = async (req, res) => {
+    const { userName, stackName } = req.params;
+
+    try {
+        // Validate userName and stackName
+        if (!userName || !stackName) {
+            return res.status(400).json({ success: false, message: 'userName and stackName are required.' });
+        }
+
+        // Get today's date range in IST
+        const startOfToday = moment().tz('Asia/Kolkata').startOf('day').toDate();
+        const endOfToday = moment().tz('Asia/Kolkata').endOf('day').toDate();
+
+        console.log(
+            `Fetching last average data for user: ${userName}, stack: ${stackName} from ${startOfToday} to ${endOfToday}`
+        );
+
+        // Fetch data for the specified user, stack, and today
+        const data = await IotDataAverage.find({
+            userName,
+            timestamp: { $gte: startOfToday, $lte: endOfToday },
+            'stackData.stackName': stackName, // Match stackName within the stackData
+        })
+            .sort({ timestamp: -1 }) // Sort by timestamp in descending order
+            .limit(1); // Get the last entry
+
+        if (!data || data.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No average data found for userName: ${userName} and stackName: ${stackName} today.`,
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Last average data for userName: ${userName} and stackName: ${stackName} fetched successfully.`,
+            data: data[0], // Return the last entry
+        });
+    } catch (error) {
+        console.error(
+            `Error fetching last average data for userName: ${userName} and stackName: ${stackName}:`,
+            error
+        );
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Error while fetching last average data.',
+            error: error.message,
+        });
+    }
+};
+
 
 
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
-    fetchLastEntryOfEachDate
+    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName
 };
