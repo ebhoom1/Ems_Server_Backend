@@ -5,7 +5,8 @@ const {
   getAllDifferenceDataByUserName,
   getDifferenceDataByTimeRange,
   getLastDataByDateRange,
-  downloadDifferenceData
+  downloadDifferenceData,
+  getTodayDifferenceData
 } = require('../controllers/differenceData');
 
 // Helper function to validate intervals
@@ -137,7 +138,31 @@ router.get('/differenceByUserName/:userName', async (req, res) => {
         });
     }
 });
+// Route to get today's difference data for a specific userName
+router.get('/differenceData/today/:userName', async (req, res) => {
+  const { userName } = req.params;
 
+  if (!userName) {
+    return res.status(400).json({
+      success: false,
+      message: 'userName is required.',
+    });
+  }
+
+  try {
+    // Call the controller function
+    const todayData = await getTodayDifferenceData({ query: { userName } }, res);
+    return todayData;
+  } catch (error) {
+    console.error('Error fetching today\'s difference data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
+  }
+});
+  
 // **Unified Download Route for CSV and PDF**
 // Unified Download Route for CSV and PDF
 // Route to download difference data as CSV or PDF

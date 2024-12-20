@@ -272,6 +272,51 @@ const getLastDataByDateRange = async (userName, interval, fromDate, toDate) => {
         throw error;
     }
 };
+const getTodayDifferenceData = async (req, res) => {
+    try {
+        const { userName } = req.query;
+
+        if (!userName) {
+            return res.status(400).json({ success: false, message: 'userName is required.' });
+        }
+
+        // Get today's date in IST and convert to UTC range
+        const todayStartIST = moment().tz('Asia/Kolkata').startOf('day');
+        const todayEndIST = moment().tz('Asia/Kolkata').endOf('day');
+
+        const todayStartUTC = todayStartIST.utc().toDate();
+        const todayEndUTC = todayEndIST.utc().toDate();
+
+        // Query the database for today's difference data for the user
+        const todayData = await DifferenceData.find({
+            userName,
+            timestamp: { $gte: todayStartUTC, $lte: todayEndUTC },
+        })
+            .select('userName interval stackName date time initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference timestamp')
+            .sort({ timestamp: -1 }) // Sort to get the latest records first
+            .lean();
+
+        if (!todayData || todayData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No difference data found for ${userName} today.`,
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Today's difference data for ${userName} fetched successfully.`,
+            data: todayData,
+        });
+    } catch (error) {
+        console.error('Error fetching today\'s difference data:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Error',
+            error: error.message,
+        });
+    }
+};
 
 
 // Controller to fetch both hourly and daily difference data by userName
@@ -393,6 +438,7 @@ module.exports = {
     getDifferenceDataByTimeRange,
     downloadDifferenceData,
     scheduleDifferenceCalculation,
-    getLastDataByDateRange
+    getLastDataByDateRange,
+    getTodayDifferenceData
 };
 
