@@ -659,6 +659,82 @@ const findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange = asy
 };
 
 
+const fetchLastEntryOfEachDate = async (req, res) => {
+    const { userName, stackName, intervalType } = req.params;
+    const { startTime, endTime } = req.query;
+
+    try {
+        // Validate query parameters
+        if (!startTime || !endTime || !userName || !stackName || !intervalType) {
+            return res.status(400).json({ message: 'Missing required parameters.' });
+        }
+
+        // Parse and validate start and end dates
+        const startDate = moment(startTime, 'DD-MM-YYYY', true).startOf('day');
+        const endDate = moment(endTime, 'DD-MM-YYYY', true).endOf('day');
+
+        if (!startDate.isValid() || !endDate.isValid()) {
+            return res.status(400).json({ message: 'Invalid date format. Use DD-MM-YYYY.' });
+        }
+
+        // Debug log
+        console.log(`Fetching data for user: ${userName}, stack: ${stackName}, interval: ${intervalType}`);
+        console.log(`Date range: ${startDate.format()} to ${endDate.format()}`);
+
+        // Fetch data from S3
+        const allData = await fetchAverageDataFromS3();
+
+        if (!allData || allData.length === 0) {
+            return res.status(404).json({ message: 'No data available in S3.' });
+        }
+
+        // Filter data by userName, stackName, intervalType, and date range
+        const filteredData = allData
+            .filter(entry => {
+                const entryDate = moment(entry.dateAndTime, 'DD/MM/YYYY');
+                const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
+                const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
+                const stackMatch = entry.stackData.some(
+                    stack => stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
+                );
+                return userMatch && intervalMatch && stackMatch && entryDate.isBetween(startDate, endDate, 'day', '[]');
+            });
+
+        if (filteredData.length === 0) {
+            return res.status(404).json({
+                message: `No data found for userName: ${userName}, stackName: ${stackName}, intervalType: ${intervalType}, and specified time range.`,
+            });
+        }
+
+        // Group data by date and get the last entry for each date
+        const groupedByDate = filteredData.reduce((acc, entry) => {
+            const date = moment(entry.dateAndTime, 'DD/MM/YYYY').format('YYYY-MM-DD');
+            if (!acc[date] || moment(entry.timestamp).isAfter(acc[date].timestamp)) {
+                acc[date] = entry;
+            }
+            return acc;
+        }, {});
+
+        const result = Object.values(groupedByDate);
+
+        // Debug result
+        console.log(`Result length: ${result.length}`);
+        console.log('Sample result:', result.slice(0, 3));
+
+        res.status(200).json({
+            success: true,
+            message: `Last entry of each date fetched successfully for userName: ${userName}, stackName: ${stackName}, intervalType: ${intervalType}.`,
+            data: result,
+        });
+    } catch (error) {
+        console.error('Error fetching last entry of each date:', error);
+        res.status(500).json({
+            message: 'Internal Server Error while fetching last entry of each date.',
+            error: error.message,
+        });
+    }
+};
+
 
 
 const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
@@ -781,4 +857,5 @@ module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDat
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
+    fetchLastEntryOfEachDate
 };
