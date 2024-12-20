@@ -7,6 +7,7 @@ const { Parser } = require('json2csv');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const pdf = require('html-pdf');
+const phantomPath = require('phantomjs-prebuilt').path;
 
 // Create Report
 
@@ -440,7 +441,7 @@ const downloadReportAsPDF = async (req, res) => {
       const htmlContent = generateHTMLContentForReport(report);
   
       // Generate PDF from the HTML content
-      const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
+      const options = { format: 'A4', orientation: 'portrait', border: '10mm',  phantomPath: phantomPath };
       pdf.create(htmlContent, options).toStream((err, stream) => {
         if (err) {
           console.error('Error generating PDF:', err);
