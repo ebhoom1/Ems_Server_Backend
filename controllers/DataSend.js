@@ -141,24 +141,24 @@ const sendDataDaily = async (user) => {
  * Schedule the daily email report at 1:00 AM.
  */
 const scheduleDailyDataSend = () => {
-    cron.schedule('0 1 * * *', async () => {
-        try {
-            // Fetch all users from the database
-            const users = await User.find({}, { userName: 1, email: 1 });
+    // cron.schedule('0 1 * * *', async () => {
+    //     try {
+    //         // Fetch all users from the database
+    //         const users = await User.find({}, { userName: 1, email: 1 });
 
-            if (users.length === 0) {
-                console.log("No users found to send daily IoT data reports.");
-                return;
-            }
+    //         if (users.length === 0) {
+    //             console.log("No users found to send daily IoT data reports.");
+    //             return;
+    //         }
 
-            const emailPromises = users.map(user => sendDataDaily(user));
-            await Promise.all(emailPromises);
+    //         const emailPromises = users.map(user => sendDataDaily(user));
+    //         await Promise.all(emailPromises);
 
-            console.log("All daily IoT data reports for the previous day have been successfully sent!");
-        } catch (error) {
-            console.error('Error fetching users for daily data send:', error);
-        }
-    });
+    //         console.log("All daily IoT data reports for the previous day have been successfully sent!");
+    //     } catch (error) {
+    //         console.error('Error fetching users for daily data send:', error);
+    //     }
+    // });
 };
 
 module.exports = { sendDataDaily, scheduleDailyDataSend };
