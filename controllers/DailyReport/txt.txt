@@ -307,3 +307,344 @@ const scheduleDailyReports = () => {
 };
 
 module.exports = { scheduleDailyReports };
+
+
+// using API fetch the data and send 
+
+// Import required modules
+const cron = require('node-cron');
+const nodemailer = require('nodemailer');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const pdf = require('html-pdf');
+
+// Nodemailer configuration
+const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+        user: process.env.EMAIL,
+        pass: process.env.PASSWORD,
+    },
+});
+
+// Helper to generate water quality table
+const generateWaterTable = (stackName, waterParameters) => {
+    return `
+        <h2 style="color: #236a80; font-size: 1.5rem; text-align: left; margin-top: 20px; border-bottom: 2px solid #ddd;">Quality Report for Station: ${stackName}</h2>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Avg Value</th>
+                    <th>Min Value</th>
+                    <th>Max Value</th>
+                    <th>Min Acceptable Limits</th>
+                    <th>Max Acceptable Limits</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${Object.entries(waterParameters).map(([param, data]) => `
+                    <tr>
+                        <td>${param}</td>
+                        <td>${data.avg}</td>
+                        <td>${data.min}</td>
+                        <td>${data.max}</td>
+                        <td>${data.minAcceptable}</td>
+                        <td>${data.maxAcceptable}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+};
+
+// Helper to generate combined PDF content
+const generateCombinedPDFContent = (companyName, waterTables, energyData, qualityData) => {
+    const energyTable = energyData.length ? `
+        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Unit</th>
+                    <th>Total</th>
+                    <th>Initial Meter Reading</th>
+                    <th>Final Meter Reading</th>
+                    <th>Difference</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${energyData.map(data => `
+                    <tr>
+                        <td>${data.stackName}</td>
+                        <td>kWh</td>
+                        <td>${data.total}</td>
+                        <td>${data.initialEnergy}</td>
+                        <td>${data.lastEnergy}</td>
+                        <td>${data.energyDifference}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No energy data available.</p>';
+
+    const qualityTable = qualityData.length ? `
+        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quantity Report</h1>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Total</th>
+                    <th>Initial Meter Reading</th>
+                    <th>Final Meter Reading</th>
+                    <th>Difference</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${qualityData.map(data => `
+                    <tr>
+                        <td>${data.stackName}</td>
+                        <td>${data.total}</td>
+                        <td>${data.initialFlow}</td>
+                        <td>${data.lastFlow}</td>
+                        <td>${data.flowDifference}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quantity data available.</p>';
+
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Daily Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
+                .report-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                .report-table th, .report-table td {
+                    border: 1px solid #ddd;
+                    text-align: center;
+                    padding: 8px;
+                }
+                .report-table th {
+                    background-color: #236a80;
+                    color: white;
+                }
+                .report-table tbody tr:nth-child(even) {
+                    background-color: #f2f2f2;
+                }
+                .report-table tbody tr:hover {
+                    background-color: #e0f7fa;
+                }
+            </style>
+        </head>
+        <body>
+            <h1 style="color: #0d47a1; font-size: 2.5rem; text-align: center; margin-bottom: 40px;">Report for ${companyName}</h1>
+            ${waterTables}
+            ${energyTable}
+            ${qualityTable}
+        </body>
+        </html>
+    `;
+};
+
+// Helper to generate a PDF file
+const generatePDF = (htmlContent, filePath) => {
+    return new Promise((resolve, reject) => {
+        pdf.create(htmlContent).toFile(filePath, (err, res) => {
+            if (err) return reject(err);
+            resolve(res.filename);
+        });
+    });
+};
+
+// Generate PDF for a user
+const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
+    if (!stackNames || stackNames.length === 0) {
+        console.warn(`No stack names for user: ${userName}`);
+        return null;
+    }
+
+    try {
+        const waterTables = [];
+        let energyData = [];
+        let qualityData = [];
+
+        // Fetch Energy and Quality data using APIs
+        try {
+            const [consumptionResponse, differenceResponse] = await Promise.allSettled([
+                axios.get(`https://api.ocems.ebhoom.com/api/consumption-today?userName=${userName}`),
+                axios.get(`https://api.ocems.ebhoom.com/api/differenceData/today/${userName}`)
+            ]);
+
+            const consumptionDataDoc = consumptionResponse.status === 'fulfilled' ? consumptionResponse.value.data.data : null;
+            const differenceDataDoc = differenceResponse.status === 'fulfilled' ? differenceResponse.value.data : [];
+
+            energyData = (consumptionDataDoc?.stacks || [])
+                .filter(item => item.stationType === 'energy')
+                .map(item => {
+                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
+                    return {
+                        stackName: item.stackName,
+                        total: item.energyYearlyConsumption || 0,
+                        initialEnergy: difference.initialEnergy || 0,
+                        lastEnergy: difference.lastEnergy || 0,
+                        energyDifference: difference.energyDifference || 0,
+                    };
+                });
+
+            qualityData = (consumptionDataDoc?.stacks || [])
+                .filter(item => item.stationType === 'effluent_flow')
+                .map(item => {
+                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
+                    return {
+                        stackName: item.stackName,
+                        total: item.flowYearlyConsumption || 0,
+                        initialFlow: difference.initialCumulatingFlow || 0,
+                        lastFlow: difference.lastCumulatingFlow || 0,
+                        flowDifference: difference.cumulatingFlowDifference || 0,
+                    };
+                });
+        } catch (error) {
+            console.warn(`Error fetching consumption or difference data for user: ${userName}. Defaulting to empty data.`);
+        }
+
+        // Fetch IoT and calibration data for water tables
+        for (const stack of stackNames) {
+            try {
+                const stackName = stack.name; // Extract stack name
+                const [iotResponse, minMaxResponse, calibrationResponse] = await Promise.allSettled([
+                    axios.get(`https://api.ocems.ebhoom.com/api/averageData/today/${userName}/${stackName}/last`),
+                    axios.get(`https://api.ocems.ebhoom.com/api/minMax/${userName}/stack/${stackName}`),
+                    axios.get(`https://api.ocems.ebhoom.com/api/get-calibration-values-industryType/${industryType}`)
+                ]);
+
+                const iotData = iotResponse.status === 'fulfilled' ? iotResponse.value.data.data : { stackData: [] };
+                const minMaxData = minMaxResponse.status === 'fulfilled' ? minMaxResponse.value.data.data : { minValues: {}, maxValues: {} };
+                const calibrationData = calibrationResponse.status === 'fulfilled' ? calibrationResponse.value.data.IndustryTypCalibrationExceedValues[0] : {};
+
+                const stackData = iotData.stackData.find(s => s.stackName === stackName);
+                if (!stackData) {
+                    console.warn(`No IoT data for stack: ${stackName}. Defaulting to empty data.`);
+                    continue;
+                }
+
+                const waterParameters = Object.keys(stackData.parameters || {}).reduce((result, key) => {
+                    result[key] = {
+                        avg: stackData.parameters[key] || "No data available",
+                        min: minMaxData.minValues?.[key] || "No data available",
+                        max: minMaxData.maxValues?.[key] || "No data available",
+                        minAcceptable: calibrationData?.[`${key}Below`] || "No data available",
+                        maxAcceptable: calibrationData?.[`${key}Above`] || "No data available",
+                    };
+                    return result;
+                }, {});
+
+                waterTables.push(generateWaterTable(stackName, waterParameters));
+            } catch (error) {
+                console.error(`Error processing stack: ${stack.name}. Defaulting to empty data.`, error.message);
+            }
+        }
+
+        const combinedWaterTables = waterTables.length > 0 
+            ? waterTables.join('') 
+            : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
+
+        const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
+
+        const dir = path.join(__dirname, 'PDFs');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+        const filePath = path.join(dir, `${userName}.pdf`);
+        await generatePDF(htmlContent, filePath);
+        console.log(`PDF generated: ${filePath}`);
+        return filePath;
+
+    } catch (error) {
+        console.error(`Error generating PDF for user: ${userName}`, error.message);
+        return null;
+    }
+};
+
+
+
+// Send email with PDFs
+const sendEmail = async (userEmail, pdfFiles) => {
+    try {
+        const attachments = pdfFiles.filter(fs.existsSync).map(file => ({
+            filename: path.basename(file),
+            path: file,
+        }));
+
+        if (attachments.length === 0) {
+            console.warn(`No valid PDF files to send for ${userEmail}`);
+            return;
+        }
+
+        const mailOptions = {
+            from: 'Daily Report <iot@example.com>',
+            to: userEmail,
+            subject: 'Daily Water Quality Report',
+            text: 'Please find attached the daily water quality reports.',
+            attachments,
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Email sent to: ${userEmail}`);
+    } catch (error) {
+        console.error(`Error sending email to ${userEmail}: ${error.message}`);
+    }
+};
+
+// Schedule daily reports
+const scheduleDailyReports = () => {
+    cron.schedule('*/1 * * * *', async () => {
+        try {
+            console.log("Fetching users from API...");
+            const usersResponse = await axios.get('https://api.ocems.ebhoom.com/api/getallusers');
+            const users = usersResponse.data.users;
+
+            for (const user of users) {
+                const { companyName, userName, stackName, industryType, email, userType } = user;
+
+                if (userType === 'admin') {
+                    console.log(`Skipping admin user: ${userName}`);
+                    continue;
+                }
+
+                if (!stackName || stackName.length === 0) {
+                    console.warn(`No stack names found for user: ${userName}. Skipping.`);
+                    continue;
+                }
+
+                try {
+                    console.log(`Generating PDF for user: ${userName}`);
+                    const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
+                    
+                    if (pdfPath) {
+                        console.log(`Sending email to: ${email}`);
+                        await sendEmail(email, [pdfPath]);
+                    } else {
+                        console.warn(`PDF generation failed for user: ${userName}`);
+                    }
+                } catch (error) {
+                    console.error(`Error processing user ${userName}: ${error.message}`);
+                }
+            }
+        } catch (error) {
+            console.error('Error in daily report generation:', error.message);
+        }
+    });
+};
+
+
+module.exports = { scheduleDailyReports };
+
