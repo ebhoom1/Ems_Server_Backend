@@ -7,7 +7,7 @@ const { Parser } = require('json2csv');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const pdf = require('html-pdf');
-
+const puppeteer = require('puppeteer');
 
 // Create Report
 
@@ -428,39 +428,77 @@ const generateHTMLContentForReport = (report) => {
 //Download Report as PDF
 
 // Updated downloadReportAsPDF function
+// const downloadReportAsPDF = async (req, res) => {
+//     try {
+//       const { userId } = req.params;
+//       const report = await Report.findById(userId);
+  
+//       if (!report) {
+//         return res.status(404).json({ message: 'Report not found' });
+//       }
+  
+//       // Generate HTML content for the report
+//       const htmlContent = generateHTMLContentForReport(report);
+  
+//       // Generate PDF from the HTML content
+//       const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
+//       pdf.create(htmlContent, options).toStream((err, stream) => {
+//         if (err) {
+//           console.error('Error generating PDF:', err);
+//           return res.status(500).json({ message: 'Error generating PDF' });
+//         }
+  
+//         res.setHeader('Content-Type', 'application/pdf');
+//         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
+//         stream.pipe(res);
+//       });
+//     } catch (error) {
+//       res.status(500).json({
+//         status: 500,
+//         success: false,
+//         message: 'Error downloading report',
+//         error: error.message,
+//       });
+//     }
+//   };
 const downloadReportAsPDF = async (req, res) => {
     try {
-      const { userId } = req.params;
-      const report = await Report.findById(userId);
-  
-      if (!report) {
-        return res.status(404).json({ message: 'Report not found' });
-      }
-  
-      // Generate HTML content for the report
-      const htmlContent = generateHTMLContentForReport(report);
-  
-      // Generate PDF from the HTML content
-      const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
-      pdf.create(htmlContent, options).toStream((err, stream) => {
-        if (err) {
-          console.error('Error generating PDF:', err);
-          return res.status(500).json({ message: 'Error generating PDF' });
+        const { userId } = req.params;
+        const report = await Report.findById(userId);
+
+        if (!report) {
+            return res.status(404).json({ message: 'Report not found' });
         }
-  
+
+        // Generate HTML content
+        const htmlContent = generateHTMLContentForReport(report);
+
+        // Launch Puppeteer
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+
+        // Set HTML content
+        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+        // Generate PDF
+        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+
+        await browser.close();
+
+        // Send the PDF as a response
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
-        stream.pipe(res);
-      });
+        res.send(pdfBuffer);
     } catch (error) {
-      res.status(500).json({
-        status: 500,
-        success: false,
-        message: 'Error downloading report',
-        error: error.message,
-      });
+        console.error('Error generating PDF:', error);
+        res.status(500).json({
+            status: 500,
+            success: false,
+            message: 'Error downloading report',
+            error: error.message,
+        });
     }
-  };
+};
 
 //Download report as CSV
 
