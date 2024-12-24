@@ -438,40 +438,51 @@ const generateHTMLContentForReport = (report) => {
     //Download Report as PDF
 
 // Updated downloadReportAsPDF function
+// Updated downloadReportAsPDF function using Puppeteer
 const downloadReportAsPDF = async (req, res) => {
     try {
-      const { userId } = req.params;
-      const report = await Report.findById(userId);
-  
-      if (!report) {
-        return res.status(404).json({ message: 'Report not found' });
-      }
-  
-      // Generate HTML content for the report
-      const htmlContent = generateHTMLContentForReport(report);
-  
-      // Generate PDF from the HTML content
-      const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
-      pdf.create(htmlContent, options).toStream((err, stream) => {
-        if (err) {
-            console.error('PDF Generation Error:', err.stack);
-            return res.status(500).json({ message: 'Error generating PDF', error: err.message });
+        const { userId } = req.params;
+        const report = await Report.findById(userId);
+
+        if (!report) {
+            return res.status(404).json({ message: 'Report not found' });
         }
+
+        // Generate HTML content for the report
+        const htmlContent = generateHTMLContentForReport(report);
+
+        // Use Puppeteer to generate the PDF
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        const page = await browser.newPage();
+
+        // Set the HTML content for the page
+        await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+
+        // Generate PDF from the page
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+        });
+
+        await browser.close();
+
+        // Set response headers and send the PDF
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
-        stream.pipe(res);
-    });
-    
-      
+        res.send(pdfBuffer);
     } catch (error) {
-      res.status(500).json({
-        status: 500,
-        success: false,
-        message: 'Error downloading report',
-        error: error.message,
-      });
+        console.error('Error generating PDF:', error);
+        res.status(500).json({
+            status: 500,
+            success: false,
+            message: 'Error downloading report',
+            error: error.message,
+        });
     }
-  };
+};
 
 
 
