@@ -7,6 +7,8 @@ const { Parser } = require('json2csv');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const pdf = require('html-pdf');
+const puppeteer = require('puppeteer');
+
 
 // Create Report
 
@@ -424,10 +426,23 @@ const generateHTMLContentForReport = (report) => {
   };
   
 
-//Download Report as PDF
 
-// Updated downloadReportAsPDF function
-const downloadReportAsPDF = async (req, res) => {
+
+const generatePDFWithPuppeteer = async (htmlContent, res) => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.setContent(htmlContent);
+    const pdfBuffer = await page.pdf({ format: 'A4' });
+  
+    await browser.close();
+  
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=report.pdf`);
+    res.send(pdfBuffer);
+  };
+  
+  // Use in your endpoint
+  const downloadReportAsPDF = async (req, res) => {
     try {
       const { userId } = req.params;
       const report = await Report.findById(userId);
@@ -436,31 +451,13 @@ const downloadReportAsPDF = async (req, res) => {
         return res.status(404).json({ message: 'Report not found' });
       }
   
-      // Generate HTML content for the report
       const htmlContent = generateHTMLContentForReport(report);
-  
-      // Generate PDF from the HTML content
-      const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
-      pdf.create(htmlContent, options).toStream((err, stream) => {
-        if (err) {
-          console.error('Error generating PDF:', err);
-          return res.status(500).json({ message: 'Error generating PDF' });
-        }
-  
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
-        stream.pipe(res);
-      });
+      await generatePDFWithPuppeteer(htmlContent, res);
     } catch (error) {
-      res.status(500).json({
-        status: 500,
-        success: false,
-        message: 'Error downloading report',
-        error: error.message,
-      });
+      console.error('Error generating PDF with Puppeteer:', error);
+      res.status(500).json({ message: 'Error generating PDF', error: error.message });
     }
   };
-
 
 //Download report as CSV
 

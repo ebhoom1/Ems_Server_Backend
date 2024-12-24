@@ -75,3 +75,43 @@
         }
     };
     
+
+
+    ///Report
+
+    //Download Report as PDF
+
+// Updated downloadReportAsPDF function
+// const downloadReportAsPDF = async (req, res) => {
+//     try {
+//       const { userId } = req.params;
+//       const report = await Report.findById(userId);
+  
+//       if (!report) {
+//         return res.status(404).json({ message: 'Report not found' });
+//       }
+  
+//       // Generate HTML content for the report
+//       const htmlContent = generateHTMLContentForReport(report);
+  
+//       // Generate PDF from the HTML content
+//       const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
+//       pdf.create(htmlContent, options).toStream((err, stream) => {
+//         if (err) {
+//           console.error('Error generating PDF:', err);
+//           return res.status(500).json({ message: 'Error generating PDF' });
+//         }
+  
+//         res.setHeader('Content-Type', 'application/pdf');
+//         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
+//         stream.pipe(res);
+//       });
+//     } catch (error) {
+//       res.status(500).json({
+//         status: 500,
+//         success: false,
+//         message: 'Error downloading report',
+//         error: error.message,
+//       });
+//     }
+//   };
