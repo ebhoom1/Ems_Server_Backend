@@ -443,14 +443,14 @@ const downloadReportAsPDF = async (req, res) => {
       const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
       pdf.create(htmlContent, options).toStream((err, stream) => {
         if (err) {
-          console.error('Error generating PDF:', err);
-          return res.status(500).json({ message: 'Error generating PDF' });
+          console.error('Error generating PDF:', err); // Log detailed error
+          return res.status(500).json({ message: 'Error generating PDF', error: err.message });
         }
-  
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
         stream.pipe(res);
       });
+      
     } catch (error) {
       res.status(500).json({
         status: 500,
