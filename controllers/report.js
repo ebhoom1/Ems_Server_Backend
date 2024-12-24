@@ -469,10 +469,12 @@ const downloadReportAsPDF = async (req, res) => {
 
         await browser.close();
 
-        // Set response headers and send the PDF
+        // Set response headers to ensure proper rendering
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
-        res.send(pdfBuffer);
+        res.setHeader('Content-Disposition', `inline; filename=report-${userId}.pdf`);
+
+        // Send the PDF buffer
+        res.end(pdfBuffer);
     } catch (error) {
         console.error('Error generating PDF:', error);
         res.status(500).json({
@@ -483,6 +485,7 @@ const downloadReportAsPDF = async (req, res) => {
         });
     }
 };
+
 
 
 
