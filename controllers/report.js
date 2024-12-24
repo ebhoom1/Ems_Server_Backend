@@ -7,6 +7,17 @@ const { Parser } = require('json2csv');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const pdf = require('html-pdf');
+const puppeteer = require('puppeteer');
+
+const generatePDF = async (htmlContent) => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.setContent(htmlContent);
+    const pdf = await page.pdf({ format: 'A4' });
+    await browser.close();
+    return pdf;
+};
+
 
 
 // Create Report
@@ -443,13 +454,14 @@ const downloadReportAsPDF = async (req, res) => {
       const options = { format: 'A4', orientation: 'portrait', border: '10mm' };
       pdf.create(htmlContent, options).toStream((err, stream) => {
         if (err) {
-          console.error('Error generating PDF:', err); // Log detailed error
-          return res.status(500).json({ message: 'Error generating PDF', error: err.message });
+            console.error('PDF Generation Error:', err.stack);
+            return res.status(500).json({ message: 'Error generating PDF', error: err.message });
         }
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=report-${userId}.pdf`);
         stream.pipe(res);
-      });
+    });
+    
       
     } catch (error) {
       res.status(500).json({
