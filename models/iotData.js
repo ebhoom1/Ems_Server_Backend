@@ -94,6 +94,7 @@ const IotDataSchema = new mongoose.Schema({
     timeIntervalColor: { type: String, },
     exceedanceComment: { type: String, },
     timeIntervalComment: { type: String, },
+    
 });
 
 // Export the models
