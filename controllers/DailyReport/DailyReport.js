@@ -279,11 +279,44 @@ const sendEmail = async (userEmail, pdfFiles) => {
 };
 
 // Schedule daily reports
+// const scheduleDailyReports = () => {
+//     cron.schedule('55 23 * * *', async () => { //55 23
+//         console.log('Cron job triggered at:', new Date());
+//         fs.writeFileSync(path.join(__dirname, 'cron.log'), `Triggered at: ${new Date()}\n`, { flag: 'a' });
+//         try {
+//             const users = await User.find();
+
+//             for (const user of users) {
+//                 const { companyName, userName, stackName, industryType, email, userType } = user;
+
+//                 if (userType === 'admin') {
+//                     console.log(`Skipping admin user: ${userName}`);
+//                     continue;
+//                 }
+
+//                 if (!stackName || stackName.length === 0) {
+//                     console.warn(`No stack names found for user: ${userName}. Skipping.`);
+//                     continue;
+//                 }
+
+//                 const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
+//                 if (pdfPath) await sendEmail(email, [pdfPath]);
+//             }
+//         } catch (error) {
+//             console.error('Error in daily report generation:', error.message);
+//         }
+//     });
+// };
+
+// Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('55 23 * * *', async () => {
+    cron.schedule('0 * * * *', {
+        scheduled: true,
+        timezone: 'Asia/Kolkata', // Set your timezone here
+    }, async () => {
+        console.log('Cron job triggered at:', new Date());
         try {
             const users = await User.find();
-
             for (const user of users) {
                 const { companyName, userName, stackName, industryType, email, userType } = user;
 
