@@ -92,85 +92,6 @@ const sendEmail = async (to, subject, text) => {
     } catch (error) {
         console.error('Error sending email:', error);    }
 }
-
-const addComment = async (req, res) => {
-    try {
-        const { id } = req.params;
-       
-        const updateFields = req.body;
-      
-        if (!updateFields.commentByUser) {
-            updateFields.commentByUser = 'N/A';
-        }
-        if (!updateFields.commentByAdmin) {
-            updateFields.commentByAdmin = 'N/A';
-        }
-    
-        const calibrationExceedcomments = await CalibrationExceed.findByIdAndUpdate(
-            id,
-          { $set: updateFields },
-          { new: true }
-        );
-    
-        if (!calibrationExceedcomments) {
-          return res.status(404).json({ message: 'Calibration Exceed comments not found' });
-        }
-    
-        res.status(200).json({
-          success: true,
-          message: 'Comment added successfully',
-          calibrationExceedcomments
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          message: 'Failed to add comment',
-          error: error.message
-        });
-    }
-}
-
-const editComments = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { commentByUser, commentByAdmin } = req.body;
-        const updateFields = {};
-        if (commentByUser) updateFields.commentByUser = commentByUser;
-        if (commentByAdmin) updateFields.commentByAdmin = commentByAdmin;
-
-        if (!updateFields.commentByUser) {
-            updateFields.commentByUser = 'N/A';
-        }
-        if (!updateFields.commentByAdmin) {
-            updateFields.commentByAdmin = 'N/A';
-        }
-
-        const updateComments = await CalibrationExceed.findByIdAndUpdate(
-            id,
-            { $set: updateFields },
-            { new: true }
-        );
-
-        if (!updateComments) {
-            return res.status(404).json({
-                success: false,
-                message: 'Comment not edited'
-            });
-        }
-        res.status(200).json({
-            success: true,
-            message: 'Comments updated successfully',
-            comments: updateComments
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update the comment',
-            error: error.message
-        });
-    }
-};
-
 // Configure AWS SDK
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -209,6 +130,108 @@ const deleteDataFromS3 = async (key) => {
         throw error;
     }
 };
+
+// Updated addComment function
+const addComment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateFields = req.body;
+
+        if (!updateFields.commentByUser) {
+            updateFields.commentByUser = 'N/A';
+        }
+        if (!updateFields.commentByAdmin) {
+            updateFields.commentByAdmin = 'N/A';
+        }
+
+        // Fetch data from MongoDB
+        let calibrationExceedcomments = await CalibrationExceed.findById(id);
+        if (calibrationExceedcomments) {
+            // Update data in MongoDB
+            calibrationExceedcomments = await CalibrationExceed.findByIdAndUpdate(
+                id,
+                { $set: updateFields },
+                { new: true }
+            );
+        } else {
+            // Fetch data from S3
+            const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json');
+            const itemIndex = s3Data.findIndex((item) => item._id === id);
+
+            if (itemIndex === -1) {
+                return res.status(404).json({ message: 'Calibration Exceed comments not found' });
+            }
+
+            // Update the specific record
+            s3Data[itemIndex] = { ...s3Data[itemIndex], ...updateFields };
+            await updateDataInS3('parameterExceed_data/exceedData.json', s3Data);
+            calibrationExceedcomments = s3Data[itemIndex];
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Comment added successfully',
+            calibrationExceedcomments,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to add comment',
+            error: error.message,
+        });
+    }
+};
+
+// Updated editComments function
+const editComments = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { commentByUser, commentByAdmin } = req.body;
+
+        const updateFields = {
+            commentByUser: commentByUser || 'N/A',
+            commentByAdmin: commentByAdmin || 'N/A',
+        };
+
+        // Fetch data from MongoDB
+        let updateComments = await CalibrationExceed.findById(id);
+        if (updateComments) {
+            // Update data in MongoDB
+            updateComments = await CalibrationExceed.findByIdAndUpdate(
+                id,
+                { $set: updateFields },
+                { new: true }
+            );
+        } else {
+            // Fetch data from S3
+            const s3Data = await fetchExceedDataFromS3('parameterExceed_data/exceedData.json');
+            const itemIndex = s3Data.findIndex((item) => item._id === id);
+
+            if (itemIndex === -1) {
+                return res.status(404).json({ message: 'Comment not found' });
+            }
+
+            // Update the specific record
+            s3Data[itemIndex] = { ...s3Data[itemIndex], ...updateFields };
+            await updateDataInS3('parameterExceed_data/exceedData.json', s3Data);
+            updateComments = s3Data[itemIndex];
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Comments updated successfully',
+            comments: updateComments,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update the comment',
+            error: error.message,
+        });
+    }
+};
+
+
 
 const getAllExceedData = async (req, res) => {
     try {
