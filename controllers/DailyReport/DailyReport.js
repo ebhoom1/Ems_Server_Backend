@@ -308,35 +308,41 @@ const sendEmail = async (userEmail, pdfFiles) => {
 //     });
 // };
 
-// Schedule daily reports
+// Function to handle the cron job task
+const handleCronJob = async () => {
+    console.log('Cron job triggered at:', new Date());
+    try {
+        const users = await User.find();
+        for (const user of users) {
+            const { companyName, userName, stackName, industryType, email, userType } = user;
+
+            if (userType === 'admin') {
+                console.log(`Skipping admin user: ${userName}`);
+                continue;
+            }
+
+            if (!stackName || stackName.length === 0) {
+                console.warn(`No stack names found for user: ${userName}. Skipping.`);
+                continue;
+            }
+
+            const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
+            if (pdfPath) await sendEmail(email, [pdfPath]);
+        }
+    } catch (error) {
+        console.error('Error in daily report generation:', error.message);
+    }
+};
+
+// Schedule the cron job
 const scheduleDailyReports = () => {
-    cron.schedule('0 * * * *', {
+    cron.schedule('0 * * * *', handleCronJob, {
         scheduled: true,
         timezone: 'Asia/Kolkata', // Set your timezone here
-    }, async () => {
-        console.log('Cron job triggered at:', new Date());
-        try {
-            const users = await User.find();
-            for (const user of users) {
-                const { companyName, userName, stackName, industryType, email, userType } = user;
-
-                if (userType === 'admin') {
-                    console.log(`Skipping admin user: ${userName}`);
-                    continue;
-                }
-
-                if (!stackName || stackName.length === 0) {
-                    console.warn(`No stack names found for user: ${userName}. Skipping.`);
-                    continue;
-                }
-
-                const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
-                if (pdfPath) await sendEmail(email, [pdfPath]);
-            }
-        } catch (error) {
-            console.error('Error in daily report generation:', error.message);
-        }
     });
 };
 
 module.exports = { scheduleDailyReports };
+
+
+// module.exports = { scheduleDailyReports };
