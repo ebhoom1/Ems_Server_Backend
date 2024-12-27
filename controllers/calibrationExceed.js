@@ -131,18 +131,31 @@ const deleteDataFromS3 = async (key) => {
     }
 };
 
+const updateDataInS3 = async (key, updatedData) => {
+    const params = {
+        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Key: key,
+        Body: JSON.stringify(updatedData, null, 2),
+        ContentType: 'application/json',
+    };
+
+    try {
+        await s3.upload(params).promise();
+        console.log('Updated data uploaded to S3 successfully');
+    } catch (error) {
+        console.error('Error updating data in S3:', error);
+        throw error;
+    }
+};
+
 // Updated addComment function
 const addComment = async (req, res) => {
     try {
         const { id } = req.params;
         const updateFields = req.body;
 
-        if (!updateFields.commentByUser) {
-            updateFields.commentByUser = 'N/A';
-        }
-        if (!updateFields.commentByAdmin) {
-            updateFields.commentByAdmin = 'N/A';
-        }
+        updateFields.commentByUser = updateFields.commentByUser || 'N/A';
+        updateFields.commentByAdmin = updateFields.commentByAdmin || 'N/A';
 
         // Fetch data from MongoDB
         let calibrationExceedcomments = await CalibrationExceed.findById(id);
@@ -159,10 +172,10 @@ const addComment = async (req, res) => {
             const itemIndex = s3Data.findIndex((item) => item._id === id);
 
             if (itemIndex === -1) {
-                return res.status(404).json({ message: 'Calibration Exceed comments not found' });
+                return res.status(404).json({ message: 'Calibration Exceed comments not found in S3 or MongoDB' });
             }
 
-            // Update the specific record
+            // Update the specific record in S3
             s3Data[itemIndex] = { ...s3Data[itemIndex], ...updateFields };
             await updateDataInS3('parameterExceed_data/exceedData.json', s3Data);
             calibrationExceedcomments = s3Data[itemIndex];
@@ -174,6 +187,7 @@ const addComment = async (req, res) => {
             calibrationExceedcomments,
         });
     } catch (error) {
+        console.error('Error in addComment:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to add comment',
@@ -186,11 +200,9 @@ const addComment = async (req, res) => {
 const editComments = async (req, res) => {
     try {
         const { id } = req.params;
-        const { commentByUser, commentByAdmin } = req.body;
-
         const updateFields = {
-            commentByUser: commentByUser || 'N/A',
-            commentByAdmin: commentByAdmin || 'N/A',
+            commentByUser: req.body.commentByUser || 'N/A',
+            commentByAdmin: req.body.commentByAdmin || 'N/A',
         };
 
         // Fetch data from MongoDB
@@ -208,10 +220,10 @@ const editComments = async (req, res) => {
             const itemIndex = s3Data.findIndex((item) => item._id === id);
 
             if (itemIndex === -1) {
-                return res.status(404).json({ message: 'Comment not found' });
+                return res.status(404).json({ message: 'Comment not found in S3 or MongoDB' });
             }
 
-            // Update the specific record
+            // Update the specific record in S3
             s3Data[itemIndex] = { ...s3Data[itemIndex], ...updateFields };
             await updateDataInS3('parameterExceed_data/exceedData.json', s3Data);
             updateComments = s3Data[itemIndex];
@@ -223,6 +235,7 @@ const editComments = async (req, res) => {
             comments: updateComments,
         });
     } catch (error) {
+        console.error('Error in editComments:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to update the comment',
@@ -230,6 +243,8 @@ const editComments = async (req, res) => {
         });
     }
 };
+
+
 
 
 
