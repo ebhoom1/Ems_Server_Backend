@@ -388,7 +388,7 @@ const handleCronJob = async () => {
 
 // Schedule the cron job
 const scheduleDailyReports = () => {
-    cron.schedule('*/5 * * * *', handleCronJob, { //5 1 * * *
+    cron.schedule('5 1 * * *', handleCronJob, { //5 1 * * *
         scheduled: true,
         timezone: 'Asia/Kolkata', // Set your timezone here
     });
