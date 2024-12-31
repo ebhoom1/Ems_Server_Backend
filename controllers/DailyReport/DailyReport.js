@@ -318,8 +318,8 @@ const sendEmail = async (userEmail, pdfFiles) => {
         const mailOptions = {
             from: 'Daily Report <iot@example.com>',
             to: userEmail,
-            subject: 'Daily Water Quality Report',
-            text: 'Please find attached the daily water quality reports.',
+            subject: 'Daily Report',
+            text: 'Please find attached of the daily  reports.',
             attachments,
         };
 
