@@ -183,94 +183,6 @@ const generatePDF = async (htmlContent, filePath) => {
 };
 
 // Generate PDF for a user
-// const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
-//     if (!stackNames || stackNames.length === 0) {
-//         console.warn(`No stack names for user: ${userName}`);
-//         return null;
-//     }
-
-//     try {
-//         const waterTables = [];
-//         let energyData = [];
-//         let qualityData = [];
-
-//         // Fetch Energy and Quality data
-//         const consumptionDataDoc = await ConsumptionData.findOne({ userName }).sort({ createdAt: -1 });
-//         const differenceDataDoc = await DifferenceData.find({ userName }).sort({createdAt: -1});
-
-//         if (consumptionDataDoc) {
-//             energyData = consumptionDataDoc.totalConsumptionData
-//                 .filter(item => item.stationType === 'energy')
-//                 .map(item => {
-//                     const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
-//                     return {
-//                         stackName: item.stackName,
-//                         total: item.energy || 0,
-//                         initialEnergy: difference.initialEnergy || 0,
-//                         lastEnergy: difference.lastEnergy || 0,
-//                         energyDifference: difference.energyDifference || 0,
-//                     };
-//                 });
-
-//             qualityData = consumptionDataDoc.totalConsumptionData
-//                 .filter(item => item.stationType === 'effluent_flow')
-//                 .map(item => {
-//                     const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
-//                     return {
-//                         stackName: item.stackName,
-//                         total: item.finalflow || 0,
-//                         initialFlow: difference.initialCumulatingFlow || 0,
-//                         lastFlow: difference.lastCumulatingFlow || 0,
-//                         flowDifference: difference.cumulatingFlowDifference || 0,
-//                     };
-//                 });
-//         }
-
-//         // Generate Water Quality tables for each stack excluding energy and effluent_flow types
-//         for (const stackName of stackNames) {
-//             const iotDataDoc = await IotData.findOne({ userName, 'stackData.stackName': stackName.name }).sort({ createdAt: -1 });
-//             const minMaxDataDoc = await MaxMinData.findOne({ userName, stackName: stackName.name }).sort({ createdAt: -1 });
-//             const calibrationDataDoc = await calibrationExceedValues.findOne({ industryType }).sort({ createdAt: -1 });
-
-//             if (!iotDataDoc || !iotDataDoc.stackData) continue;
-
-//             const stack = iotDataDoc.stackData.find(s => s.stackName === stackName.name && s.stationType !== 'energy' && s.stationType !== 'effluent_flow');
-//             if (!stack) continue;
-
-//             const waterParameters = Object.keys(stack.toObject()).reduce((result, key) => {
-//                 if (key !== '_id' && key !== 'stackName' && key !== 'stationType') {
-//                     result[key] = {
-//                         avg: stack[key] || 0,
-//                         min: minMaxDataDoc?.minValues?.[key] || 0,
-//                         max: minMaxDataDoc?.maxValues?.[key] || 0,
-//                         minAcceptable: key === 'ph' ? calibrationDataDoc?.phBelow || 0 : 0,
-//                         maxAcceptable: calibrationDataDoc?.[key] || calibrationDataDoc?.phAbove || 0,
-//                     };
-//                 }
-//                 return result;
-//             }, {});
-
-//             waterTables.push(generateWaterTable(stackName.name, waterParameters));
-//         }
-
-//         const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
-
-//         const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
-
-//         const dir = path.join(__dirname, 'PDFs');
-//         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-//         const filePath = path.join(dir, `${userName}.pdf`);
-//         await generatePDF(htmlContent, filePath);
-//         console.log(`PDF generated: ${filePath}`);
-//         return filePath;
-
-//     } catch (error) {
-//         console.error(`Error generating PDF for user: ${userName}: ${error.message}`);
-//         return null;
-//     }
-// };
-
 const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
     if (!stackNames || stackNames.length === 0) {
         console.warn(`No stack names for user: ${userName}`);
@@ -282,16 +194,74 @@ const generatePDFForUser = async (companyName, userName, stackNames, industryTyp
         let energyData = [];
         let qualityData = [];
 
-        // Fetch data logic remains the same...
+        // Fetch Energy and Quality data
+        const consumptionDataDoc = await ConsumptionData.findOne({ userName }).sort({ createdAt: -1 });
+        const differenceDataDoc = await DifferenceData.find({ userName }).sort({createdAt: -1});
+
+        if (consumptionDataDoc) {
+            energyData = consumptionDataDoc.totalConsumptionData
+                .filter(item => item.stationType === 'energy')
+                .map(item => {
+                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
+                    return {
+                        stackName: item.stackName,
+                        total: item.energy || 0,
+                        initialEnergy: difference.initialEnergy || 0,
+                        lastEnergy: difference.lastEnergy || 0,
+                        energyDifference: difference.energyDifference || 0,
+                    };
+                });
+
+            qualityData = consumptionDataDoc.totalConsumptionData
+                .filter(item => item.stationType === 'effluent_flow')
+                .map(item => {
+                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
+                    return {
+                        stackName: item.stackName,
+                        total: item.finalflow || 0,
+                        initialFlow: difference.initialCumulatingFlow || 0,
+                        lastFlow: difference.lastCumulatingFlow || 0,
+                        flowDifference: difference.cumulatingFlowDifference || 0,
+                    };
+                });
+        }
+
+        // Generate Water Quality tables for each stack excluding energy and effluent_flow types
+        for (const stackName of stackNames) {
+            const iotDataDoc = await IotData.findOne({ userName, 'stackData.stackName': stackName.name }).sort({ createdAt: -1 });
+            const minMaxDataDoc = await MaxMinData.findOne({ userName, stackName: stackName.name }).sort({ createdAt: -1 });
+            const calibrationDataDoc = await calibrationExceedValues.findOne({ industryType }).sort({ createdAt: -1 });
+
+            if (!iotDataDoc || !iotDataDoc.stackData) continue;
+
+            const stack = iotDataDoc.stackData.find(s => s.stackName === stackName.name && s.stationType !== 'energy' && s.stationType !== 'effluent_flow');
+            if (!stack) continue;
+
+            const waterParameters = Object.keys(stack.toObject()).reduce((result, key) => {
+                if (key !== '_id' && key !== 'stackName' && key !== 'stationType') {
+                    result[key] = {
+                        avg: stack[key] || 0,
+                        min: minMaxDataDoc?.minValues?.[key] || 0,
+                        max: minMaxDataDoc?.maxValues?.[key] || 0,
+                        minAcceptable: key === 'ph' ? calibrationDataDoc?.phBelow || 0 : 0,
+                        maxAcceptable: calibrationDataDoc?.[key] || calibrationDataDoc?.phAbove || 0,
+                    };
+                }
+                return result;
+            }, {});
+
+            waterTables.push(generateWaterTable(stackName.name, waterParameters));
+        }
 
         const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
+
         const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
 
         const dir = path.join(__dirname, 'PDFs');
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
         const filePath = path.join(dir, `${userName}.pdf`);
-        await generatePDF(htmlContent, filePath); // Updated function call
+        await generatePDF(htmlContent, filePath);
         console.log(`PDF generated: ${filePath}`);
         return filePath;
 
@@ -300,6 +270,36 @@ const generatePDFForUser = async (companyName, userName, stackNames, industryTyp
         return null;
     }
 };
+
+// const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
+//     if (!stackNames || stackNames.length === 0) {
+//         console.warn(`No stack names for user: ${userName}`);
+//         return null;
+//     }
+
+//     try {
+//         const waterTables = [];
+//         let energyData = [];
+//         let qualityData = [];
+
+//         // Fetch data logic remains the same...
+
+//         const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
+//         const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
+
+//         const dir = path.join(__dirname, 'PDFs');
+//         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+//         const filePath = path.join(dir, `${userName}.pdf`);
+//         await generatePDF(htmlContent, filePath); // Updated function call
+//         console.log(`PDF generated: ${filePath}`);
+//         return filePath;
+
+//     } catch (error) {
+//         console.error(`Error generating PDF for user: ${userName}: ${error.message}`);
+//         return null;
+//     }
+// };
 
 
 // Send email with PDFs
