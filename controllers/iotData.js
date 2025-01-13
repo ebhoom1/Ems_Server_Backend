@@ -127,7 +127,10 @@ const checkTimeInterval = async (data, user) => {
         if (!requiredFieldsCheck.success) {
             return res.status(400).json(requiredFieldsCheck);
         }
-    
+    // Log data only for user KSPCB002
+    if (data.userName === 'KSPCB002') {
+        console.log('Received data for KSPCB002:', data);
+    }
         const stacks = data.stacks || data.stackData;
         if (!Array.isArray(stacks) || stacks.length === 0) {
             return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
