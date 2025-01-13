@@ -185,9 +185,14 @@ const checkTimeInterval = async (data, user) => {
     
         // Save to database and update max/min values
         try {
+            if (data.userName === 'KSPCB002') {
+                console.log('Preparing to save data for KSPCB002:', newEntryData);
+            }
             const newEntry = new IotData(newEntryData);
             await newEntry.save();
-    
+            if (data.userName === 'KSPCB002') {
+                console.log('Data saved successfully for KSPCB002');
+            }
             // Update max and min values for stack data
             await updateMaxMinValues(newEntryData);
     
