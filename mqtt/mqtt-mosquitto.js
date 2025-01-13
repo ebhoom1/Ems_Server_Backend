@@ -50,7 +50,7 @@ const setupMqttClient = (io) => {
     client.on('message', async (topic, message) => {
         try {
             const messageString = message.toString();
-             console.log(`Message received on topic '${topic}':`, messageString);
+             //console.log(`Message received on topic '${topic}':`, messageString);
 
             let data;
             try {
