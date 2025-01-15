@@ -30,7 +30,7 @@ const liveStationRoutes = require('./routers/liveStationRoutes');
 const logoRouter = require('./routers/logoRouter');
 const maxMinRoutes = require('./routers/maxMinRoutes');
 const avoidUsersRoutes = require('./routers/avoidUsers');
-
+const wasteRoutes = require('./routers/wasteRouter');
 
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
@@ -52,7 +52,7 @@ const {setupCronJobConsumption}= require('./controllers/consumption');
 const {setupCronJobPrediction} = require('./controllers/PredictionOfConsumption');
 const {scheduleDifferenceCalculation } = require('./controllers/differenceData');
 const {setupCronJobBillDelete} = require('./controllers/BillController');
-const {setupCronJobTotalSummaryS3} = require('./controllers/TotalConsumptionSummaryController')
+const {setupCronJobTotalSummaryS3} = require('./controllers/TotalConsumptionSummaryController');
 
 // S3 bucket data 
 const {setupCronJobS3} = require('./S3Bucket/s3IotData')
@@ -143,6 +143,7 @@ app.use('/api', logoRouter);
 app.use('/api', maxMinRoutes);
 
 app.use('/api', avoidUsersRoutes);
+app.use('/api', wasteRoutes);
 
 
 
