@@ -128,7 +128,7 @@ const checkTimeInterval = async (data, user) => {
             return res.status(400).json(requiredFieldsCheck);
         }
     // Log data only for user KSPCB002
-    if (data.userName === 'KSPCB002') {
+    if (data.userName === 'KSPCB013') {
         console.log('Received data for KSPCB002:', data);
     }
         const stacks = data.stacks || data.stackData;
@@ -185,13 +185,13 @@ const checkTimeInterval = async (data, user) => {
     
         // Save to database and update max/min values
         try {
-            if (data.userName === 'KSPCB002') {
-                console.log('Preparing to save data for KSPCB002:', newEntryData);
+            if (data.userName === 'KSPCB013') {
+                console.log('Preparing to save data for KSPCB013:', newEntryData);
             }
             const newEntry = new IotData(newEntryData);
             await newEntry.save();
-            if (data.userName === 'KSPCB002') {
-                console.log('Data saved successfully for KSPCB002');
+            if (data.userName === 'KSPCB013') {
+                console.log('Data saved successfully for KSPCB013');
             }
             // Update max and min values for stack data
             await updateMaxMinValues(newEntryData);
