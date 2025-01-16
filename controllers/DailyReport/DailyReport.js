@@ -3,15 +3,13 @@ const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
-const User = require('../../models/user');
-const averageData = require('../../models/averageData');
+const AWS = require('aws-sdk');
+const puppeteer = require('puppeteer');
 const calibrationExceedValues = require('../../models/calibrationExceedValues');
 const MaxMinData = require('../../models/MaxMinData');
-const IotData = require('../../models/iotData');
-const pdf = require('html-pdf');
 const ConsumptionData = require('../../models/ConsumptionData');
 const DifferenceData = require('../../models/differeneceData');
-const puppeteer = require('puppeteer');
+const User = require('../../models/user');
 
 // Nodemailer configuration
 const transporter = nodemailer.createTransport({
@@ -24,11 +22,66 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// Helper to generate water quality table
-// Helper to generate water quality table
-const generateWaterTable = (stackName, waterParameters) => {
+// AWS SDK configuration
+AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+});
+
+const s3 = new AWS.S3();
+
+// Fetch the last average data for each stack from S3
+const fetchLastAverageDataFromS3 = async () => {
+    try {
+        const params = {
+            Bucket: 'ems-ebhoom-bucket',
+            Key: 'average_data/averageData.json',
+        };
+        const data = await s3.getObject(params).promise();
+        const allData = JSON.parse(data.Body.toString('utf-8'));
+
+        // Extract only the last entered data for each user and stack
+        const latestData = {};
+        allData.forEach(entry => {
+            entry.stackData.forEach(stack => {
+                const key = `${entry.userName}_${stack.stackName}`;
+                if (!latestData[key] || new Date(entry.timestamp.$date) > new Date(latestData[key].timestamp.$date)) {
+                    latestData[key] = { ...entry, stackData: [stack] };
+                }
+            });
+        });
+
+        return Object.values(latestData);
+    } catch (error) {
+        console.error('Error fetching average data from S3:', error);
+        throw error;
+    }
+};
+
+// Generate water table
+const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
+    const rows = Object.entries(parameters).map(([param, value]) => {
+        const minValue = maxMinData?.minValues?.[param] || 'nil';
+        const maxValue = maxMinData?.maxValues?.[param] || 'nil';
+        const minAcceptable = exceedance?.[`${param}Min`] || 'Not Added';
+        const maxAcceptable = exceedance?.[`${param}Max`] || 'Not Added';
+        const exceedanceValue = exceedance?.[param] || 'Not Added';
+
+        return `
+        <tr>
+            <td>${param}</td>
+            <td>${value || 0}</td>
+            <td>${minValue}</td>
+            <td>${maxValue}</td>
+            <td>${minAcceptable}</td>
+            <td>${maxAcceptable}</td>
+            <td>${exceedanceValue}</td>
+        </tr>`;
+    }).join('');
+
     return `
-        <h2 style="color: #236a80; font-size: 1.5rem; text-align: left; margin-top: 20px; border-bottom: 2px solid #ddd;">Quality Report for Station: ${stackName}</h2>
+        <h2 style="color: #236a80; font-size: 1.5rem;">Quality Report for Station: ${stackName}</h2>
         <table class="report-table">
             <thead>
                 <tr>
@@ -38,91 +91,110 @@ const generateWaterTable = (stackName, waterParameters) => {
                     <th>Max Value</th>
                     <th>Min Acceptable Limits</th>
                     <th>Max Acceptable Limits</th>
+                    <th>Exceedance</th>
                 </tr>
             </thead>
-            <tbody>
-                ${Object.entries(waterParameters).map(([param, data]) => `
-                    <tr>
-                        <td>${param}</td>
-                        <td>${data.avg}</td>
-                        <td>${data.min}</td>
-                        <td>${data.max}</td>
-                        <td>${data.minAcceptable}</td>
-                        <td>${data.maxAcceptable}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
+            <tbody>${rows}</tbody>
+        </table>`;
 };
 
-// Helper to generate combined PDF content
-const generateCombinedPDFContent = (companyName, waterTables, energyData, qualityData) => {
-    const energyTable = energyData.length ? `
-        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Unit</th>
-                    <th>Total</th>
-                    <th>Initial Meter Reading</th>
-                    <th>Final Meter Reading</th>
-                    <th>Difference</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${energyData.map(data => `
-                    <tr>
-                        <td>${data.stackName}</td>
-                        <td>${data.total}</td>
-                        <td>${data.initialEnergy}</td>
-                        <td>${data.lastEnergy}</td>
-                        <td>${data.energyDifference}</td>
-                        <td>kWh</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No energy data available.</p>';
+// Generate energy and flow tables
+const generateEnergyAndFlowTables = async (userName) => {
+    const consumptionData = await ConsumptionData.findOne({ userName }).sort({ createdAt: -1 });
+    const differenceData = await DifferenceData.find({ userName }).sort({ createdAt: -1 });
 
-    const qualityTable = qualityData.length ? `
-        <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quality Report</h1>
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Total</th>
-                    <th>Initial Meter Reading</th>
-                    <th>Final Meter Reading</th>
-                    <th>Difference</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${qualityData.map(data => `
+    let energyTable = '<p>No energy data available.</p>';
+    let flowTable = '<p>No flow data available.</p>';
+
+    if (consumptionData) {
+        const energyData = consumptionData.totalConsumptionData.filter(item => item.stationType === 'energy').map(item => {
+            const difference = differenceData.find(d => d.stackName === item.stackName) || {};
+            return {
+                stackName: item.stackName,
+                total: item.energy || 0,
+                initialEnergy: difference.initialEnergy || 'nil',
+                lastEnergy: difference.lastEnergy || 'nil',
+                energyDifference: difference.energyDifference || 'nil',
+            };
+        });
+
+        energyTable = `
+            <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
+            <table class="report-table">
+                <thead>
                     <tr>
-                        <td>${data.stackName}</td>
-                        <td>${data.total}</td>
-                        <td>${data.initialFlow}</td>
-                        <td>${data.lastFlow}</td>
-                        <td>${data.flowDifference}</td>
+                        <th>Station</th>
+                        <th>Total Consumption</th>
+                        <th>Initial Reading</th>
+                        <th>Final Reading</th>
+                        <th>Difference</th>
                     </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    ` : '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quanitity data available.</p>';
+                </thead>
+                <tbody>
+                    ${energyData.map(data => `
+                        <tr>
+                            <td>${data.stackName}</td>
+                            <td>${data.total}</td>
+                            <td>${data.initialEnergy}</td>
+                            <td>${data.lastEnergy}</td>
+                            <td>${data.energyDifference}</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`;
+
+        const flowData = consumptionData.totalConsumptionData.filter(item => item.stationType === 'effluent_flow').map(item => {
+            const difference = differenceData.find(d => d.stackName === item.stackName) || {};
+            return {
+                stackName: item.stackName,
+                total: item.finalflow || 0,
+                initialFlow: difference.initialCumulatingFlow || 'nil',
+                lastFlow: difference.lastCumulatingFlow || 'nil',
+                flowDifference: difference.cumulatingFlowDifference || 'nil',
+            };
+        });
+
+        flowTable = `
+            <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Flow Report</h1>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Station</th>
+                        <th>Total Flow</th>
+                        <th>Initial Reading</th>
+                        <th>Final Reading</th>
+                        <th>Difference</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${flowData.map(data => `
+                        <tr>
+                            <td>${data.stackName}</td>
+                            <td>${data.total}</td>
+                            <td>${data.initialFlow}</td>
+                            <td>${data.lastFlow}</td>
+                            <td>${data.flowDifference}</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`;
+    }
+
+    return { energyTable, flowTable };
+};
+
+// Generate combined PDF content
+const generateCombinedPDFContent = async (companyName, waterTables, userName) => {
+    const { energyTable, flowTable } = await generateEnergyAndFlowTables(userName);
 
     return `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Combined Report</title>
             <style>
-                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
+                body { font-family: Arial, sans-serif; margin: 20px; }
                 .report-table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin: 20px 0;
+                    margin-top: 20px;
                 }
                 .report-table th, .report-table td {
                     border: 1px solid #ddd;
@@ -133,269 +205,99 @@ const generateCombinedPDFContent = (companyName, waterTables, energyData, qualit
                     background-color: #236a80;
                     color: white;
                 }
-                .report-table tbody tr:nth-child(even) {
-                    background-color: #f2f2f2;
-                }
-                .report-table tbody tr:hover {
-                    background-color: #e0f7fa;
-                }
             </style>
         </head>
         <body>
-            <h1 style="color: #0d47a1; font-size: 2.5rem; text-align: center; margin-bottom: 40px;">Report for ${companyName}</h1>
+            <h1 style="text-align: center; color: #0d47a1;">Report for ${companyName}</h1>
             ${waterTables}
             ${energyTable}
-            ${qualityTable}
+            ${flowTable}
         </body>
-        </html>
-    `;
+        </html>`;
 };
 
-
-// Helper to generate a PDF file
-// const generatePDF = (htmlContent, filePath) => {
-//     return new Promise((resolve, reject) => {
-//         pdf.create(htmlContent).toFile(filePath, (err, res) => {
-//             if (err) return reject(err);
-//             resolve(res.filename);
-//         });
-//     });
-// };
-
-// Helper to generate a PDF file
+// Generate PDF
 const generatePDF = async (htmlContent, filePath) => {
     try {
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'], // Essential for running Puppeteer in deployed environments
-        });
+        const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
         await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-        
         await page.pdf({ path: filePath, format: 'A4', printBackground: true });
         await browser.close();
-        console.log(`PDF generated successfully at: ${filePath}`);
+        console.log(`PDF generated: ${filePath}`);
         return filePath;
     } catch (error) {
-        console.error(`Error generating PDF: ${error.message}`);
+        console.error('Error generating PDF:', error);
         throw error;
     }
 };
 
-// Generate PDF for a user
-const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
-    if (!stackNames || stackNames.length === 0) {
-        console.warn(`No stack names for user: ${userName}`);
-        return null;
-    }
-
+// Generate and send report
+const generateAndSendReport = async (user) => {
     try {
-        const waterTables = [];
-        let energyData = [];
-        let qualityData = [];
+        const { companyName, email, userName } = user;
+        const averageData = await fetchLastAverageDataFromS3();
+        const userAverageData = averageData.filter(entry => entry.userName === userName);
 
-        // Fetch Energy and Quality data
-        const consumptionDataDoc = await ConsumptionData.findOne({ userName }).sort({ createdAt: -1 });
-        const differenceDataDoc = await DifferenceData.find({ userName }).sort({createdAt: -1});
-
-        if (consumptionDataDoc) {
-            energyData = consumptionDataDoc.totalConsumptionData
-                .filter(item => item.stationType === 'energy')
-                .map(item => {
-                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
-                    return {
-                        stackName: item.stackName,
-                        total: item.energy || 0,
-                        initialEnergy: difference.initialEnergy || 0,
-                        lastEnergy: difference.lastEnergy || 0,
-                        energyDifference: difference.energyDifference || 0,
-                    };
-                });
-
-            qualityData = consumptionDataDoc.totalConsumptionData
-                .filter(item => item.stationType === 'effluent_flow')
-                .map(item => {
-                    const difference = differenceDataDoc.find(d => d.stackName === item.stackName) || {};
-                    return {
-                        stackName: item.stackName,
-                        total: item.finalflow || 0,
-                        initialFlow: difference.initialCumulatingFlow || 0,
-                        lastFlow: difference.lastCumulatingFlow || 0,
-                        flowDifference: difference.cumulatingFlowDifference || 0,
-                    };
-                });
-        }
-
-        // Generate Water Quality tables for each stack excluding energy and effluent_flow types
-        for (const stackName of stackNames) {
-            const iotDataDoc = await IotData.findOne({ userName, 'stackData.stackName': stackName.name }).sort({ createdAt: -1 });
-            const minMaxDataDoc = await MaxMinData.findOne({ userName, stackName: stackName.name }).sort({ createdAt: -1 });
-            const calibrationDataDoc = await calibrationExceedValues.findOne({ industryType }).sort({ createdAt: -1 });
-
-            if (!iotDataDoc || !iotDataDoc.stackData) continue;
-
-            const stack = iotDataDoc.stackData.find(s => s.stackName === stackName.name && s.stationType !== 'energy' && s.stationType !== 'effluent_flow');
-            if (!stack) continue;
-
-            const waterParameters = Object.keys(stack.toObject()).reduce((result, key) => {
-                if (key !== '_id' && key !== 'stackName' && key !== 'stationType') {
-                    result[key] = {
-                        avg: stack[key] || 0,
-                        min: minMaxDataDoc?.minValues?.[key] || 0,
-                        max: minMaxDataDoc?.maxValues?.[key] || 0,
-                        minAcceptable: key === 'ph' ? calibrationDataDoc?.phBelow || 0 : 0,
-                        maxAcceptable: calibrationDataDoc?.[key] || calibrationDataDoc?.phAbove || 0,
-                    };
-                }
-                return result;
-            }, {});
-
-            waterTables.push(generateWaterTable(stackName.name, waterParameters));
-        }
-
-        const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
-
-        const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
-
-        const dir = path.join(__dirname, 'PDFs');
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-        const filePath = path.join(dir, `${userName}.pdf`);
-        await generatePDF(htmlContent, filePath);
-        console.log(`PDF generated: ${filePath}`);
-        return filePath;
-
-    } catch (error) {
-        console.error(`Error generating PDF for user: ${userName}: ${error.message}`);
-        return null;
-    }
-};
-
-// const generatePDFForUser = async (companyName, userName, stackNames, industryType) => {
-//     if (!stackNames || stackNames.length === 0) {
-//         console.warn(`No stack names for user: ${userName}`);
-//         return null;
-//     }
-
-//     try {
-//         const waterTables = [];
-//         let energyData = [];
-//         let qualityData = [];
-
-//         // Fetch data logic remains the same...
-
-//         const combinedWaterTables = waterTables.join('') || '<p style="color: #ff6f61; text-align: center; font-size: 1.2rem; margin-top: 20px;">No quality data available.</p>';
-//         const htmlContent = generateCombinedPDFContent(companyName, combinedWaterTables, energyData, qualityData);
-
-//         const dir = path.join(__dirname, 'PDFs');
-//         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-//         const filePath = path.join(dir, `${userName}.pdf`);
-//         await generatePDF(htmlContent, filePath); // Updated function call
-//         console.log(`PDF generated: ${filePath}`);
-//         return filePath;
-
-//     } catch (error) {
-//         console.error(`Error generating PDF for user: ${userName}: ${error.message}`);
-//         return null;
-//     }
-// };
-
-
-// Send email with PDFs
-const sendEmail = async (userEmail, pdfFiles) => {
-    try {
-        const attachments = pdfFiles.filter(fs.existsSync).map(file => ({
-            filename: path.basename(file),
-            path: file,
-        }));
-
-        if (attachments.length === 0) {
-            console.warn(`No valid PDF files to send for ${userEmail}`);
+        if (!userAverageData.length) {
+            console.warn(`No average data found for user: ${userName}`);
             return;
         }
 
+        const waterTables = await Promise.all(userAverageData.map(async entry => {
+            return Promise.all(entry.stackData.map(async stack => {
+                const maxMinData = await MaxMinData.findOne({ userName, stackName: stack.stackName }).sort({ createdAt: -1 });
+                const exceedance = await calibrationExceedValues.findOne({ userName }).lean();
+
+                return generateWaterTable(stack.stackName, stack.parameters, exceedance, maxMinData);
+            }));
+        }));
+
+        const combinedWaterTables = waterTables.flat().join('');
+        const htmlContent = await generateCombinedPDFContent(companyName, combinedWaterTables, userName);
+
+        const dir = path.join(__dirname, 'PDFs');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+
+        const filePath = path.join(dir, `${userName}.pdf`);
+        await generatePDF(htmlContent, filePath);
+
+        await sendEmail(email, filePath);
+    } catch (error) {
+        console.error('Error generating or sending report:', error);
+    }
+};
+
+// Send email with the generated PDF
+const sendEmail = async (email, pdfPath) => {
+    try {
         const mailOptions = {
             from: 'Daily Report <iot@example.com>',
-            to: userEmail,
+            to: email,
             subject: 'Daily Report',
-            text: 'Please find attached of the daily  reports.',
-            attachments,
+            text: 'Please find attached the daily report.',
+            attachments: [{ filename: path.basename(pdfPath), path: pdfPath }],
         };
-
         await transporter.sendMail(mailOptions);
-        console.log(`Email sent to: ${userEmail}`);
+        console.log(`Email sent to: ${email}`);
     } catch (error) {
-        console.error(`Error sending email to ${userEmail}: ${error.message}`);
+        console.error(`Error sending email to ${email}:`, error);
     }
 };
 
 // Schedule daily reports
-// const scheduleDailyReports = () => {
-//     cron.schedule('55 23 * * *', async () => { //55 23
-//         console.log('Cron job triggered at:', new Date());
-//         fs.writeFileSync(path.join(__dirname, 'cron.log'), `Triggered at: ${new Date()}\n`, { flag: 'a' });
-//         try {
-//             const users = await User.find();
-
-//             for (const user of users) {
-//                 const { companyName, userName, stackName, industryType, email, userType } = user;
-
-//                 if (userType === 'admin') {
-//                     console.log(`Skipping admin user: ${userName}`);
-//                     continue;
-//                 }
-
-//                 if (!stackName || stackName.length === 0) {
-//                     console.warn(`No stack names found for user: ${userName}. Skipping.`);
-//                     continue;
-//                 }
-
-//                 const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
-//                 if (pdfPath) await sendEmail(email, [pdfPath]);
-//             }
-//         } catch (error) {
-//             console.error('Error in daily report generation:', error.message);
-//         }
-//     });
-// };
-
-// Function to handle the cron job task
-const handleCronJob = async () => {
-    console.log('Cron job triggered at:', new Date());
-    try {
-        const users = await User.find();
-        for (const user of users) {
-            const { companyName, userName, stackName, industryType, email, userType } = user;
-
-            if (userType === 'admin') {
-                console.log(`Skipping admin user: ${userName}`);
-                continue;
-            }
-
-            if (!stackName || stackName.length === 0) {
-                console.warn(`No stack names found for user: ${userName}. Skipping.`);
-                continue;
-            }
-
-            const pdfPath = await generatePDFForUser(companyName, userName, stackName, industryType);
-            if (pdfPath) await sendEmail(email, [pdfPath]);
-        }
-    } catch (error) {
-        console.error('Error in daily report generation:', error.message);
-    }
-};
-
-// Schedule the cron job
 const scheduleDailyReports = () => {
-    cron.schedule('5 1 * * *', handleCronJob, { //5 1 * * *
-        scheduled: true,
-        timezone: 'Asia/Kolkata', // Set your timezone here
+    cron.schedule('5 1 * * *', async () => {
+        console.log('Cron job triggered');
+
+        const users = await User.find();
+
+        for (const user of users) {
+            await generateAndSendReport(user);
+        }
+    }, {
+        timezone: 'Asia/Kolkata',
     });
 };
 
-
 module.exports = { scheduleDailyReports };
-
-
-// module.exports = { scheduleDailyReports };
