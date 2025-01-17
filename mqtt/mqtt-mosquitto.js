@@ -36,7 +36,6 @@ const setupMqttClient = (io) => {
             }
         });
 
-        // Subscribe to pump control feedback
         client.subscribe('ebhoomSub', (err) => {
             if (err) {
                 console.error('Subscription error:', err);
@@ -46,11 +45,9 @@ const setupMqttClient = (io) => {
         });
     });
 
-    // Handle Incoming Messages
     client.on('message', async (topic, message) => {
         try {
             const messageString = message.toString();
-             //console.log(`Message received on topic '${topic}':`, messageString);
 
             let data;
             try {
@@ -61,24 +58,64 @@ const setupMqttClient = (io) => {
                 data = [{ message: messageString }];
             }
 
-            // Process pump control feedback (ebhoomSub topic)
             if (topic === 'ebhoomSub') {
-                data.forEach((feedback) => {
-                    if (feedback.pumps && Array.isArray(feedback.pumps)) {
-                        feedback.pumps.forEach((pump) => {
-                            console.log(
-                                `Pump Feedback Received: Product ID: ${feedback.product_id}, Pump: ${pump.pumpName}, Status: ${pump.status}`
-                            );
-                        });
-                    } else {
-                        console.error('Invalid pump feedback format:', feedback);
+                for (const feedback of data) {
+                    const { product_id, userName, pumps } = feedback;
+
+                    if (!product_id || !userName || !Array.isArray(pumps) || pumps.length === 0) {
+                        console.error('Invalid pump feedback data: Missing product_id, userName, or pumps.');
+                        continue;
                     }
-                });
-                
+
+                    const userDetails = await userdb.findOne({
+                        productID: product_id,
+                        userName,
+                        pumpDetails: {
+                            $elemMatch: { pumpId: { $in: pumps.map((pump) => pump.pumpId) } },
+                        },
+                    });
+
+                    if (!userDetails) {
+                        console.error(`No matching user found for product_id: ${product_id}, userName: ${userName}`);
+                        continue;
+                    }
+
+                    const currentTime = moment().tz('Asia/Kolkata').toDate();
+
+                    for (const pump of pumps) {
+                        const { pumpId, pumpName, status } = pump;
+
+                        if (!pumpId || !pumpName || typeof status === 'undefined') {
+                            console.error('Invalid pump data:', pump);
+                            continue;
+                        }
+
+                        const payload = {
+                            product_id,
+                            userName: userDetails.userName,
+                            email: userDetails.email,
+                            mobileNumber: userDetails.mobileNumber,
+                            companyName: userDetails.companyName,
+                            industryType: userDetails.industryType,
+                            pumpData: {
+                                pumpId,
+                                pumpName,
+                                status,
+                            },
+                            date: moment().format('DD/MM/YYYY'),
+                            time: moment().format('HH:mm'),
+                            timestamp: currentTime,
+                        };
+
+                        await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
+                        io.to(product_id.toString()).emit('pumpFeedback', payload);
+                        console.log('Pump feedback data successfully sent and saved:', payload);
+                    }
+                }
+
                 return; // Skip further processing for pump control feedback
             }
 
-            // Process regular data from 'ebhoomPub' topic
             for (const item of data) {
                 const { product_id, userName, stacks } = item;
 
@@ -134,50 +171,18 @@ const setupMqttClient = (io) => {
                     timestamp: new Date(),
                 };
 
-                await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload); //http://localhost:5555
+                await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
                 io.to(product_id.toString()).emit('data', payload);
-               console.log('Data successfully sent:', payload);
+                console.log('Data successfully sent:', payload);
             }
         } catch (error) {
             console.error('Error handling MQTT message:', error);
         }
     });
 
-    // Function to send ON/OFF messages for pumps (multiple pumps)
-    // Function to send 1/0 messages for pumps based on ON/OFF status
-// Function to send 1/0 messages for pumps based on ON/OFF status and include pumpId
-const sendPumpControlMessage = (product_id, pumps) => {
-    const topic = 'ebhoomSub'; // MQTT topic for controlling pumps
-
-    // Convert ON/OFF status to 1/0 for each pump and include pumpId
-    const formattedPumps = pumps.map((pump) => ({
-        pumpId: pump.pumpId,           // Include pumpId for each pump
-        pumpName: pump.pumpName,       // Include pumpName
-        status: pump.status === 'ON' ? 1 : 0, // Convert ON to 1 and OFF to 0
-    }));
-
-    // Prepare MQTT message
-    const message = JSON.stringify({
-        product_id,
-        pumps: formattedPumps,
-    });
-
-    // Publish the message to MQTT broker
-    client.publish(topic, message, (err) => {
-        if (err) {
-            console.error('Error publishing message:', err);
-        } else {
-            console.log(`Sent pump control commands for product ${product_id}:`, message);
-        }
-    });
-};
-
-
-
     io.on('connection', (socket) => {
         console.log('Socket connected');
 
-        // Listen for pump control requests
         socket.on('controlPump', ({ product_id, pumps }) => {
             console.log(`Control Pump Request Received for product ${product_id}:`, pumps);
 
@@ -188,6 +193,28 @@ const sendPumpControlMessage = (product_id, pumps) => {
 
             sendPumpControlMessage(product_id, pumps);
         });
+    });
+};
+
+const sendPumpControlMessage = (product_id, pumps) => {
+    const topic = 'ebhoomSub';
+    const formattedPumps = pumps.map((pump) => ({
+        pumpId: pump.pumpId,
+        pumpName: pump.pumpName,
+        status: pump.status === 'ON' ? 1 : 0,
+    }));
+
+    const message = JSON.stringify({
+        product_id,
+        pumps: formattedPumps,
+    });
+
+    client.publish(topic, message, (err) => {
+        if (err) {
+            console.error('Error publishing pump control message:', err);
+        } else {
+            console.log(`Pump control message sent for product ${product_id}:`, message);
+        }
     });
 };
 
