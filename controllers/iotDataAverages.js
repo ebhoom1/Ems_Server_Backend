@@ -858,7 +858,6 @@ const fetchLastEntryOfEachDate = async (req, res) => {
 //         res.status(500).json({ success: false, message: 'Internal Server Error' });
 //     }
 // };
-
 const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
     try {
         const { userName, stackName, intervalType } = req.params;
@@ -891,7 +890,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         const s3Data = await fetchAverageDataFromS3();
         const filteredS3Data = s3Data
             .filter(entry => {
-                const entryDate = moment.tz(entry.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                const entryDate = moment.tz(entry.dateAndTime, ['DD/MM/YYYY HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ'], 'Asia/Kolkata');
                 const dateValid = entryDate.isValid() && entryDate.isBetween(startDate, endDate, 'day', '[]');
                 const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
                 const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
@@ -927,7 +926,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             const csvData = combinedData.flatMap(item =>
                 item.stackData.map(stack => {
-                    let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    let dateAndTime = moment.tz(item.dateAndTime, ['DD/MM/YYYY HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ'], 'Asia/Kolkata');
                     if (!dateAndTime.isValid()) {
                         dateAndTime = moment.tz(item.timestamp, 'YYYY-MM-DDTHH:mm:ss.SSSZ', 'Asia/Kolkata');
                     }
@@ -962,7 +961,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             combinedData.forEach(item => {
                 item.stackData.forEach(stack => {
-                    let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    let dateAndTime = moment.tz(item.dateAndTime, ['DD/MM/YYYY HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ'], 'Asia/Kolkata');
                     if (!dateAndTime.isValid()) {
                         dateAndTime = moment.tz(item.timestamp, 'YYYY-MM-DDTHH:mm:ss.SSSZ', 'Asia/Kolkata');
                     }
@@ -988,6 +987,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
+
 
 
 
