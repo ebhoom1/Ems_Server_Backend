@@ -6,7 +6,7 @@ const path = require('path');
 const AWS = require('aws-sdk');
 const puppeteer = require('puppeteer');
 const calibrationExceedValues = require('../../models/calibrationExceedValues');
-const MaxMinData = require('../../models/MaxMinData');
+const MinandMax = require('../../models/MinandMax');
 const ConsumptionData = require('../../models/ConsumptionData');
 const DifferenceData = require('../../models/differeneceData');
 const User = require('../../models/user');
@@ -55,6 +55,17 @@ const fetchLastAverageDataFromS3 = async () => {
         return Object.values(latestData);
     } catch (error) {
         console.error('Error fetching average data from S3:', error);
+        throw error;
+    }
+};
+
+// Fetch the last entered MinandMax data for a stack
+const fetchLastMinandMaxData = async (userName, stackName) => {
+    try {
+        const minMaxData = await MinandMax.findOne({ userName, stackName }).sort({ timestamp: -1 });
+        return minMaxData || {};
+    } catch (error) {
+        console.error('Error fetching MinandMax data:', error);
         throw error;
     }
 };
@@ -246,7 +257,7 @@ const generateAndSendReport = async (user) => {
 
         const waterTables = await Promise.all(userAverageData.map(async entry => {
             return Promise.all(entry.stackData.map(async stack => {
-                const maxMinData = await MaxMinData.findOne({ userName, stackName: stack.stackName }).sort({ createdAt: -1 });
+                const maxMinData = await fetchLastMinandMaxData(userName, stack.stackName);
                 const exceedance = await calibrationExceedValues.findOne({ userName }).lean();
 
                 return generateWaterTable(stack.stackName, stack.parameters, exceedance, maxMinData);
@@ -287,7 +298,7 @@ const sendEmail = async (email, pdfPath) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('5 1 * * *', async () => {
+    cron.schedule('5 1  * * *', async () => { //5 1 * * *
         console.log('Cron job triggered');
 
         const users = await User.find();

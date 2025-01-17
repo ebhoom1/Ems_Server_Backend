@@ -1,9 +1,9 @@
-const MaxMinData = require('../models/MaxMinData');
 const MaxandMinData = require('../models/MinandMax');
 const moment = require('moment-timezone'); // Import moment-timezone for timezone handling
 
 
-const updateMaxMinValues = async (data) => {
+// This function should be called every hour to update the hourly max/min values
+const updateMaxMinValues  = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {
             console.error('stackData is not an array or is undefined:', data.stackData);
@@ -11,7 +11,7 @@ const updateMaxMinValues = async (data) => {
         }
 
         const formattedDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
-        const formattedTime = moment().tz('Asia/Kolkata').format('hh:mm A'); // 12-hour format with AM/PM
+        const formattedTime = moment().tz('Asia/Kolkata').format('HH:mm A'); // 24-hour format with AM/PM
 
         for (const stack of data.stackData) {
             const { stackName, ...values } = stack;
@@ -23,61 +23,51 @@ const updateMaxMinValues = async (data) => {
                 )
             );
 
-            const existingData = await MaxMinData.findOne({
+            const startOfHour = moment().tz('Asia/Kolkata').startOf('hour').toDate();
+            const endOfHour = moment().tz('Asia/Kolkata').endOf('hour').toDate();
+
+            // Query to find if there is already an entry for this hour
+            let existingData = await MaxandMinData.findOne({
                 userName: data.userName,
-                stackName,
+                stackName: stackName,
+                timestamp: { $gte: startOfHour, $lte: endOfHour }
             });
 
-            let newMaxValues = existingData?.maxValues || {};
-            let newMinValues = existingData?.minValues || {};
-            let maxTimestamps = existingData?.maxTimestamps || {};
-            let minTimestamps = existingData?.minTimestamps || {};
-
-            let maxChanged = false;
-            let minChanged = false;
+            if (!existingData) {
+                // If no data exists for this hour, create a new record
+                existingData = new MaxandMinData({
+                    userName: data.userName,
+                    stackName,
+                    date: formattedDate,
+                    maxValues: {},
+                    minValues: {},
+                    maxTimestamps: {},
+                    minTimestamps: {},
+                    timestamp: new Date()  // setting the timestamp to the current time
+                });
+            }
 
             for (const [key, value] of Object.entries(filteredValues)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
-
-                    // Check and update max values and timestamps
-                    if (!newMaxValues[key] || numValue > newMaxValues[key]) {
-                        newMaxValues[key] = numValue;
-                        maxTimestamps[key] = { date: formattedDate, time: formattedTime };
-                        maxChanged = true;
+                    // Update max values and timestamps
+                    if (!existingData.maxValues[key] || numValue > existingData.maxValues[key]) {
+                        existingData.maxValues[key] = numValue;
+                        existingData.maxTimestamps[key] = { date: formattedDate, time: formattedTime };
                     }
 
-                    // Check and update min values and timestamps
-                    if (!newMinValues[key] || numValue < newMinValues[key]) {
-                        newMinValues[key] = numValue;
-                        minTimestamps[key] = { date: formattedDate, time: formattedTime };
-                        minChanged = true;
+                    // Update min values and timestamps
+                    if (!existingData.minValues[key] || numValue < existingData.minValues[key]) {
+                        existingData.minValues[key] = numValue;
+                        existingData.minTimestamps[key] = { date: formattedDate, time: formattedTime };
                     }
                 }
             }
 
-            const updateData = {
-                maxValues: newMaxValues,
-                minValues: newMinValues,
-                maxTimestamps,
-                minTimestamps,
-            };
-
-            if (existingData) {
-                await MaxMinData.updateOne(
-                    { userName: data.userName, stackName },
-                    updateData
-                );
-            } else {
-                await MaxMinData.create({
-                    userName: data.userName,
-                    stackName,
-                    ...updateData,
-                });
-            }
+            await existingData.save();
         }
     } catch (error) {
-        console.error('Error updating max/min values:', error);
+        console.error('Error updating max/min hourly values:', error);
     }
 };
 

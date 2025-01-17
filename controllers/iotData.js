@@ -154,7 +154,11 @@ const checkTimeInterval = async (data, user) => {
             timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
             timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
             stackData: stacks.map(stack => ({ ...stack })), // Include stack data
-            pumps: pumps.map(pump => ({ ...pump })), // Include pump data
+            pumps: pumps.map(pump => ({
+                pumpId: pump.pumpId,
+                pumpName: pump.pumpName,
+                status: pump.status,
+            })), // Include pump data with pumpId// Include pump data
             timestamp: new Date(),
         });
     
@@ -168,6 +172,7 @@ const checkTimeInterval = async (data, user) => {
             ...data,
             stackData: sanitizedStackData,
             pumps: pumps.map(pump => ({
+                pumpId: pump.pumpId,
                 pumpName: pump.pumpName,
                 status: pump.status,
                 timestamp: new Date(),

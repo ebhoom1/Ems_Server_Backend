@@ -60,6 +60,7 @@ const StackSchema = new mongoose.Schema({
     
 // Pump Schema to store pump information
 const PumpSchema = new mongoose.Schema({
+    pumpId: { type: String, required: true }, // Added pumpId field
     pumpName: { type: String, required: true }, // Name of the pump
     status: { type: String, enum: ['ON', 'OFF'], required: true }, // Status can only be ON or OFF
     timestamp: { type: Date, default: Date.now }, // Timestamp of the last update
