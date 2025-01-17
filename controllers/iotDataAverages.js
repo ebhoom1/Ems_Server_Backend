@@ -891,12 +891,12 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         const s3Data = await fetchAverageDataFromS3();
         const filteredS3Data = s3Data
             .filter(entry => {
-                const entryDate = moment.tz(entry.dateAndTime, 'DD/MM/YYYY', 'Asia/Kolkata');
-                const dateValid = entryDate.isBetween(startDate, endDate, 'day', '[]');
+                const entryDate = moment.tz(entry.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                const dateValid = entryDate.isValid() && entryDate.isBetween(startDate, endDate, 'day', '[]');
                 const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
                 const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
 
-                return userMatch && intervalMatch && dateValid;
+                return dateValid && userMatch && intervalMatch;
             })
             .map(entry => ({
                 ...entry,
@@ -909,9 +909,11 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         console.log('Fetched S3 Filtered Data Length:', filteredS3Data.length);
 
         // Combine MongoDB and S3 data
-        const combinedData = [...mongoData, ...filteredS3Data].sort((a, b) =>
-            moment.tz(a.timestamp || a.dateAndTime, 'Asia/Kolkata').diff(moment.tz(b.timestamp || b.dateAndTime, 'Asia/Kolkata'))
-        );
+        const combinedData = [...mongoData, ...filteredS3Data].sort((a, b) => {
+            const dateA = moment.tz(a.dateAndTime || a.timestamp, ['DD/MM/YYYY HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ'], 'Asia/Kolkata');
+            const dateB = moment.tz(b.dateAndTime || b.timestamp, ['DD/MM/YYYY HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ'], 'Asia/Kolkata');
+            return dateA.diff(dateB);
+        });
 
         if (combinedData.length === 0) {
             return res.status(404).json({ success: false, message: 'No data found for the specified criteria.' });
@@ -927,7 +929,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
                 item.stackData.map(stack => {
                     let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
                     if (!dateAndTime.isValid()) {
-                        dateAndTime = moment.tz(item.timestamp, 'Asia/Kolkata');
+                        dateAndTime = moment.tz(item.timestamp, 'YYYY-MM-DDTHH:mm:ss.SSSZ', 'Asia/Kolkata');
                     }
 
                     return {
@@ -962,7 +964,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
                 item.stackData.forEach(stack => {
                     let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
                     if (!dateAndTime.isValid()) {
-                        dateAndTime = moment.tz(item.timestamp, 'Asia/Kolkata');
+                        dateAndTime = moment.tz(item.timestamp, 'YYYY-MM-DDTHH:mm:ss.SSSZ', 'Asia/Kolkata');
                     }
 
                     doc.fontSize(12).text(`Date: ${dateAndTime.format('DD-MM-YYYY')}`);
@@ -986,6 +988,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
+
 
 
 
