@@ -739,6 +739,126 @@ const fetchLastEntryOfEachDate = async (req, res) => {
 
 
 
+// const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
+//     try {
+//         const { userName, stackName, intervalType } = req.params;
+//         const { startTime, endTime, format } = req.query;
+
+//         // Validate input parameters
+//         if (!userName || !stackName || !intervalType || !startTime || !endTime || !format) {
+//             return res.status(400).json({ success: false, message: 'Missing required query parameters.' });
+//         }
+
+//         // Parse and validate dates
+//         const startDate = moment(startTime, 'DD-MM-YYYY').startOf('day');
+//         const endDate = moment(endTime, 'DD-MM-YYYY').endOf('day');
+
+//         if (!startDate.isValid() || !endDate.isValid()) {
+//             return res.status(400).json({ success: false, message: 'Invalid date format. Use "DD-MM-YYYY".' });
+//         }
+
+//         // Fetch data from MongoDB
+//         const mongoData = await IotDataAverage.find({
+//             userName: userName.trim(),
+//             'stackData.stackName': stackName.trim(),
+//             intervalType: intervalType.trim(),
+//             timestamp: { $gte: startDate.toDate(), $lte: endDate.toDate() },
+//         }).lean();
+
+//         console.log('Fetched MongoDB Data Length:', mongoData.length);
+
+//         // Fetch data from S3
+//         const s3Data = await fetchAverageDataFromS3();
+//         const filteredS3Data = s3Data
+//             .filter(entry => {
+//                 const entryDate = moment(entry.dateAndTime, 'DD/MM/YYYY');
+//                 const dateValid = entryDate.isBetween(startDate, endDate, 'day', '[]');
+//                 const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
+//                 const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
+
+//                 return userMatch && intervalMatch && dateValid;
+//             })
+//             .map(entry => ({
+//                 ...entry,
+//                 stackData: entry.stackData.filter(stack =>
+//                     stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
+//                 ),
+//             }))
+//             .filter(entry => entry.stackData.length > 0);
+
+//         console.log('Fetched S3 Filtered Data Length:', filteredS3Data.length);
+
+//         // Combine MongoDB and S3 data
+//         const combinedData = [...mongoData, ...filteredS3Data].sort((a, b) =>
+//             moment(a.timestamp || a.dateAndTime).diff(moment(b.timestamp || b.dateAndTime))
+//         );
+
+//         if (combinedData.length === 0) {
+//             return res.status(404).json({ success: false, message: 'No data found for the specified criteria.' });
+//         }
+
+//         // Extract dynamic fields from stackData
+//         const stackKeys = Object.keys(combinedData[0].stackData[0]?.parameters || {}).filter(key => key !== '_id');
+
+//         if (format === 'csv') {
+//             const fields = ['Date', 'Time', 'Stack Name', ...stackKeys];
+
+//             const csvData = combinedData.flatMap(item =>
+//                 item.stackData.map(stack => {
+//                     const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm'); // Use dateAndTime from JSON
+//                     return {
+//                         Date: dateAndTime.format('DD-MM-YYYY'),
+//                         Time: dateAndTime.format('HH:mm:ss'),
+//                         'Stack Name': stack.stackName,
+//                         ...stack.parameters,
+//                     };
+//                 })
+//             );
+
+//             const parser = new Parser({ fields });
+//             const csv = parser.parse(csvData);
+
+//             res.header('Content-Type', 'text/csv');
+//             res.attachment(`${userName}_${stackName}_average_data.csv`);
+//             return res.send(csv);
+//         } else if (format === 'pdf') {
+//             const doc = new PDFDocument();
+//             res.header('Content-Type', 'application/pdf');
+//             res.attachment(`${userName}_${stackName}_average_data.pdf`);
+
+//             doc.pipe(res);
+//             doc.fontSize(20).text('Average Data Report', { align: 'center' });
+//             doc.fontSize(12).text(`User Name: ${userName}`);
+//             doc.fontSize(12).text(`Stack Name: ${stackName}`);
+//             doc.fontSize(12).text(`Interval Type: ${intervalType}`);
+//             doc.fontSize(12).text(`Date Range: ${startTime} - ${endTime}`);
+//             doc.moveDown();
+
+//             combinedData.forEach(item => {
+//                 item.stackData.forEach(stack => {
+//                     const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm');
+//                     doc.fontSize(12).text(`Date: ${dateAndTime.format('DD-MM-YYYY')}`);
+//                     doc.text(`Time: ${dateAndTime.format('HH:mm:ss')}`);
+//                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
+
+//                     const keys = Object.keys(stack.parameters || {});
+//                     const tableData = keys.map(key => `${key}: ${stack.parameters[key]}`).join(', ');
+
+//                     doc.text(tableData);
+//                     doc.moveDown();
+//                 });
+//             });
+
+//             doc.end();
+//         } else {
+//             return res.status(400).json({ success: false, message: 'Invalid format requested. Use "csv" or "pdf".' });
+//         }
+//     } catch (error) {
+//         console.error('Error fetching or processing data:', error);
+//         res.status(500).json({ success: false, message: 'Internal Server Error' });
+//     }
+// };
+
 const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
     try {
         const { userName, stackName, intervalType } = req.params;
@@ -750,8 +870,8 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         }
 
         // Parse and validate dates
-        const startDate = moment(startTime, 'DD-MM-YYYY').startOf('day');
-        const endDate = moment(endTime, 'DD-MM-YYYY').endOf('day');
+        const startDate = moment.tz(startTime, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day');
+        const endDate = moment.tz(endTime, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day');
 
         if (!startDate.isValid() || !endDate.isValid()) {
             return res.status(400).json({ success: false, message: 'Invalid date format. Use "DD-MM-YYYY".' });
@@ -771,7 +891,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         const s3Data = await fetchAverageDataFromS3();
         const filteredS3Data = s3Data
             .filter(entry => {
-                const entryDate = moment(entry.dateAndTime, 'DD/MM/YYYY');
+                const entryDate = moment.tz(entry.dateAndTime, 'DD/MM/YYYY', 'Asia/Kolkata');
                 const dateValid = entryDate.isBetween(startDate, endDate, 'day', '[]');
                 const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
                 const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
@@ -790,7 +910,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
         // Combine MongoDB and S3 data
         const combinedData = [...mongoData, ...filteredS3Data].sort((a, b) =>
-            moment(a.timestamp || a.dateAndTime).diff(moment(b.timestamp || b.dateAndTime))
+            moment.tz(a.timestamp || a.dateAndTime, 'Asia/Kolkata').diff(moment.tz(b.timestamp || b.dateAndTime, 'Asia/Kolkata'))
         );
 
         if (combinedData.length === 0) {
@@ -805,7 +925,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             const csvData = combinedData.flatMap(item =>
                 item.stackData.map(stack => {
-                    const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm'); // Use dateAndTime from JSON
+                    const dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
                     return {
                         Date: dateAndTime.format('DD-MM-YYYY'),
                         Time: dateAndTime.format('HH:mm:ss'),
@@ -836,7 +956,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             combinedData.forEach(item => {
                 item.stackData.forEach(stack => {
-                    const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm');
+                    const dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
                     doc.fontSize(12).text(`Date: ${dateAndTime.format('DD-MM-YYYY')}`);
                     doc.text(`Time: ${dateAndTime.format('HH:mm:ss')}`);
                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
@@ -858,7 +978,6 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
-
 
 
 const getTodayLastAverageDataByStackName = async (req, res) => {
