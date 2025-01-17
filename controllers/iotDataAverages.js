@@ -869,7 +869,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
             return res.status(400).json({ success: false, message: 'Missing required query parameters.' });
         }
 
-        // Parse and validate dates
+        // Parse and validate dates with time zone
         const startDate = moment.tz(startTime, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day');
         const endDate = moment.tz(endTime, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day');
 
@@ -925,7 +925,11 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             const csvData = combinedData.flatMap(item =>
                 item.stackData.map(stack => {
-                    const dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    if (!dateAndTime.isValid()) {
+                        dateAndTime = moment.tz(item.timestamp, 'Asia/Kolkata');
+                    }
+
                     return {
                         Date: dateAndTime.format('DD-MM-YYYY'),
                         Time: dateAndTime.format('HH:mm:ss'),
@@ -956,7 +960,11 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
 
             combinedData.forEach(item => {
                 item.stackData.forEach(stack => {
-                    const dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    let dateAndTime = moment.tz(item.dateAndTime, 'DD/MM/YYYY HH:mm', 'Asia/Kolkata');
+                    if (!dateAndTime.isValid()) {
+                        dateAndTime = moment.tz(item.timestamp, 'Asia/Kolkata');
+                    }
+
                     doc.fontSize(12).text(`Date: ${dateAndTime.format('DD-MM-YYYY')}`);
                     doc.text(`Time: ${dateAndTime.format('HH:mm:ss')}`);
                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
@@ -978,6 +986,7 @@ const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
+
 
 
 const getTodayLastAverageDataByStackName = async (req, res) => {
