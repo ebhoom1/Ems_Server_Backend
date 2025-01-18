@@ -3,7 +3,7 @@ const moment = require('moment-timezone'); // Import moment-timezone for timezon
 
 
 // This function should be called every hour to update the hourly max/min values
-const updateMaxMinValues  = async (data) => {
+const updateMaxMinValues = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {
             console.error('stackData is not an array or is undefined:', data.stackData);
@@ -23,19 +23,26 @@ const updateMaxMinValues  = async (data) => {
                 )
             );
 
-            const startOfHour = moment().tz('Asia/Kolkata').startOf('hour').toDate();
-            const endOfHour = moment().tz('Asia/Kolkata').endOf('hour').toDate();
-
-            // Query to find if there is already an entry for this hour
-            let existingData = await MaxandMinData.findOne({
+            // Retrieve the current document for this user and stack
+            const existingData = await MaxandMinData.findOne({
                 userName: data.userName,
-                stackName: stackName,
-                timestamp: { $gte: startOfHour, $lte: endOfHour }
+                stackName,
+                date: formattedDate
             });
 
-            if (!existingData) {
-                // If no data exists for this hour, create a new record
-                existingData = new MaxandMinData({
+            let maxValues = {};
+            let minValues = {};
+            let maxTimestamps = {};
+            let minTimestamps = {};
+
+            if (existingData) {
+                maxValues = existingData.maxValues || {};
+                minValues = existingData.minValues || {};
+                maxTimestamps = existingData.maxTimestamps || {};
+                minTimestamps = existingData.minTimestamps || {};
+            } else {
+                // If no document exists, create a new one
+                const newData = new MaxandMinData({
                     userName: data.userName,
                     stackName,
                     date: formattedDate,
@@ -43,28 +50,40 @@ const updateMaxMinValues  = async (data) => {
                     minValues: {},
                     maxTimestamps: {},
                     minTimestamps: {},
-                    timestamp: new Date()  // setting the timestamp to the current time
                 });
+                await newData.save();
+                continue; // Skip updating this record; will handle in the next iteration
             }
 
             for (const [key, value] of Object.entries(filteredValues)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
-                    // Update max values and timestamps
-                    if (!existingData.maxValues[key] || numValue > existingData.maxValues[key]) {
-                        existingData.maxValues[key] = numValue;
-                        existingData.maxTimestamps[key] = { date: formattedDate, time: formattedTime };
+
+                    // Update max values
+                    if (!maxValues[key] || numValue > maxValues[key]) {
+                        maxValues[key] = numValue;
+                        maxTimestamps[key] = { date: formattedDate, time: formattedTime };
                     }
 
-                    // Update min values and timestamps
-                    if (!existingData.minValues[key] || numValue < existingData.minValues[key]) {
-                        existingData.minValues[key] = numValue;
-                        existingData.minTimestamps[key] = { date: formattedDate, time: formattedTime };
+                    // Update min values
+                    if (!minValues[key] || numValue < minValues[key]) {
+                        minValues[key] = numValue;
+                        minTimestamps[key] = { date: formattedDate, time: formattedTime };
                     }
                 }
             }
 
-            await existingData.save();
+            // Update the document with new max/min values and timestamps
+            await MaxandMinData.updateOne(
+                { userName: data.userName, stackName, date: formattedDate },
+                {
+                    maxValues,
+                    minValues,
+                    maxTimestamps,
+                    minTimestamps,
+                    timestamp: new Date() // Update timestamp to current
+                }
+            );
         }
     } catch (error) {
         console.error('Error updating max/min hourly values:', error);

@@ -204,7 +204,7 @@ const checkTimeInterval = async (data, user) => {
             // Handle additional functionalities
             handleExceedValues();
             await saveOrUpdateLastEntryByUserName(newEntryData);
-            await saveDailyMinMaxValues(newEntryData)
+            // await saveDailyMinMaxValues(newEntryData)
     
             res.status(200).json({
                 success: true,

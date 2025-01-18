@@ -60,15 +60,27 @@ const fetchLastAverageDataFromS3 = async () => {
 };
 
 // Fetch the last entered MinandMax data for a stack
+// Fetch the last entered MinandMax data for a stack
 const fetchLastMinandMaxData = async (userName, stackName) => {
     try {
         const minMaxData = await MinandMax.findOne({ userName, stackName }).sort({ timestamp: -1 });
-        return minMaxData || {};
+
+        if (!minMaxData) {
+            console.warn(`No MinandMax data found for user: ${userName}, stack: ${stackName}`);
+            return { minValues: {}, maxValues: {} };
+        }
+
+        // Extract and return properly formatted data
+        return {
+            minValues: minMaxData.minValues || {},
+            maxValues: minMaxData.maxValues || {},
+        };
     } catch (error) {
         console.error('Error fetching MinandMax data:', error);
-        throw error;
+        return { minValues: {}, maxValues: {} };
     }
 };
+
 
 // Generate water table
 const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
@@ -298,7 +310,7 @@ const sendEmail = async (email, pdfPath) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('5 1  * * *', async () => { //5 1 * * *
+    cron.schedule('*/2 * * * *', async () => { //5 1 * * *
         console.log('Cron job triggered');
 
         const users = await User.find();
