@@ -310,7 +310,7 @@ const sendEmail = async (email, pdfPath) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('*/2 * * * *', async () => { //5 1 * * *
+    cron.schedule('5 1 * * *', async () => { //5 1 * * *
         console.log('Cron job triggered');
 
         const users = await User.find();
