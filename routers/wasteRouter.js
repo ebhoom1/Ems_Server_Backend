@@ -1,17 +1,21 @@
 const express = require('express');
 const {
-    createWaste, updateWaste, deleteWaste,
-    getWasteByUserName, getAllWaste,
-    getWasteByUserNameAndStationName
-} = require('../controllers/wasteController');
+     
+    createWasteAndGenerator,
+    updateWasteAndGenerator,
+    deleteWasteAndGenerator,
+    getWasteAndGeneratorByUserNameAndStationName,
+    getWasteAndGeneratorByUserName,
+    getAllWasteAndGenerator
+} = require('../controllers/wasteAndGeneratorController');
 const router = express.Router();
 
-router.post('/waste', createWaste);
-router.put('/waste/:id', updateWaste);
-router.delete('/waste/:id', deleteWaste);
-router.get('/waste/user/:userName', getWasteByUserName);
-router.get('/waste', getAllWaste);
+router.post('/waste', createWasteAndGenerator);
+router.put('/waste/:id', updateWasteAndGenerator);
+router.delete('/waste/:id', deleteWasteAndGenerator);
+router.get('/waste/user/:userName', getWasteAndGeneratorByUserName);
+router.get('/waste', getAllWasteAndGenerator);
 // Route to get waste by userName and stationName
-router.get('/waste/:userName/:stationName', getWasteByUserNameAndStationName);
+router.get('/waste/:userName/:stationName', getWasteAndGeneratorByUserNameAndStationName);
 
 module.exports = router;

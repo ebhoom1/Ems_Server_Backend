@@ -173,7 +173,7 @@ const setupMqttClient = (io) => {
 
                 await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
                 io.to(product_id.toString()).emit('data', payload);
-                //console.log('Data successfully sent:', payload);
+                console.log('Data successfully sent:', payload);
             }
         } catch (error) {
             console.error('Error handling MQTT message:', error);
