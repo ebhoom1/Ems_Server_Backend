@@ -30,7 +30,7 @@ const liveStationRoutes = require('./routers/liveStationRoutes');
 const logoRouter = require('./routers/logoRouter');
 const maxMinRoutes = require('./routers/maxMinRoutes');
 const avoidUsersRoutes = require('./routers/avoidUsers');
-const wasteRoutes = require('./routers/wasteRouter');
+const wasteRoutes = require('./routers/wasteAndGeneratorRouter');
 
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
