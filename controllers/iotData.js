@@ -415,6 +415,54 @@ const getLatestIoTData = async (req, res) => {
     }
 };
 
+/* 10 min data */
+const getLast10MinIoTData = async (req, res) => {
+    const { userName } = req.params;
+
+    try {
+        // Get the current timestamp and calculate the timestamp for 10 minutes ago
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes in milliseconds
+
+        const dataFromLast10Min = await IotData.aggregate([
+            // Match documents with the specified userName and timestamp within the last 10 minutes
+            {
+                $match: {
+                    userName: userName,
+                    timestamp: { $gte: tenMinutesAgo } // Filter records from the last 10 minutes
+                }
+            },
+            { $sort: { timestamp: -1 } }, // Sort by timestamp in descending order
+            {
+                $group: {
+                    _id: "$product_id",
+                    records: { $push: "$$ROOT" } // Collect all records for each product_id
+                }
+            },
+            { 
+                $project: {
+                    _id: 0, // Exclude _id field
+                    product_id: "$_id",
+                    records: 1 // Include all matching records in the group
+                }
+            }
+        ]).allowDiskUse(true); // Enable disk usage for sorting
+
+        res.status(200).json({
+            status: 200,
+            success: true,
+            message: 'IoT Data from the last 10 minutes fetched successfully',
+            data: dataFromLast10Min
+        });
+    } catch (error) {
+        console.error('Error fetching IoT Data from the last 10 minutes:', error);
+        res.status(500).json({
+            status: 500,
+            success: false,
+            message: 'Error fetching IoT data',
+            error: error.message
+        });
+    }
+};
 
 const getIotDataByUserName = async (req, res) => {
     const { userName } = req.params;
@@ -1248,7 +1296,7 @@ const deleteIotDataByDateAndUser = async (req, res) => {
 module.exports ={handleSaveMessage,  getLatestIoTData,getIotDataByUserName,
     downloadIotData,getDifferenceDataByUserName,downloadIotDataByUserName,
     deleteIotDataByDateAndUser,downloadIotDataByUserNameAndStackName,getIotDataByUserNameAndStackName,getIotDataByCompanyNameAndStackName,
-    getIotDataByCompanyName,viewDataByDateUserAndStackName,getDifferenceDataByUserNameAndDateRange
+    getIotDataByCompanyName,viewDataByDateUserAndStackName,getDifferenceDataByUserNameAndDateRange , getLast10MinIoTData
  }
 
 

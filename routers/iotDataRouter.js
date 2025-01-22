@@ -12,7 +12,8 @@ const {
         getIotDataByUserNameAndStackName,
         getIotDataByCompanyNameAndStackName,
         getIotDataByCompanyName,
-        viewDataByDateUserAndStackName
+        viewDataByDateUserAndStackName,
+        getLast10MinIoTData
         
 } = require('../controllers/iotData');
 const { getLatestDataByUserName } = require('../controllers/lastIotDataController');
@@ -35,6 +36,8 @@ router.get('/get-IoT-Data-by-companyName/:companyName',getIotDataByCompanyName);
 //Route for getting the latest IoT Data
 router.get('/latest/:userName', getLatestDataByUserName);
   
+//Route for getting 10 min data
+router.get('/tenmin/:userName', getLast10MinIoTData);
 
 // Add the route for fetching difference data by userName
 router.get('/differenceData/:userName', getDifferenceDataByUserName);
