@@ -83,8 +83,8 @@ const fetchLastMinandMaxData = async (userName, stackName) => {
 // Generate water table
 const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
     const rows = Object.entries(parameters).map(([param, value]) => {
-        const minValue = maxMinData?.minValues?.[param] || 'nil';
-        const maxValue = maxMinData?.maxValues?.[param] || 'nil';
+        const minValue = 0; // Always set to 0
+        const maxValue = 0; // Always set to 0
         const minAcceptable = exceedance?.[`${param}Min`] || 'Not Added';
         const maxAcceptable = exceedance?.[`${param}Max`] || 'Not Added';
         const exceedanceValue = exceedance?.[param] || 'Not Added';
@@ -168,7 +168,7 @@ const generateEnergyAndFlowTables = async (userName) => {
             });
 
         energyTable = `
-            <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
+            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
             <table class="report-table">
                 <thead>
                     <tr>
@@ -205,7 +205,7 @@ const generateEnergyAndFlowTables = async (userName) => {
             });
 
         flowTable = `
-            <h1 style="color: #1a73e8; font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Flow Report</h1>
+            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Flow Report</h1>
             <table class="report-table">
                 <thead>
                     <tr>
@@ -259,7 +259,7 @@ const generateCombinedPDFContent = async (companyName, waterTables, userName) =>
             </style>
         </head>
         <body>
-            <h1 style="text-align: center; color: #0d47a1;">Report for ${companyName}</h1>
+            <h1 style="text-align: center; color:rgb(2, 37, 37);">Report for ${companyName}</h1>
             ${waterTables}
             ${energyTable}
             ${flowTable}
