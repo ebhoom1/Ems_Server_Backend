@@ -127,7 +127,7 @@ const checkTimeInterval = async (data, user) => {
             return res.status(400).json(requiredFieldsCheck);
         }
     
-        // Log data only for user KSPCB013
+        // Log data only for specific user
         if (data.userName === 'KSPCB013') {
             console.log('Received data for KSPCB013:', data);
         }
@@ -154,7 +154,7 @@ const checkTimeInterval = async (data, user) => {
             ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
             timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
             timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-            stackData: stacks.map(stack => ({ ...stack })), // Include stack data
+            stackData: stacks.map(stack => ({ ...stack })),
             pumps: pumps.map(pump => ({
                 pumpId: pump.pumpId,
                 pumpName: pump.pumpName,
@@ -163,58 +163,88 @@ const checkTimeInterval = async (data, user) => {
             timestamp: new Date(),
         });
     
-        // Remove unnecessary fields before saving to the database
-        const sanitizedStackData = stacks.map(stack => {
-            const { power, current, voltage, ...restOfStack } = stack;
-            return restOfStack;
-        });
-    
-        const newEntryData = {
-            ...data,
-            stackData: sanitizedStackData,
-            pumps: pumps.map(pump => ({
-                pumpId: pump.pumpId,
-                pumpName: pump.pumpName,
-                status: pump.status,
-                timestamp: new Date(),
-            })),
-            date,
-            time,
-            timestamp: new Date(),
-            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
-            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
-            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
-            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-            validationMessage: data.validationMessage || 'Validated',
-            validationStatus: data.validationStatus || 'Valid',
-        };
-    
-        // Save to database and update flowRate for stacks
         try {
-            if (data.userName === 'KSPCB013') {
-                console.log('Preparing to save data for KSPCB013:', newEntryData);
-            }
-    
-            // Update flowRate for stacks
             for (const stack of stacks) {
-                const { stackName, flowRate } = stack;
+                const { stackName, flowRate, power, current, voltage } = stack;
     
-                if (flowRate !== undefined && stackName) {
-                    // Update the flowRate for the specific stack in the database
-                    await IotData.findOneAndUpdate(
-                        { userName: data.userName, 'stackData.stackName': stackName },
-                        { $set: { 'stackData.$.flowRate': flowRate, 'stackData.$.timestamp': new Date() } },
+                if (!stackName || flowRate === undefined) {
+                    console.error('Invalid stack data:', stack);
+                    continue;
+                }
+    
+                // Check if stackName exists; update or add it
+                const existingEntry = await IotData.findOne({
+                    userName: data.userName,
+                    'stackData.stackName': stackName,
+                });
+    
+                if (existingEntry) {
+                    // Update existing stack
+                    await IotData.updateOne(
+                        {
+                            userName: data.userName,
+                            'stackData.stackName': stackName,
+                        },
+                        {
+                            $set: {
+                                'stackData.$.flowRate': flowRate,
+                                'stackData.$.power': power,
+                                'stackData.$.current': current,
+                                'stackData.$.voltage': voltage,
+                                'stackData.$.timestamp': new Date(),
+                            },
+                        }
+                    );
+                } else {
+                    // Add new stack
+                    await IotData.updateOne(
+                        { userName: data.userName },
+                        {
+                            $push: {
+                                stackData: {
+                                    stackName,
+                                    flowRate,
+                                    power,
+                                    current,
+                                    voltage,
+                                    timestamp: new Date(),
+                                },
+                            },
+                        },
                         { upsert: true }
                     );
                 }
             }
     
+            // Prepare entry for saving other data
+            const sanitizedStackData = stacks.map(stack => {
+                const { ...restOfStack } = stack;
+                return restOfStack;
+            });
+    
+            const newEntryData = {
+                ...data,
+                stackData: sanitizedStackData,
+                pumps: pumps.map(pump => ({
+                    pumpId: pump.pumpId,
+                    pumpName: pump.pumpName,
+                    status: pump.status,
+                    timestamp: new Date(),
+                })),
+                date,
+                time,
+                timestamp: new Date(),
+                exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
+                ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
+                timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
+                timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
+                validationMessage: data.validationMessage || 'Validated',
+                validationStatus: data.validationStatus || 'Valid',
+            };
+    
+            // Save additional data
             const newEntry = new IotData(newEntryData);
             await newEntry.save();
-    
-            if (data.userName === 'KSPCB013') {
-                console.log('Data saved successfully for KSPCB013');
-            }
     
             // Update max and min values for stack data
             await updateMaxMinValues(newEntryData);
@@ -222,7 +252,6 @@ const checkTimeInterval = async (data, user) => {
             // Handle additional functionalities
             handleExceedValues();
             await saveOrUpdateLastEntryByUserName(newEntryData);
-            // await saveDailyMinMaxValues(newEntryData)
     
             res.status(200).json({
                 success: true,
@@ -234,8 +263,6 @@ const checkTimeInterval = async (data, user) => {
             res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
         }
     };
-    
-    
     
     
     
