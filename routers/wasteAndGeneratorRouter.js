@@ -1,21 +1,11 @@
 const express = require('express');
-const {
-     
-    createWasteAndGenerator,
-    updateWasteAndGenerator,
-    deleteWasteAndGenerator,
-    getWasteAndGeneratorByUserNameAndStationName,
-    getWasteAndGeneratorByUserName,
-    getAllWasteAndGenerator
-} = require('../controllers/wasteAndGeneratorController');
 const router = express.Router();
+const wasteController = require('../controllers/wasteAndGeneratorController');
 
-router.post('/waste', createWasteAndGenerator);
-router.put('/waste/:id', updateWasteAndGenerator);
-router.delete('/waste/:id', deleteWasteAndGenerator);
-router.get('/waste/user/:userName', getWasteAndGeneratorByUserName);
-router.get('/waste', getAllWasteAndGenerator);
-// Route to get waste by userName and stationName
-router.get('/waste/:userName/:stationName', getWasteAndGeneratorByUserNameAndStationName);
+// Routes
+router.get('/getallwaste', wasteController.getAllWaste); // Fetch all waste records
+router.post('/addwaste', wasteController.addWaste); // Add a new waste record
+router.put('/editwaste/:id', wasteController.editWaste); // Edit an existing waste record
+router.delete('/waste/:id', wasteController.deleteWaste); // Delete a waste record
 
 module.exports = router;

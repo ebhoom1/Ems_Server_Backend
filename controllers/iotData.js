@@ -118,7 +118,6 @@ const checkTimeInterval = async (data, user) => {
     };
 
 
-
     const handleSaveMessage = async (req, res) => {
         const data = req.body;
     
@@ -127,10 +126,12 @@ const checkTimeInterval = async (data, user) => {
         if (!requiredFieldsCheck.success) {
             return res.status(400).json(requiredFieldsCheck);
         }
-    // Log data only for user KSPCB002
-    if (data.userName === 'KSPCB013') {
-        console.log('Received data for KSPCB002:', data);
-    }
+    
+        // Log data only for user KSPCB013
+        if (data.userName === 'KSPCB013') {
+            console.log('Received data for KSPCB013:', data);
+        }
+    
         const stacks = data.stacks || data.stackData;
         if (!Array.isArray(stacks) || stacks.length === 0) {
             return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
@@ -158,13 +159,13 @@ const checkTimeInterval = async (data, user) => {
                 pumpId: pump.pumpId,
                 pumpName: pump.pumpName,
                 status: pump.status,
-            })), // Include pump data with pumpId// Include pump data
+            })),
             timestamp: new Date(),
         });
     
         // Remove unnecessary fields before saving to the database
         const sanitizedStackData = stacks.map(stack => {
-            const { power, current, voltage, flowRate, ...restOfStack } = stack;
+            const { power, current, voltage, ...restOfStack } = stack;
             return restOfStack;
         });
     
@@ -188,16 +189,33 @@ const checkTimeInterval = async (data, user) => {
             validationStatus: data.validationStatus || 'Valid',
         };
     
-        // Save to database and update max/min values
+        // Save to database and update flowRate for stacks
         try {
             if (data.userName === 'KSPCB013') {
                 console.log('Preparing to save data for KSPCB013:', newEntryData);
             }
+    
+            // Update flowRate for stacks
+            for (const stack of stacks) {
+                const { stackName, flowRate } = stack;
+    
+                if (flowRate !== undefined && stackName) {
+                    // Update the flowRate for the specific stack in the database
+                    await IotData.findOneAndUpdate(
+                        { userName: data.userName, 'stackData.stackName': stackName },
+                        { $set: { 'stackData.$.flowRate': flowRate, 'stackData.$.timestamp': new Date() } },
+                        { upsert: true }
+                    );
+                }
+            }
+    
             const newEntry = new IotData(newEntryData);
             await newEntry.save();
+    
             if (data.userName === 'KSPCB013') {
                 console.log('Data saved successfully for KSPCB013');
             }
+    
             // Update max and min values for stack data
             await updateMaxMinValues(newEntryData);
     
@@ -216,6 +234,10 @@ const checkTimeInterval = async (data, user) => {
             res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
         }
     };
+    
+    
+    
+    
     
     
     

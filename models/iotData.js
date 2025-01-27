@@ -42,7 +42,7 @@ const StackSchema = new mongoose.Schema({
     solarRadiation: { type: String },
     DB: { type: String },
     cumulatingFlow: { type: Number,  }, //default: 0
-    flowRate: { type: Number,  }, //default: 0
+    flowRate: { type: Number, required: false },  //default: 0
       energy: { type: Number,  }, //default: 0
     voltage: { type: Number,  }, //default: 0
     current: { type: Number,  }, //default: 0

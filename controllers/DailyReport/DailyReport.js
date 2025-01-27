@@ -82,7 +82,9 @@ const fetchLastMinandMaxData = async (userName, stackName) => {
 
 // Generate water table
 const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
-    const rows = Object.entries(parameters).map(([param, value]) => {
+    const rows = Object.entries(parameters)
+    .filter(([param]) => param !== '_id') // Filter out the '_id' parameter
+    .map(([param, value]) => {
         const minValue = 0; // Always set to 0
         const maxValue = 0; // Always set to 0
         const minAcceptable = exceedance?.[`${param}Min`] || 'Not Added';
@@ -99,7 +101,9 @@ const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
             <td>${maxAcceptable}</td>
             <td>${exceedanceValue}</td>
         </tr>`;
-    }).join('');
+    })
+    .join('');
+
 
     return `
         <h2 style="color: #236a80; font-size: 1.5rem;">Quality Report for Station: ${stackName}</h2>
@@ -339,7 +343,7 @@ const sendEmail = async (email, pdfPath) => {
 
 // Schedule daily reports
 const scheduleDailyReports = () => {
-    cron.schedule('40 1 * * *', async () => {
+    cron.schedule('5 1 * * *', async () => {
         console.log('Cron job triggered');
 
         const users = await User.find();
