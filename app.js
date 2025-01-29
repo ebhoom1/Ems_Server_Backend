@@ -69,8 +69,7 @@ const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
 const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 
 
-const {scheduleDailyReports} = require('./controllers/DailyReport/DailyReport')
-
+const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
 
 
 
@@ -309,7 +308,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-scheduleDailyReports();
+generateAndSendReport();
 console.log('Daily Report Scheduling Initialized.');
 
 

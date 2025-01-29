@@ -25,12 +25,13 @@ const generatePDF = async (htmlContent, filePath) => {
     try {
         const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
-        await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
-        await page.pdf({ path: filePath, format: "A4", printBackground: true });
+        await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+        await page.pdf({ path: filePath, format: 'A4', printBackground: true });
         await browser.close();
+        console.log(`PDF generated: ${filePath}`);
         return filePath;
     } catch (error) {
-        console.error("Error generating PDF:", error);
+        console.error('Error generating PDF:', error);
         throw error;
     }
 };
@@ -77,7 +78,7 @@ const generateAndSendReport = async (user) => {
 };
 
 // Schedule cron job
-cron.schedule("5 1 * * *", async () => {
+cron.schedule("*/2 * * * *", async () => {
     const users = await User.find();
     users.forEach(generateAndSendReport);
 }, { timezone: "Asia/Kolkata" });
