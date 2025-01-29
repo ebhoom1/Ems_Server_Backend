@@ -402,4 +402,51 @@ const getTodayConsumptionData = async (req, res) => {
         res.status(500).json({ message: "Internal server error.", error: error.message });
     }
 };
-module.exports = { calculateAndSaveConsumption,getTodayConsumptionData, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData,getConsumptionDataByDateRange};
+
+const getConsumptionDataFromMongo = async (req, res) => {
+    const { userName, stackName, date } = req.query;
+
+    try {
+        if (!userName || !stackName || !date) {
+            return res.status(400).json({ message: "Missing required query parameters: userName, stackName, or date." });
+        }
+
+        // Convert date format from "DD-MM-YYYY" to "DD/MM/YYYY"
+        const formattedDate = date.replace(/-/g, "/");
+
+        // Define the query object (excluding hour to get the latest entry for the date)
+        const query = {
+            userName,
+            date: formattedDate,
+            "stacks.stackName": stackName
+        };
+
+        console.log("Querying MongoDB with:", query);
+
+        // Fetch the latest entry for the given user, stackName, and date, sorted by hour descending
+        let mongoData = await Consumption.find(query).sort({ hour: -1 }).limit(1);
+
+        if (mongoData.length > 0) {
+            const filteredMongoData = mongoData.map(data => ({
+                userName: data.userName,
+                product_id: data.product_id,
+                date: data.date,
+                hour: data.hour, // This will return the last saved hour
+                stacks: data.stacks.filter(stack => stack.stackName === stackName)
+            }));
+
+            return res.json({ message: "Latest consumption data fetched successfully from MongoDB.", data: filteredMongoData });
+        }
+
+        return res.status(404).json({ message: "No matching consumption data found in MongoDB." });
+    } catch (error) {
+        console.error('Error fetching consumption data:', error);
+        res.status(500).json({ message: "Internal server error.", error: error.message });
+    }
+};
+
+
+
+
+
+module.exports = { calculateAndSaveConsumption,getTodayConsumptionData,getConsumptionDataFromMongo, setupCronJobConsumption,getConsumptionData,getConsumptionDataByStacks,getConsumptionDataStackName,getLatestConsumptionData,getConsumptionDataByDateRange};
