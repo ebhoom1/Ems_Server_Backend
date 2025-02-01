@@ -78,7 +78,7 @@ const generateAndSendReport = async (user) => {
 };
 
 // Schedule cron job
-cron.schedule("*/2 * * * *", async () => {
+cron.schedule("5 1 * * *", async () => {
     const users = await User.find();
     users.forEach(generateAndSendReport);
 }, { timezone: "Asia/Kolkata" });

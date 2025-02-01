@@ -10,10 +10,19 @@ const moment = require('moment-timezone');
 const ensureNumber = (value) => (typeof value === 'number' ? value : 0);
 
 // Fetch data with a safeguard against missing data
+
 const fetchDataForCalculation = async (date, hour) => {
-    const result = await HourlyData.findOne({ date: date, hour: String(hour) });
-    if (!result) return { stacks: [], userName: '', product_id: '' }; // Ensure defaults if no data found
-    return result;
+    try {
+        const result = await HourlyData.findOne({ date: date, hour: String(hour) });
+        if (!result) {
+            console.warn(`⚠️ No data found for Date: ${date}, Hour: ${hour}`);
+            return { stacks: [], userName: '', product_id: '' };
+        }
+        return result;
+    } catch (error) {
+        console.error(`Error fetching data for Date: ${date}, Hour: ${hour}`, error);
+        return { stacks: [], userName: '', product_id: '' };
+    }
 };
 
 const calculateAndSaveConsumption = async () => {
@@ -22,64 +31,50 @@ const calculateAndSaveConsumption = async () => {
     const currentDate = now.format('DD/MM/YYYY');
     const currentMonth = now.format('MM');
 
-    console.log(`Fetching data for current hour: ${currentHour}, Date: ${currentDate}`);
+    console.log(`⚡ Fetching data for current hour: ${currentHour}, Date: ${currentDate}`);
 
     try {
-        const [currentHourData, previousHourData, startOfDay, startOfMonth, startOfYear] = await Promise.all([
+        const [currentHourData, previousHourData] = await Promise.all([
             fetchDataForCalculation(currentDate, currentHour),
-            fetchDataForCalculation(currentDate, currentHour - 1),
-            fetchDataForCalculation(currentDate, "00"),
-            fetchDataForCalculation(moment().startOf('month').format('DD/MM/YYYY'), "00"),
-            fetchDataForCalculation(moment().startOf('year').format('DD/MM/YYYY'), "00")
+            fetchDataForCalculation(currentDate, String(Number(currentHour) - 1))
         ]);
 
-        // Check if currentHourData is properly fetched
-        if (!currentHourData || !currentHourData.userName || !currentHourData.product_id) {
-            console.error('No valid current hour data found or required fields are missing.');
-            return; // Exit if data is missing or incomplete
+        if (!currentHourData || !currentHourData.stacks.length) {
+            console.warn(`⚠️ No valid current hour data found for ${currentDate} at hour ${currentHour}.`);
+            return;
         }
 
-        // Create new document for consumption data
+        const getStackValue = (data, stackName, key) => {
+            if (!data || !Array.isArray(data.stacks)) return 0;
+            const stack = data.stacks.find(s => s.stackName === stackName);
+            return stack && typeof stack[key] === 'number' ? stack[key] : 0;
+        };
+
         const newConsumptionData = new Consumption({
             userName: currentHourData.userName,
             product_id: currentHourData.product_id,
             date: currentDate,
-            month:currentMonth,
+            month: currentMonth,
             hour: currentHour,
-            stacks: currentHourData.stacks.map(stack => {
-                const stackName = stack.stackName;
-                const findStack = (data, name) => data.stacks.find(s => s.stackName === name) || {};
-                return {
-                    stackName: stackName,
-                    stationType: stack.stationType,
-                    energyHourlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(previousHourData, stackName).energy),
-                    flowHourlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(previousHourData, stackName).cumulatingFlow),
-                    energyDailyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfDay, stackName).energy),
-                    flowDailyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfDay, stackName).cumulatingFlow),
-                    energyMonthlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfMonth, stackName).energy),
-                    flowMonthlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfMonth, stackName).cumulatingFlow),
-                    energyYearlyConsumption: ensureNumber(stack.energy) - ensureNumber(findStack(startOfYear, stackName).energy),
-                    flowYearlyConsumption: ensureNumber(stack.cumulatingFlow) - ensureNumber(findStack(startOfYear, stackName).cumulatingFlow),
-                };
-            })
+            stacks: currentHourData.stacks.map(stack => ({
+                stackName: stack.stackName,
+                stationType: stack.stationType,
+                energyHourlyConsumption: getStackValue(currentHourData, stack.stackName, 'energy') - getStackValue(previousHourData, stack.stackName, 'energy'),
+                flowHourlyConsumption: getStackValue(currentHourData, stack.stackName, 'cumulatingFlow') - getStackValue(previousHourData, stack.stackName, 'cumulatingFlow'),
+            }))
         });
 
-        // Save the new document
         await newConsumptionData.save();
-        console.log(`New consumption data saved for ${currentHourData.userName} at hour: ${currentHour} on date: ${currentDate}`);
-        
-        io.to(currentHourData.userName).emit('consumptionDataUpdate', {
-            userName: currentHourData.userName,
-            product_id: currentHourData.product_id,
-            date: currentDate,
-            hour: currentHour,
-            stacks: newConsumptionData.stacks,
-            timestamp: new Date()
-        });
+        console.log(`✅ New consumption data saved for ${currentHourData.userName} at hour: ${currentHour} on date: ${currentDate}`);
+
     } catch (error) {
-        console.error('Error during consumption calculation:', error);
+        console.error('❌ Error during consumption calculation:', error);
     }
 };
+
+
+
+
 
 
 
