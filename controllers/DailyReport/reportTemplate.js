@@ -1,14 +1,14 @@
 // reportTemplate.js
 
 const generateWaterTable = (stackName, parameters, exceedance) => {
+    if (Object.keys(parameters).length === 0) return ''; // Skip empty tables
+
     const rows = Object.entries(parameters)
-        .filter(([param]) => param !== "_id") // Filter out the '_id' parameter
         .map(([param, value]) => {
             const minValue = 0;
             const maxValue = 0;
             const minAcceptable = exceedance?.[`${param}Min`] || "Not Added";
             const maxAcceptable = exceedance?.[`${param}Max`] || "Not Added";
-            const exceedanceValue = exceedance?.[param] || "Not Added";
 
             return `
         <tr>
@@ -18,7 +18,6 @@ const generateWaterTable = (stackName, parameters, exceedance) => {
             <td>${maxValue}</td>
             <td>${minAcceptable}</td>
             <td>${maxAcceptable}</td>
-            <td>${exceedanceValue}</td>
         </tr>`;
         })
         .join("");
@@ -34,12 +33,12 @@ const generateWaterTable = (stackName, parameters, exceedance) => {
                     <th>Max Value</th>
                     <th>Min Acceptable Limits</th>
                     <th>Max Acceptable Limits</th>
-                    <th>Exceedance</th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
         </table>`;
 };
+
 
 const generateCombinedPDFContent = async (companyName, waterTables, energyTable, flowTable) => {
     return `

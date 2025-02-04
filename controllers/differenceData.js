@@ -73,6 +73,9 @@ const calculateDailyDifferenceFromS3 = async () => {
             const { userName, stackName, stationType, initial, last } = groupedData[key];
 
             if (initial && last) {
+                console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
+                console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
+
                 const result = {
                     userName,
                     stackName,
@@ -85,26 +88,27 @@ const calculateDailyDifferenceFromS3 = async () => {
                     lastCumulatingFlow: last.cumulatingFlow || 0,
                     cumulatingFlowDifference: (last.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
                     time: moment().format('HH:mm:ss'),
-                    intervalType:'day',
-                    interval:"daily"
+                    intervalType: 'day',
+                    interval: "daily"
                 };
 
                 results.push(result);
-                console.log('Calculated result:', result);
+                console.log('✅ Calculated result:', result);
             }
         }
 
         // Save results to the database
         if (results.length > 0) {
             await DifferenceData.insertMany(results);
-            console.log('Daily differences saved successfully.');
+            console.log('📦 Daily differences saved successfully.');
         } else {
-            console.log('No results to save.');
+            console.log('⚠️ No results to save.');
         }
     } catch (error) {
-        console.error('Error calculating daily differences from S3:', error);
+        console.error('❌ Error calculating daily differences from S3:', error);
     }
 };
+
 
 
 

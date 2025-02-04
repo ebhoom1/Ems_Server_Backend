@@ -6,7 +6,7 @@ const cron = require("node-cron");
 const nodemailer = require("nodemailer");
 const puppeteer = require("puppeteer");
 const { generateWaterTable, generateCombinedPDFContent } = require("./reportTemplate");
-const { fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData } = require("./fetchData");
+const { fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData, fetchEnergyAndFlowData  } = require("./fetchData");
 const User = require("../../models/user");
 
 // Nodemailer configuration
@@ -54,33 +54,70 @@ const sendEmail = async (email, pdfPath) => {
 };
 
 // Generate and send report
+
 const generateAndSendReport = async (user) => {
     try {
+        if (!user || !user.companyName || !user.email || !user.userName) {
+            console.warn("Invalid user data:", user);
+            return;
+        }
+
+        console.log(`Generating report for: ${user.companyName}`);
+
         const { companyName, email, userName } = user;
         const averageData = await fetchLastAverageDataFromS3();
-        const userAverageData = averageData.filter((entry) => entry.userName === userName);
-        if (!userAverageData.length) return;
+        const userAverageData = averageData.filter(entry => entry.userName === userName);
 
-        const waterTables = await Promise.all(userAverageData.map(async (entry) => {
-            return Promise.all(entry.stackData.map(async (stack) => {
-                const exceedance = {}; // Fetch exceedance if required
-                return generateWaterTable(stack.stackName, stack.parameters, exceedance);
+        if (!userAverageData.length) {
+            console.warn(`No average data found for user: ${userName}`);
+            return;
+        }
+
+        const waterTables = await Promise.all(userAverageData.map(async entry => {
+            return Promise.all(entry.stackData.map(async stack => {
+                const maxMinData = await fetchLastMinandMaxData(userName, stack.stackName);
+                return generateWaterTable(stack.stackName, stack.parameters, maxMinData);
             }));
         }));
 
-        const htmlContent = await generateCombinedPDFContent(companyName, waterTables.flat().join(""), "", "");
-        const filePath = path.join(__dirname, "PDFs", `${userName}.pdf`);
+        const { energyTable, flowTable } = await fetchEnergyAndFlowData(userName);
+        const combinedWaterTables = waterTables.flat().filter(Boolean).join('');
+        const htmlContent = await generateCombinedPDFContent(companyName, combinedWaterTables, energyTable, flowTable);
+
+        const dir = path.join(__dirname, 'PDFs');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+
+        const filePath = path.join(dir, `${userName}.pdf`);
         await generatePDF(htmlContent, filePath);
+
         await sendEmail(email, filePath);
     } catch (error) {
-        console.error("Error generating or sending report:", error);
+        console.error('Error generating or sending report:', error);
     }
 };
 
+
+
+
 // Schedule cron job
 cron.schedule("5 1 * * *", async () => {
-    const users = await User.find();
-    users.forEach(generateAndSendReport);
+    try {
+        const users = await User.find();
+        console.log("Fetched Users:", users);  // Debugging log
+
+        if (!users || users.length === 0) {
+            console.warn("No users found. Skipping report generation.");
+            return;
+        }
+
+        users.forEach(user => {
+            console.log(`Processing report for user: ${user?.userName}`);
+            generateAndSendReport(user);
+        });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+    }
 }, { timezone: "Asia/Kolkata" });
+
 
 module.exports = { generateAndSendReport };
