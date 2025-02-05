@@ -31,7 +31,7 @@ const logoRouter = require('./routers/logoRouter');
 const maxMinRoutes = require('./routers/maxMinRoutes');
 const avoidUsersRoutes = require('./routers/avoidUsers');
 const wasteRoutes = require('./routers/wasteAndGeneratorRouter');
-
+const User = require('./models/user'); // Ensure you import the User model
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -308,7 +308,19 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-generateAndSendReport();
+cron.schedule('5 1 * * *', async () => {
+    try {
+        const users = await User.find(); // Fetch all users from the database
+        for (const user of users) {
+            await generateAndSendReport(user); // Pass each user to the function
+        }
+        console.log('Daily Report Scheduling Initialized.');
+    } catch (error) {
+        console.error('Error during daily report scheduling:', error);
+    }
+}, {
+    timezone: 'Asia/Kolkata',
+});
 console.log('Daily Report Scheduling Initialized.');
 
 

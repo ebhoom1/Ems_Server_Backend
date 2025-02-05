@@ -57,12 +57,10 @@ const sendEmail = async (email, pdfPath) => {
 
 const generateAndSendReport = async (user) => {
     try {
+        // Check if user object is valid
         if (!user || !user.companyName || !user.email || !user.userName) {
-            console.warn("Invalid user data:", user);
-            return;
+            throw new Error('Invalid user object: Missing required fields');
         }
-
-        console.log(`Generating report for: ${user.companyName}`);
 
         const { companyName, email, userName } = user;
         const averageData = await fetchLastAverageDataFromS3();
@@ -98,26 +96,6 @@ const generateAndSendReport = async (user) => {
 
 
 
-
-// Schedule cron job
-cron.schedule("5 1 * * *", async () => {
-    try {
-        const users = await User.find();
-        console.log("Fetched Users:", users);  // Debugging log
-
-        if (!users || users.length === 0) {
-            console.warn("No users found. Skipping report generation.");
-            return;
-        }
-
-        users.forEach(user => {
-            console.log(`Processing report for user: ${user?.userName}`);
-            generateAndSendReport(user);
-        });
-    } catch (error) {
-        console.error("Error fetching users:", error);
-    }
-}, { timezone: "Asia/Kolkata" });
 
 
 module.exports = { generateAndSendReport };
