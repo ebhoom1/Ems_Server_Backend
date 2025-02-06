@@ -143,39 +143,46 @@ const scheduleDifferenceCalculation = () => {
 
 // Controller to fetch difference data by userName and interval
 // Controller to fetch difference data by userName and interval with pagination
-const getDifferenceDataByUserNameAndInterval = async (userName, interval, page = 1, limit = 10) => {
+const getDifferenceDataByUserNameAndInterval = async (userName, interval, page = 1, limit = 50) => {
     try {
-        const skip = (page - 1) * limit;
+        const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
 
-        // Fetch data from MongoDB
-        const dbData = await DifferenceData.find({ userName, interval })
+        // Fetch all data from MongoDB
+        let dbData = await DifferenceData.find({ userName, interval })
             .select('userName interval stackName date time initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference initialFlowRate lastFlowRate flowRateDifference timestamp')
-            .sort({ timestamp: -1 })
-            .skip(skip)
-            .limit(limit)
             .lean();
 
         // Fetch data from S3
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
-        const s3Key = 'difference_data/hourlyDifferenceData.json'; // Path to S3 file
+        const bucketName = 'ems-ebhoom-bucket';
+        const s3Key = 'difference_data/hourlyDifferenceData.json';
 
         let s3Data = [];
         try {
             const s3Object = await s3.getObject({ Bucket: bucketName, Key: s3Key }).promise();
             const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
 
-            // Filter data based on userName and interval
+            // Filter S3 data based on userName and interval
             s3Data = fileData.filter(entry => entry.userName === userName && entry.interval === interval);
         } catch (err) {
-            if (err.code !== 'NoSuchKey') throw err; // If the file doesn't exist, ignore; otherwise, rethrow
+            if (err.code !== 'NoSuchKey') throw err; // Ignore missing file errors
         }
 
         // Combine MongoDB and S3 data
-        const combinedData = [...dbData, ...s3Data];
-        const total = combinedData.length;
+        let combinedData = [...dbData, ...s3Data];
 
-        // Paginate combined data
-        const paginatedData = combinedData.slice(skip, skip + limit);
+        // **Ensure Today's Data is Moved to the Top**
+        let todayData = combinedData.filter(entry => entry.date === today);
+        let pastData = combinedData.filter(entry => entry.date !== today);
+
+        // **Sort past data in descending order (latest first)**
+        pastData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // **Final Sorted Data**
+        let sortedData = [...todayData, ...pastData];
+
+        // **Apply Pagination AFTER Sorting**
+        const total = sortedData.length;
+        const paginatedData = sortedData.slice((page - 1) * limit, page * limit);
 
         return {
             data: paginatedData,
@@ -188,6 +195,7 @@ const getDifferenceDataByUserNameAndInterval = async (userName, interval, page =
         throw error;
     }
 };
+
 
 
 // Controller to fetch data by userName and time range with projections and limit
