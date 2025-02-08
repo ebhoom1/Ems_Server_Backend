@@ -1,8 +1,7 @@
 const AWS = require('aws-sdk');
-const moment = require('moment');
+const moment = require("moment-timezone");
 const cron = require('node-cron');
-const DailyDifference = require('../models/differeneceData');
-const DifferenceData = require('../models/differeneceData');
+const DifferenceData = require('../models/differeneceData'); // Keep only one reference
 const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit'); 
 
@@ -472,6 +471,79 @@ const getAllDifferenceDataByUserName = async (userName, interval, page = 1, limi
 };
 
 
+//get yesterdays difference data 
+
+const getYesterdayDifferenceData = async (userName) => {
+    try {
+        // 🔹 Get Yesterday's Date in IST
+        const yesterdayIST = moment().tz("Asia/Kolkata").subtract(1, "day");
+        const formattedYesterdayDate = yesterdayIST.format("DD/MM/YYYY");
+
+        // 🔹 Convert to UTC for MongoDB Query
+        const yesterdayStartUTC = yesterdayIST.startOf("day").utc().toDate();
+        const yesterdayEndUTC = yesterdayIST.endOf("day").utc().toDate();
+
+        console.log(`Fetching data for user: ${userName}`);
+        console.log(`Yesterday UTC Start: ${yesterdayStartUTC}, End: ${yesterdayEndUTC}`);
+        console.log(`Formatted Yesterday Date (DD/MM/YYYY): ${formattedYesterdayDate}`);
+
+        // ✅ **Step 1: Fetch Data from MongoDB**
+        const dbData = await DifferenceData.find({
+            userName,
+            $or: [
+                { timestamp: { $gte: yesterdayStartUTC, $lte: yesterdayEndUTC } },
+                { date: formattedYesterdayDate },
+            ],
+        })
+        .select("userName stackName date timestamp initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference")
+        .sort({ timestamp: -1 })
+        .lean();
+
+        const filteredDbData = dbData.filter(entry => entry.date === formattedYesterdayDate);
+        console.log(`Filtered Database Data Found: ${filteredDbData.length}`);
+
+        if (filteredDbData.length === 0) {
+            console.warn(`⚠ No database records found for ${userName} on ${formattedYesterdayDate}`);
+        }
+
+        // ✅ **Step 2: Fetch Data from S3**
+        const bucketName = "ems-ebhoom-bucket";
+        const fileKey = "difference_data/hourlyDifferenceData.json";
+        let s3Data = [];
+
+        try {
+            console.log("Fetching hourly data from S3...");
+            const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+
+            console.log(`Total records in S3 file: ${s3FileData.length}`);
+
+            // 🔹 Filter S3 Data for Yesterday
+            s3Data = s3FileData.filter(entry => entry.userName === userName && entry.date === formattedYesterdayDate);
+
+            console.log(`Filtered S3 Data Found: ${s3Data.length}`);
+        } catch (s3Error) {
+            if (s3Error.code === "NoSuchKey") {
+                console.warn("⚠ No data file found in S3 bucket for the given key.");
+            } else {
+                console.error("Error fetching data from S3:", s3Error.message);
+            }
+        }
+
+        // ✅ **Step 3: Combine Data**
+        const combinedData = [...filteredDbData, ...s3Data];
+
+        if (combinedData.length === 0) {
+            console.warn(`⚠ No data found for ${userName} on ${formattedYesterdayDate}`);
+            return [];  // ✅ **Return empty array instead of throwing an error**
+        }
+
+        return combinedData;
+    } catch (error) {
+        console.error("Error fetching yesterday's difference data:", error);
+        throw error;
+    }
+};
 
 
 
@@ -550,7 +622,71 @@ const downloadDifferenceData = async (req, res) => {
     }
 };
 
+const getEnergyAndFlowDataByDateRange = async (userName, fromDate, toDate) => {
+    try {
+        const startIST = moment.tz(fromDate, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day');
+        const endIST = moment.tz(toDate, 'DD-MM-YYYY', 'Asia/Kolkata').endOf('day');
 
+        const startUTC = startIST.utc().toDate();
+        const endUTC = endIST.utc().toDate();
+
+        if (isNaN(startUTC) || isNaN(endUTC)) {
+            throw new Error('Invalid date format. Use "DD-MM-YYYY".');
+        }
+
+        // Fetch data from MongoDB
+        const dbData = await DifferenceData.find({
+            userName,
+            timestamp: { $gte: startUTC, $lte: endUTC },
+        })
+            .select('userName stackName date time initialEnergy lastEnergy initialCumulatingFlow lastCumulatingFlow timestamp')
+            .sort({ timestamp: -1 })
+            .lean();
+
+        // Fetch data from S3 bucket
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const fileKey = 'difference_data/hourlyDifferenceData.json'; // Replace with your S3 key
+        const params = {
+            Bucket: bucketName,
+            Key: fileKey,
+        };
+
+        let s3Data = [];
+        try {
+            console.log('Fetching hourly data from S3...');
+            const s3Object = await s3.getObject(params).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+            // Filter S3 data for the given userName and date range
+            s3Data = s3FileData.filter(entry => {
+                const entryDate = moment(entry.date, 'DD/MM/YYYY').utc().toDate();
+                return entry.userName === userName && entryDate >= startUTC && entryDate <= endUTC;
+            });
+        } catch (s3Error) {
+            if (s3Error.code === 'NoSuchKey') {
+                console.warn('No data file found in S3 bucket for the given key.');
+            } else {
+                console.error('Error fetching data from S3:', s3Error.message);
+            }
+        }
+
+        // Combine database and S3 data
+        const combinedData = [...dbData, ...s3Data];
+
+        if (combinedData.length === 0) {
+            throw new Error('No data found for the specified criteria.');
+        }
+
+        return {
+            success: true,
+            message: `Energy and flow data for ${userName} fetched successfully.`,
+            data: combinedData,
+        };
+    } catch (error) {
+        console.error('Error fetching energy and flow data by date range:', error);
+        throw error;
+    }
+};
 
 
 module.exports = {
@@ -560,6 +696,8 @@ module.exports = {
     downloadDifferenceData,
     scheduleDifferenceCalculation,
     getLastDataByDateRange,
-    getTodayDifferenceData
+    getTodayDifferenceData,
+    getEnergyAndFlowDataByDateRange,
+    getYesterdayDifferenceData ,
 };
 

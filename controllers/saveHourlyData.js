@@ -133,7 +133,7 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-const fetchDataFromS3 = async (key) => {
+/* const fetchDataFromS3 = async (key) => {
     try {
         const params = {
             Bucket: 'ems-ebhoom-bucket',
@@ -148,15 +148,16 @@ const fetchDataFromS3 = async (key) => {
         console.error('Error fetching data from S3:', error);
         throw new Error('Failed to fetch data from S3');
     }
-};
+}; */
 
 const getHourlyDataOfCumulatingFlowAndEnergy = async (req, res) => {
     const { userName, date } = req.query;
 
+    // ❌ Validate request parameters
     if (!userName || !date) {
         return res.status(400).json({
             success: false,
-            message: '❌ Missing required query parameters (userName, date).',
+            message: '❌ Missing required query parameters (userName, date).'
         });
     }
 
@@ -172,54 +173,52 @@ const getHourlyDataOfCumulatingFlowAndEnergy = async (req, res) => {
         } else {
             return res.status(400).json({
                 success: false,
-                message: '❌ Date format is invalid. Use YYYY, MM, or DD/MM/YYYY format.',
+                message: '❌ Date format is invalid. Use YYYY, MM, or DD/MM/YYYY format.'
             });
         }
 
-        // 🔥 Corrected MongoDB Query with `$unwind: "$stackData"`
-        const results = await HourlyData.aggregate([
-            { $match: { userName: userName, ...dateQuery } },
-            { $unwind: "$stackData" }, // 🔥 Fixes previous error
-            {
-                $group: {
-                    _id: { hour: "$hour", stackName: "$stackData.stackName" },
-                    latestEntry: { $last: "$stackData" }, // 🔥 Fetches last entry for each stack
-                    date: { $last: "$date" },
-                    userName: { $last: "$userName" },
-                },
-            },
-            { $sort: { "_id.hour": 1 } },
-        ]);
+        // 🔥 Fetch data from MongoDB first
+        const results = await HourlyData.find({ userName: userName, ...dateQuery }).lean();
 
         console.log(`📊 MongoDB Query Results for user: ${userName}, date: ${date}`, results);
 
+        // ✅ If data is found in MongoDB, return it
         if (results.length > 0) {
             return res.status(200).json({
                 success: true,
-                data: results.map((item) => ({
-                    hour: item._id.hour,
-                    date: item.date,
-                    userName: item.userName,
-                    stack: item.latestEntry,
-                })),
+                data: results.map((entry) => ({
+                    hour: entry.hour,
+                    date: entry.date,
+                    userName: entry.userName,
+                    stacks: entry.stacks || [] // ✅ Ensures stack data is always returned
+                }))
             });
         }
 
         console.log('⚠️ No data found in MongoDB. Fetching from S3...');
 
-        // Fetch from S3 if no data in MongoDB
-        const s3Data = await fetchDataFromS3('hourly_data/hourlyData.json');
+        // 🔥 Fetch data from S3 if MongoDB has no data
+        const s3Key = 'hourly_data/hourlyData.json';
+        const s3Data = await fetchDataFromS3(s3Key);
 
+        if (!s3Data || s3Data.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '❌ No data found in MongoDB or S3 for the given parameters.'
+            });
+        }
+
+        // ✅ Filter S3 data based on userName and date
         const filteredS3Data = s3Data.filter(
             (entry) => entry.userName === userName && entry.date === date
         );
 
-        console.log(`📂 Filtered S3 Data:`, filteredS3Data);
+        console.log(`📂 Filtered S3 Data for user ${userName} on ${date}:`, filteredS3Data);
 
         if (filteredS3Data.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: '❌ No data found in MongoDB or S3 for the given parameters.',
+                message: '❌ No matching data found in S3.'
             });
         }
 
@@ -229,18 +228,40 @@ const getHourlyDataOfCumulatingFlowAndEnergy = async (req, res) => {
                 hour: entry.hour,
                 date: entry.date,
                 userName: entry.userName,
-                stacks: entry.stackData, // 🔥 Ensuring we return `stackData`
-            })),
+                stacks: entry.stacks || [] // ✅ Ensures stack data is included
+            }))
         });
+
     } catch (error) {
         console.error('❌ Error fetching hourly data:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: '❌ Internal server error while fetching data.',
-            error: error.message,
+            error: error.message
         });
     }
 };
+
+/**
+ * Fetches data from AWS S3 bucket
+ */
+const fetchDataFromS3 = async (key) => {
+    try {
+        const params = {
+            Bucket: 'ems-ebhoom-bucket',
+            Key: key
+        };
+
+        const data = await s3.getObject(params).promise();
+        console.log(`✅ Fetched data from S3 for key: ${key}`);
+
+        return JSON.parse(data.Body.toString('utf-8'));
+    } catch (error) {
+        console.error('❌ Error fetching data from S3:', error);
+        return null;
+    }
+};
+
 
 
 module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy };

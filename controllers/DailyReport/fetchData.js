@@ -1,9 +1,10 @@
 // fetchData.js
-
+const axios = require("axios");
+const moment = require("moment-timezone");
 const AWS = require("aws-sdk");
 const MinandMax = require("../../models/MinandMax");
 const ConsumptionData = require("../../models/ConsumptionData");
-
+const API="https://api.ocems.ebhoom.com"
 // AWS SDK configuration
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -98,28 +99,37 @@ const fetchLastDifferenceDataFromS3 = async () => {
     }
 };
 
+
 const fetchEnergyAndFlowData = async (userName) => {
     try {
-        const consumptionData = await ConsumptionData.findOne({ userName }).sort({ createdAt: -1 });
-        const differenceData = await fetchLastDifferenceDataFromS3();
+        // Fetch yesterday's difference data from API
+        const yesterdayResponse = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
 
-        let energyTable = '<p>No energy data available.</p>';
-        let flowTable = '<p>No flow data available.</p>';
+        if (!yesterdayResponse.data.success || !Array.isArray(yesterdayResponse.data.data) || yesterdayResponse.data.data.length === 0) {
+            console.warn(`No valid difference data found for ${userName}`);
+            return { 
+                energyTable: '<p>No energy report available.</p>', 
+                flowTable: '<p>No water quality report available.</p>' 
+            };
+        }
 
-        if (consumptionData) {
-            const energyData = consumptionData.totalConsumptionData
-                .filter(item => item.stationType === 'energy')
-                .map(item => {
-                    const difference = differenceData.find(d => d.stackName === item.stackName && d.stationType === 'energy') || {};
-                    return {
-                        stackName: item.stackName,
-                        total: item.energy || 0,
-                        initialEnergy: difference.initialEnergy || 'nil',
-                        lastEnergy: difference.lastEnergy || 'nil',
-                        energyDifference: difference.energyDifference || 'nil',
-                    };
-                });
+        const differenceData = yesterdayResponse.data.data;
+        console.log(`Fetched ${differenceData.length} records for ${userName} from differenceData API.`);
 
+        let energyTable = '<p>No energy report available.</p>';
+        let flowTable = '<p>No water quality report available.</p>';
+
+        // ✅ Extract energy data
+        const energyData = differenceData
+            .filter(item => item.stationType === "energy")
+            .map(item => ({
+                stackName: item.stackName,
+                initialEnergy: item.initialEnergy ?? "nil",
+                lastEnergy: item.lastEnergy ?? "nil",
+                energyDifference: item.energyDifference ?? "nil",
+            }));
+
+        if (energyData.length > 0) {
             energyTable = `
                 <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
                 <table class="report-table">
@@ -141,22 +151,21 @@ const fetchEnergyAndFlowData = async (userName) => {
                             </tr>`).join('')}
                     </tbody>
                 </table>`;
+        }
 
-            const flowData = consumptionData.totalConsumptionData
-                .filter(item => item.stationType === 'effluent_flow')
-                .map(item => {
-                    const difference = differenceData.find(d => d.stackName === item.stackName && d.stationType === 'effluent_flow') || {};
-                    return {
-                        stackName: item.stackName,
-                        total: item.finalflow || 0,
-                        initialFlow: difference.initialCumulatingFlow || 'nil',
-                        lastFlow: difference.lastCumulatingFlow || 'nil',
-                        flowDifference: difference.cumulatingFlowDifference || 'nil',
-                    };
-                });
+        // ✅ Extract flow data
+        const flowData = differenceData
+            .filter(item => item.stationType === "effluent_flow")
+            .map(item => ({
+                stackName: item.stackName,
+                initialFlow: item.initialCumulatingFlow ?? "nil",
+                lastFlow: item.lastCumulatingFlow ?? "nil",
+                flowDifference: item.cumulatingFlowDifference ?? "nil",
+            }));
 
+        if (flowData.length > 0) {
             flowTable = `
-                <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Flow Report</h1>
+                <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Water Quality Report</h1>
                 <table class="report-table">
                     <thead>
                         <tr>
@@ -180,11 +189,13 @@ const fetchEnergyAndFlowData = async (userName) => {
 
         return { energyTable, flowTable };
     } catch (error) {
-        console.error("Error fetching energy and flow data:", error);
-        return { energyTable: '', flowTable: '' };
+        console.error("❌ Error fetching energy and flow data:", error);
+        return { 
+            energyTable: '<p>Error fetching energy report.</p>', 
+            flowTable: '<p>Error fetching water quality report.</p>' 
+        };
     }
 };
-
 
 
 

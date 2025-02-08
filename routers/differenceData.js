@@ -6,7 +6,9 @@ const {
   getDifferenceDataByTimeRange,
   getLastDataByDateRange,
   downloadDifferenceData,
-  getTodayDifferenceData
+  getTodayDifferenceData,
+  getEnergyAndFlowDataByDateRange, 
+  getYesterdayDifferenceData
 } = require('../controllers/differenceData');
 
 // Helper function to validate intervals
@@ -217,6 +219,74 @@ router.get('/lastDataByDateRange/:userName/:interval/:fromDate/:toDate', async (
       res.status(500).json({
           success: false,
           message: 'Failed to fetch last data for each date.',
+          error: error.message,
+      });
+  }
+});
+
+// Route to get energy and flow data by userName and date range
+router.get('/energyAndFlowData/:userName/:fromDate/:toDate', async (req, res) => {
+  const { userName, fromDate, toDate } = req.params;
+
+  try {
+      const data = await getEnergyAndFlowDataByDateRange(userName, fromDate, toDate);
+
+      if (!data.data.length) {
+          return res.status(404).json({
+              success: false,
+              message: `No energy and flow data found for ${userName} within the specified date range.`,
+          });
+      }
+
+      res.status(200).json({
+          success: true,
+          message: 'Energy and flow data fetched successfully.',
+          data: data.data,
+      });
+  } catch (error) {
+      console.error('Error fetching energy and flow data:', error);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to fetch energy and flow data.',
+          error: error.message,
+      });
+  }
+});
+// Route to get yesterday's difference data for a specific userName
+// Route to get yesterday's difference data for a specific userName
+router.get('/differenceData/yesterday/:userName', async (req, res) => {
+  const { userName } = req.params;
+
+  if (!userName) {
+      return res.status(400).json({
+          success: false,
+          message: "userName is required.",
+      });
+  }
+
+  try {
+      // Call the updated controller function
+      const yesterdayData = await getYesterdayDifferenceData(userName);
+
+      if (yesterdayData.length === 0) {
+          return res.status(200).json({
+              success: true,
+              message: `No data available for ${userName} on yesterday.`,
+              data: [],
+          });
+      }
+
+      res.status(200).json({
+          success: true,
+          message: `Yesterday's difference data for ${userName} fetched successfully.`,
+          data: yesterdayData,
+      });
+  } catch (error) {
+      console.error("Error fetching yesterday's difference data:", error);
+
+      res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
           error: error.message,
       });
   }

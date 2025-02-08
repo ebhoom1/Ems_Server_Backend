@@ -308,7 +308,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-cron.schedule('17 1 * * *', async () => {
+cron.schedule('5 1 * * *', async () => {
     try {
         const users = await User.find(); // Fetch all users from the database
         for (const user of users) {
