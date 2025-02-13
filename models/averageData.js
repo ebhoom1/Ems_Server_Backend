@@ -6,7 +6,7 @@ const IotDataAverageSchema = new mongoose.Schema({
     product_id: { type: String, required: true },
     interval: { type: String, required: true },
     intervalType: { type: String, required: true }, 
-    dateAndTime: { type: String },
+    date: { type: String },
     timestamp: { type: Date, default: Date.now },
     stackData: [
         {

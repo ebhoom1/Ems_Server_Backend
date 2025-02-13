@@ -8,7 +8,9 @@ const {
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
     getAllAverageData,
     fetchLastEntryOfEachDate,
-    getTodayLastAverageDataByStackName
+    getTodayLastAverageDataByStackName,
+    getHourlyDataForDailyInterval,
+    getHourlyAveragesByDate
 } = require('../controllers/iotDataAverages');
 
 const router = express.Router();
@@ -50,5 +52,10 @@ router.get(
 );
 
 router.get('/averageData/today/:userName/:stackName/last',getTodayLastAverageDataByStackName);
-
+// New route to get hourly data for a specific day based on userName and interval
+router.get(
+    '/average/user/:userName/interval/daily/hourly', 
+    getHourlyDataForDailyInterval
+);
+router.get('/average/user/:userName/date/:day/:month/:year', getHourlyAveragesByDate);
 module.exports = router;

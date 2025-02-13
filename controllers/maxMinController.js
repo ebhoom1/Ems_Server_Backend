@@ -1,6 +1,6 @@
-const MaxandMinData = require('../models/MinandMax');
-const moment = require('moment-timezone'); // Import moment-timezone for timezone handling
+const MaxMinData = require('../models/MinandMax');
 
+const moment = require('moment');
 
 // This function should be called every hour to update the hourly max/min values
 const updateMaxMinValues = async (data) => {
@@ -121,45 +121,45 @@ const getMaxMinDataByDateRange = async (req, res) => {
     const { fromDate, toDate } = req.query;
 
     try {
-        // Validate and parse dates
         if (!fromDate || !toDate) {
             return res.status(400).json({ message: 'fromDate and toDate are required query parameters.' });
         }
 
-        const startDate = moment(fromDate, 'DD-MM-YYYY', true).startOf('day');
-        const endDate = moment(toDate, 'DD-MM-YYYY', true).endOf('day');
+        // Format dates to match MongoDB format
+        const startDateFormatted = moment(fromDate, "DD/MM/YYYY").format("DD/MM/YYYY");
+        const endDateFormatted = moment(toDate, "DD/MM/YYYY").format("DD/MM/YYYY");
 
-        if (!startDate.isValid() || !endDate.isValid()) {
-            return res.status(400).json({ message: 'Invalid date format. Use DD-MM-YYYY.' });
-        }
-
-        // Query the database for matching records
-        const data = await MaxMinData.find({
+        // Debugging: Log the query
+        const query = {
             userName,
-            stackName,
-            timestamp: { $gte: startDate.toDate(), $lte: endDate.toDate() },
-        });
+            stackName: { $regex: new RegExp(stackName.trim(), "i") },
+            date: { $gte: startDateFormatted, $lte: endDateFormatted }
+        };
+        console.log("MongoDB Query:", JSON.stringify(query, null, 2));
+
+        // Fetch data from MongoDB
+        const data = await MaxMinData.find(query);
 
         if (!data || data.length === 0) {
             return res.status(404).json({
-                message: `No data found for user: ${userName}, stack: ${stackName} between ${fromDate} and ${toDate}.`,
+                message: `No data found for user: ${userName}, stack: ${stackName} between ${fromDate} and ${toDate}.`
             });
         }
 
-        // Return the result
         res.status(200).json({
             success: true,
             message: `Data fetched successfully for user: ${userName}, stack: ${stackName} within the date range.`,
-            data,
+            data
         });
     } catch (error) {
-        console.error('Error fetching data by date range:', error);
+        console.error("Error fetching data by date range:", error);
         res.status(500).json({
-            message: 'Internal Server Error while fetching data.',
-            error: error.message,
+            message: "Internal Server Error while fetching data.",
+            error: error.message
         });
     }
 };
+
 const saveDailyMinMaxValues = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {

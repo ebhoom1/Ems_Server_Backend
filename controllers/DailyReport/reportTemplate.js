@@ -23,7 +23,7 @@ const generateWaterTable = (stackName, parameters, exceedance) => {
         .join("");
 
     return `
-        <h2 style="color: #236a80; font-size: 1.5rem;">Quality Report for Station: ${stackName}</h2>
+        <h2 style="color: #236a80; font-size: 1.5rem;">Quality Report </h2>
         <table class="report-table">
             <thead>
                 <tr>

@@ -135,7 +135,7 @@ app.use('/api', consumptionRoutes);
 app.use('/api', predictionRoutes);  
 app.use('/api', totalConsumptionSummaryRoutes);
 app.use('/api', totalPredictionSummaryRoutes);
-app.use('/api',hourlyDataRoutes);
+app.use('/api', hourlyDataRoutes);
 app.use('/api', primaryStationRoutes);
 app.use('/api', billRoutes);
 app.use('/api', liveStationRoutes);
@@ -308,7 +308,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-cron.schedule('5 1 * * *', async () => {
+cron.schedule('3 1 * * *', async () => {
     try {
         const users = await User.find(); // Fetch all users from the database
         for (const user of users) {

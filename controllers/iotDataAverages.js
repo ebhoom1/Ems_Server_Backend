@@ -7,339 +7,134 @@ const PDFDocument = require('pdfkit');
 const AWS = require('aws-sdk');
 
 
-// Function to calculate averages dynamically
-// Function to calculate averages dynamically
-// const calculateAverages = async (userName, product_id, startTime, endTime, interval, intervalType) => {
-//     console.log(`Calculating averages for ${userName} - ${intervalType}: ${startTime} to ${endTime}`);
 
-//     // Check if an entry already exists for this user, interval, and intervalType
-//     const existingRecord = await IotDataAverage.findOne({
-//         userName,
-//         product_id,
-//         interval,
-//         intervalType,
-//         dateAndTime: moment().format('DD/MM/YYYY HH:mm'),
-//     });
+const calculateAverages = async (userName, product_id, stackName, interval) => {
+    const nowIST = moment().tz('Asia/Kolkata'); // Get current IST time
 
-//     if (existingRecord) {
-//         console.log(`Average entry already exists for ${userName} - ${intervalType}. Skipping save operation.`);
-//         return; // Prevent duplicate save
-//     }
+    let startTime, endTime;
 
-//     // Aggregation query to fetch data
-//     const data = await IotData.aggregate([
-//         {
-//             $match: {
-//                 userName,
-//                 product_id,
-//                 timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
-//             },
-//         },
-//         { $unwind: '$stackData' },
-//         {
-//             $match: {
-//                 'stackData.stackName': { $exists: true, $ne: null },
-//             },
-//         },
-//     ]);
+    if (interval === 'hour') {
+        startTime = nowIST.clone().startOf('hour').toDate(); // Example: 01:00:00
+        endTime = nowIST.clone().endOf('hour').toDate(); // Example: 01:59:59
+    } else if (interval === 'day') {
+        startTime = nowIST.clone().subtract(1, 'day').startOf('day').toDate(); // Example: Yesterday 00:00:00
+        endTime = nowIST.clone().subtract(1, 'day').endOf('day').toDate(); // Example: Yesterday 23:59:59
+    } else {
+        return console.log(`⚠️ Unsupported interval: ${interval}`);
+    }
 
-//     console.log(`Extracted ${data.length} entries for ${userName} - ${intervalType}`);
-//     if (data.length === 0) return;
-
-//     // Grouping and calculating averages
-//     const stackGroups = data.reduce((acc, entry) => {
-//         const { stackName, stationType, ...parameters } = entry.stackData;
-//         if (!acc[stackName]) acc[stackName] = { stationType, parameters: {} };
-
-//         Object.entries(parameters).forEach(([key, value]) => {
-//             acc[stackName].parameters[key] = acc[stackName].parameters[key] || [];
-//             acc[stackName].parameters[key].push(parseFloat(value || 0));
-//         });
-
-//         return acc;
-//     }, {});
-
-//     const stackData = Object.entries(stackGroups).map(([stackName, { stationType, parameters }]) => {
-//         const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
-//             const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-//             acc[key] = parseFloat(avg.toFixed(2));
-//             return acc;
-//         }, {});
-
-//         return {
-//             stackName,
-//             stationType,
-//             parameters: averagedParameters,
-//         };
-//     });
-
-//     console.log(`Averages for ${userName}:`, stackData);
-
-//     // Prepare and save the new average entry
-//     const averageEntry = new IotDataAverage({
-//         userName,
-//         product_id,
-//         interval,
-//         intervalType, // Save the interval type
-//         dateAndTime: moment().format('DD/MM/YYYY HH:mm'),
-//         timestamp: new Date(),
-//         stackData,
-//     });
-
-//     try {
-//         await averageEntry.save();
-//         console.log(`Average entry saved for ${userName} - ${intervalType}`);
-//     } catch (error) {
-//         console.error(`Error saving average entry for ${userName} - ${intervalType}:`, error);
-//     }
-// };
-
-
-// // Schedule calculations for all intervals
-// const scheduleAveragesCalculation = () => {
-//     const intervals = [
-//         { cronTime: '0 * * * *', interval: 'hour', duration: 60 * 60 * 1000 }, // Every hour
-//         { cronTime: '0 0 * * *', interval: 'day', duration: 24 * 60 * 60 * 1000 }, // Every day
-//         { cronTime: '0 0 * * 1', interval: 'week', duration: 7 * 24 * 60 * 60 * 1000 }, // Every week (Monday)
-//         { cronTime: '0 0 1 * *', interval: 'month', duration: 30 * 24 * 60 * 60 * 1000 }, // Every month
-//         { cronTime: '0 0 1 */6 *', interval: 'sixmonths', duration: 6 * 30 * 24 * 60 * 60 * 1000 }, // Every 6 months
-//         { cronTime: '0 0 1 1 *', interval: 'year', duration: 365 * 24 * 60 * 60 * 1000 }, // Every year
-//     ];
-    
-//     // const intervals = [
-//     //     { cronTime: '*/1 * * * *', interval: 'minute', duration: 60 * 1000 }, // Every minute
-//     //     { cronTime: '*/2 * * * *', interval: 'twoMinutes', duration: 2 * 60 * 1000 }, // Every 2 minutes
-//     // ];
-
-//     intervals.forEach(({ cronTime, interval, duration }) => {
-//         cron.schedule(cronTime, async () => {
-//             console.log(`Running ${interval} average calculation...`);
-//             const users = await IotData.distinct('userName');
-//             for (const userName of users) {
-//                 const productIds = await IotData.distinct('product_id', { userName });
-//                 for (const product_id of productIds) {
-//                     const stackNames = await IotData.aggregate([
-//                         { $match: { userName, product_id } },
-//                         { $unwind: '$stackData' },
-//                         { $group: { _id: '$stackData.stackName' } },
-//                     ]).then(result => result.map(item => item._id));
-
-//                     const now = new Date();
-//                     const startTime = new Date(now.getTime() - duration);
-//                     const endTime = now;
-
-//                     for (const stackName of stackNames) {
-//                         await calculateAverages(userName, product_id, stackName, startTime, endTime, interval);
-//                     }
-//                 }
-//             }
-//         });
-//     });
-// };
-//scheduleAveragesCalculation();
-
-// Adjust calculation to use IST (Indian Standard Time)
-// const calculateAverages = async (userName, product_id, startTime, endTime, interval, intervalType) => {
-//     //console.log(`Calculating averages for ${userName} - ${intervalType}: ${startTime} to ${endTime}`);
-
-//     const nowIST = moment().tz('Asia/Kolkata');
-
-//     // Check if an entry already exists for this user, interval, and intervalType
-//     const existingRecord = await IotDataAverage.findOne({
-//         userName,
-//         product_id,
-//         interval,
-//         intervalType,
-//         dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'),
-//     });
-
-//     if (existingRecord) {
-//         console.log(`Average entry already exists for ${userName} - ${intervalType}. Skipping save operation.`);
-//         return; // Prevent duplicate save
-//     }
-
-//     // Aggregation query to fetch data
-//     const data = await IotData.aggregate([
-//         {
-//             $match: {
-//                 userName,
-//                 product_id,
-//                 timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
-//             },
-//         },
-//         { $unwind: '$stackData' },
-//         {
-//             $match: {
-//                 'stackData.stackName': { $exists: true, $ne: null },
-//             },
-//         },
-//     ]);
-
-//     //console.log(`Extracted ${data.length} entries for ${userName} - ${intervalType}`);
-//     if (data.length === 0) return;
-
-//     // Grouping and calculating averages
-//     const stackGroups = data.reduce((acc, entry) => {
-//         const { stackName, stationType, ...parameters } = entry.stackData;
-//         if (!acc[stackName]) acc[stackName] = { stationType, parameters: {} };
-
-//         Object.entries(parameters).forEach(([key, value]) => {
-//             acc[stackName].parameters[key] = acc[stackName].parameters[key] || [];
-//             acc[stackName].parameters[key].push(parseFloat(value || 0));
-//         });
-
-//         return acc;
-//     }, {});
-
-//     const stackData = Object.entries(stackGroups).map(([stackName, { stationType, parameters }]) => {
-//         const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
-//             const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-//             acc[key] = parseFloat(avg.toFixed(2));
-//             return acc;
-//         }, {});
-
-//         return {
-//             stackName,
-//             stationType,
-//             parameters: averagedParameters,
-//         };
-//     });
-
-//     //console.log(`Averages for ${userName}:`, stackData);
-
-//     // Prepare and save the new average entry
-//     const averageEntry = new IotDataAverage({
-//         userName,
-//         product_id,
-//         interval,
-//         intervalType,
-//         dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'), // Save in IST
-//         timestamp: nowIST.toDate(),
-//         stackData,
-//     });
-
-//     try {
-//         await averageEntry.save();
-//         //console.log(`Average entry saved for ${userName} - ${intervalType}`);
-//     } catch (error) {
-//         console.error(`Error saving average entry for ${userName} - ${intervalType}:`, error);
-//     }
-// };
-
-// // Schedule calculations for all intervals
-// const scheduleAveragesCalculation = () => {
-//     const intervals = [
-//         { cronTime: '0 * * * *', interval: 'hour', duration: 60 * 60 * 1000 }, // Every hour
-//         { cronTime: '0 0 * * *', interval: 'day', duration: 24 * 60 * 60 * 1000 }, // Every day
-//         { cronTime: '0 0 * * 1', interval: 'week', duration: 7 * 24 * 60 * 60 * 1000 }, // Every week (Monday)
-//         { cronTime: '0 0 1 * *', interval: 'month', duration: 30 * 24 * 60 * 60 * 1000 }, // Every month
-//         { cronTime: '0 0 1 */6 *', interval: 'sixmonths', duration: 6 * 30 * 24 * 60 * 60 * 1000 }, // Every 6 months
-//         { cronTime: '0 0 1 1 *', interval: 'year', duration: 365 * 24 * 60 * 60 * 1000 }, // Every year
-//     ];
-
-//     intervals.forEach(({ cronTime, interval, duration }) => {
-//         cron.schedule(cronTime, async () => {
-//            // console.log(`Running ${interval} average calculation...`);
-
-//             const now = moment().tz('Asia/Kolkata');
-//             const startTime = new Date(now.clone().subtract(duration, 'milliseconds').toDate());
-//             const endTime = new Date(now.toDate());
-
-//             const users = await IotData.distinct('userName');
-//             for (const userName of users) {
-//                 const productIds = await IotData.distinct('product_id', { userName });
-//                 for (const product_id of productIds) {
-//                     const stackNames = await IotData.aggregate([
-//                         { $match: { userName, product_id } },
-//                         { $unwind: '$stackData' },
-//                         { $group: { _id: '$stackData.stackName' } },
-//                     ]).then(result => result.map(item => item._id));
-
-//                     for (const stackName of stackNames) {
-//                         await calculateAverages(userName, product_id, stackName, startTime, endTime, interval);
-//                     }
-//                 }
-//             }
-//         });
-//     });
-// };
-
-// Adjust calculation to use IST (Indian Standard Time)
-const calculateAverages = async (userName, product_id, stackName, startTime, endTime, interval) => {
-    const nowIST = moment().tz('Asia/Kolkata');
-
-    // Aggregation query to fetch data
-    const data = await IotData.aggregate([
-        {
-            $match: {
-                userName,
-                product_id,
-                timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
-            },
-        },
-        { $unwind: '$stackData' },
-        {
-            $match: {
-                'stackData.stackName': stackName,
-            },
-        },
-    ]);
-
-    if (data.length === 0) return;
-
-    // Grouping and calculating averages
-    const stackGroups = data.reduce((acc, entry) => {
-        const { stackName, stationType, ...parameters } = entry.stackData;
-        if (!acc.parameters) acc.parameters = {};
-
-        Object.entries(parameters).forEach(([key, value]) => {
-            acc.parameters[key] = acc.parameters[key] || [];
-            acc.parameters[key].push(parseFloat(value || 0));
-        });
-
-        return acc;
-    }, {});
-
-    const averagedParameters = Object.entries(stackGroups.parameters).reduce((acc, [key, values]) => {
-        const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-        acc[key] = parseFloat(avg.toFixed(2));
-        return acc;
-    }, {});
-
-    const averageEntry = new IotDataAverage({
-        userName,
-        product_id,
-        interval,
-        intervalType: interval,
-        dateAndTime: nowIST.format('DD/MM/YYYY HH:mm'), // Save in IST
-        timestamp: nowIST.toDate(),
-        stackData: [{
-            stackName,
-            stationType: stackGroups.stationType || null,
-            parameters: averagedParameters,
-        }],
-    });
+    console.log(`\n🔍 Starting Average Calculation for: ${userName}, Stack: ${stackName}, Interval: ${interval}`);
+    console.log(`⏳ Time Range: ${startTime} - ${endTime}`);
 
     try {
-        await averageEntry.save();
-
-        // Remove the raw data for the hour
-        if (interval === 'hour') {
-            await IotData.deleteMany({
+        // **Check for Existing Daily Entry**
+        if (interval === 'day') {
+            const existingDailyEntry = await IotDataAverage.findOne({
                 userName,
                 product_id,
-                timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
+                interval: 'day',
+                date: nowIST.clone().subtract(1, 'day').format('DD/MM/YYYY'),
             });
+
+            if (existingDailyEntry) {
+                console.log(`⚠️ Daily average entry already exists for ${userName}, Stack: ${stackName}. Skipping.`);
+                return;
+            }
         }
+
+        // **Fetch IoT Data from MongoDB**
+        const data = await IotData.aggregate([
+            { 
+                $match: { 
+                    userName, 
+                    product_id, 
+                    timestamp: { $gte: startTime, $lt: endTime } 
+                } 
+            },
+            { $unwind: '$stackData' },
+            { 
+                $match: { 
+                    'stackData.stackName': stackName, 
+                    'stackData.stationType': 'effluent' 
+                } 
+            } 
+        ]);
+
+        console.log(`📊 Extracted ${data.length} IoT Data Entries`);
+
+        if (data.length === 0) {
+            console.log(`⚠️ No IoT Data found for ${userName}, Stack: ${stackName}, Interval: ${interval}. Skipping.`);
+            return;
+        }
+
+        // **Group and Calculate Averages**
+        const stackGroups = data.reduce((acc, entry) => {
+            const { stackName, stationType, ...parameters } = entry.stackData;
+            if (!acc.parameters) acc.parameters = {};
+
+            Object.entries(parameters).forEach(([key, value]) => {
+                value = parseFloat(value);
+                if (!isNaN(value)) {  
+                    acc.parameters[key] = acc.parameters[key] || [];
+                    acc.parameters[key].push(value);
+                }
+            });
+
+            return acc;
+        }, {});
+
+        console.log(`🗂 Grouped Data Before Averaging:`, JSON.stringify(stackGroups, null, 2));
+
+        // **Compute Averages**
+        const averagedParameters = Object.entries(stackGroups.parameters).reduce((acc, [key, values]) => {
+            const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+            acc[key] = parseFloat(avg.toFixed(2));  
+            return acc;
+        }, {});
+
+        console.log(`✅ Computed Averages for ${userName}, Stack: ${stackName}:`, JSON.stringify(averagedParameters, null, 2));
+
+        // **Create and Save the Average Entry**
+        const averageEntry = new IotDataAverage({
+            userName,
+            product_id,
+            interval,
+            intervalType: interval,
+            date: nowIST.clone().subtract(interval === 'day' ? 1 : 0, 'day').format('DD/MM/YYYY'),
+            timestamp: nowIST.clone().subtract(interval === 'day' ? 1 : 0, 'day').toDate(),
+            stackData: [{
+                stackName,
+                stationType: 'effluent',
+                parameters: averagedParameters,
+            }],
+        });
+
+        await averageEntry.save();
+        console.log(`✅ Successfully Saved Average Data for ${userName}, Stack: ${stackName}, Interval: ${interval}`);
+
     } catch (error) {
-        console.error(`Error saving average entry for ${userName} - ${interval}:`, error);
+        console.error(`❌ Error Saving Averages for ${userName}, Stack: ${stackName}, Interval: ${interval}:`, error);
     }
 };
 
+
+const getValidParameters = (parameters) => {
+    const validParams = {};
+    for (const [key, value] of parameters.entries()) {
+        if (!key.startsWith('$')) { // Exclude keys that start with '$'
+            validParams[key] = value;
+        }
+    }
+    return validParams;
+};
 const calculateDailyOrMonthlyAverages = async (interval, startTime, endTime) => {
+    console.log(`⏳ Running ${interval} average calculation from ${startTime} to ${endTime}`);
+
     const users = await IotDataAverage.distinct('userName', { interval: 'hour' });
+
     for (const userName of users) {
         const productIds = await IotDataAverage.distinct('product_id', { userName, interval: 'hour' });
+
         for (const product_id of productIds) {
             const stackNames = await IotDataAverage.aggregate([
                 { $match: { userName, product_id, interval: 'hour' } },
@@ -356,24 +151,45 @@ const calculateDailyOrMonthlyAverages = async (interval, startTime, endTime) => 
                     timestamp: { $gte: new Date(startTime), $lt: new Date(endTime) },
                 });
 
-                if (data.length === 0) continue;
+                if (data.length === 0) {
+                    console.log(`⚠️ No data found for ${userName}, Stack: ${stackName}, Interval: ${interval}. Skipping.`);
+                    continue;
+                }
+
+                console.log(`📊 Fetched ${data.length} entries for ${userName}, Stack: ${stackName}`);
 
                 // Calculate averages
                 const parameters = {};
                 data.forEach(entry => {
                     entry.stackData.forEach(stack => {
-                        Object.entries(stack.parameters).forEach(([key, value]) => {
+                        const validParams = getValidParameters(stack.parameters); // Filter out internal properties
+                        Object.entries(validParams).forEach(([key, value]) => {
+                            if (typeof value !== 'number' || isNaN(value)) {
+                                console.warn(`⚠️ Invalid value for ${userName}, Stack: ${stackName}, Parameter: ${key}. Value: ${value}. Skipping.`);
+                                value = 0; // Default to 0 for invalid values
+                            }
                             parameters[key] = parameters[key] || [];
                             parameters[key].push(value);
                         });
                     });
                 });
 
+                // Compute the final average
                 const averagedParameters = Object.entries(parameters).reduce((acc, [key, values]) => {
-                    const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-                    acc[key] = parseFloat(avg.toFixed(2));
+                    if (values.length === 0) {
+                        acc[key] = 0;
+                    } else {
+                        const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+                        acc[key] = parseFloat(avg.toFixed(2));
+                    }
                     return acc;
                 }, {});
+
+                // Ensure valid structure before saving
+                if (Object.keys(averagedParameters).length === 0) {
+                    console.log(`⚠️ No valid parameters for ${userName}, Stack: ${stackName}. Skipping save.`);
+                    continue;
+                }
 
                 const averageEntry = new IotDataAverage({
                     userName,
@@ -384,25 +200,66 @@ const calculateDailyOrMonthlyAverages = async (interval, startTime, endTime) => 
                     timestamp: new Date(startTime),
                     stackData: [{
                         stackName,
-                        parameters: averagedParameters,
+                        parameters: new Map(Object.entries(averagedParameters)), // Convert to Map
                     }],
                 });
 
                 try {
                     await averageEntry.save();
+                    console.log(`✅ Saved ${interval} average data for ${userName}, Stack: ${stackName}`);
                 } catch (error) {
-                    console.error(`Error saving ${interval} average for ${userName}:`, error);
+                    console.error(`❌ Error saving ${interval} average for ${userName}, Stack: ${stackName}:`, error);
                 }
             }
         }
     }
 };
 
+
+const moveDailyAveragesToS3 = async () => {
+    console.log("\n📂 Moving Daily Averages to S3...");
+
+    const nowIST = moment().tz('Asia/Kolkata').subtract(2, 'day').startOf('day').toDate();
+
+    try {
+        // Fetch daily averages older than 1 day
+        const oldDailyAverages = await IotDataAverage.find({ 
+            interval: 'day', 
+            timestamp: { $lt: nowIST }
+        }).lean();
+
+        if (oldDailyAverages.length === 0) {
+            console.log("⚠️ No old daily average data found to move.");
+            return;
+        }
+
+        // Convert data to JSON
+        const jsonData = JSON.stringify(oldDailyAverages, null, 2);
+
+        // Upload to S3
+        const params = {
+            Bucket: process.env.AWS_S3_BUCKET_NAME, // Replace with your bucket name
+            Key: `average_data/daily_average_${moment().tz('Asia/Kolkata').format('YYYY-MM-DD')}.json`,
+            Body: jsonData,
+            ContentType: 'application/json',
+        };
+
+        await s3.upload(params).promise();
+        console.log("✅ Daily Averages Uploaded to S3 Successfully!");
+
+        // Delete from MongoDB after successful upload
+        await IotDataAverage.deleteMany({ interval: 'day', timestamp: { $lt: nowIST } });
+        console.log("🗑 Old Daily Averages Deleted from MongoDB.");
+    } catch (error) {
+        console.error("❌ Error moving daily averages to S3:", error);
+    }
+};
+
 const scheduleAveragesCalculation = () => {
-    cron.schedule('0 * * * *', async () => {
+    // Hourly Average Calculation at 55th minute of every hour
+    cron.schedule('55 * * * *', async () => {
+        console.log("⏳ Running Hourly Average Calculation...");
         const now = moment().tz('Asia/Kolkata');
-        const startTime = now.clone().subtract(1, 'hour').startOf('hour').toDate();
-        const endTime = now.startOf('hour').toDate();
 
         const users = await IotData.distinct('userName');
         for (const userName of users) {
@@ -415,29 +272,107 @@ const scheduleAveragesCalculation = () => {
                 ]).then(result => result.map(item => item._id));
 
                 for (const stackName of stackNames) {
-                    await calculateAverages(userName, product_id, stackName, startTime, endTime, 'hour');
+                    await calculateAverages(userName, product_id, stackName, 'hour');
                 }
             }
         }
     });
 
-    cron.schedule('0 0 * * *', async () => {
-        const now = moment().tz('Asia/Kolkata');
-        const startTime = now.clone().subtract(1, 'day').startOf('day').toDate();
-        const endTime = now.startOf('day').toDate();
-
+    // Daily Average Calculation before midnight (11:55 PM)
+    cron.schedule('55 23 * * *', async () => {
+        console.log("⏳ Running Daily Average Calculation...");
+    
+        const nowIST = moment().tz('Asia/Kolkata').startOf('day'); // Set to today
+        const startTime = nowIST.toDate(); // Today 00:00:00
+        const endTime = nowIST.clone().endOf('day').toDate(); // Today 23:59:59
+    
         await calculateDailyOrMonthlyAverages('day', startTime, endTime);
     });
-
-    cron.schedule('0 0 1 * *', async () => {
-        const now = moment().tz('Asia/Kolkata');
-        const startTime = now.clone().subtract(1, 'month').startOf('month').toDate();
-        const endTime = now.startOf('month').toDate();
-
-        await calculateDailyOrMonthlyAverages('month', startTime, endTime);
+    
+    
+    // Move Yesterday's Hourly Data to S3 at 01:00 AM
+    cron.schedule('0 1 * * *', async () => {
+        console.log("⏳ Running Scheduled Data Transfer to S3...");
+        await moveHourlyAveragesToS3();
     });
 };
 
+// Function to Move Data to S3
+const moveHourlyAveragesToS3 = async () => {
+    try {
+        const yesterday = moment().tz('Asia/Kolkata').subtract(1, 'day').format('DD/MM/YYYY');
+
+        // Fetch all hourly data for the previous day
+        const hourlyData = await IotDataAverage.find({
+            interval: 'hour',
+            date: yesterday
+        });
+
+        if (hourlyData.length === 0) {
+            console.log(`⚠️ No hourly data found for ${yesterday}. Skipping S3 upload.`);
+            return;
+        }
+
+        console.log(`📤 Uploading ${hourlyData.length} hourly averages to S3...`);
+        await uploadToS3(hourlyData, `hourly-averages/${yesterday}.json`);
+
+        // **Delete Data from MongoDB After Successful Upload**
+        await IotDataAverage.deleteMany({ interval: 'hour', date: yesterday });
+
+        console.log(`✅ Successfully moved and deleted hourly averages for ${yesterday} from MongoDB.`);
+    } catch (error) {
+        console.error("❌ Error moving hourly averages to S3:", error);
+    }
+};
+
+// Function to Upload Data to S3
+const uploadToS3 = async (data, filePath) => {
+    try {
+        const s3 = new AWS.S3();
+        await s3.putObject({
+            Bucket: "your-s3-bucket-name",
+            Key: filePath,
+            Body: JSON.stringify(data),
+            ContentType: "application/json"
+        }).promise();
+        console.log(`✅ Successfully uploaded ${filePath} to S3.`);
+    } catch (error) {
+        console.error("❌ Error uploading data to S3:", error);
+    }
+};
+
+
+
+
+const getHourlyDataForDailyInterval = async (req, res) => {
+    const { userName } = req.params;
+
+    try {
+        // Get the current date in IST
+        const nowIST = moment().tz('Asia/Kolkata');
+
+        // Calculate start and end time for the current day
+        const startTime = nowIST.clone().startOf('day').toDate(); // Start of the day (00:00:00)
+        const endTime = nowIST.clone().endOf('day').toDate(); // End of the day (23:59:59)
+
+        // Fetch hourly data for the specified day
+        const data = await IotDataAverage.find({
+            userName,
+            interval: 'hour', // Fetch hourly data
+            timestamp: { $gte: startTime, $lte: endTime },
+        });
+
+        if (data.length === 0) {
+            return res.status(404).json({ message: 'No hourly data found for the specified day.' });
+        }
+
+        // Return the fetched data
+        res.status(200).json(data);
+    } catch (error) {
+        console.error(`❌ Error fetching hourly data for ${userName}:`, error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
 // Configure AWS SDK
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -558,37 +493,61 @@ const findAverageDataUsingUserNameAndStackNameAndIntervalType = async (req, res)
     const { userName, stackName, intervalType } = req.params;
 
     try {
-        // Fetch all average data from S3
-        const allData = await fetchAverageDataFromS3();
+        console.log(`🔍 Fetching average data for user: ${userName}, stack: ${stackName}, interval: ${intervalType}`);
 
-        // Filter the data based on userName, stackName, and intervalType
-        const filteredData = allData
+        // Fetch data from MongoDB
+        const mongoData = await IotDataAverage.find({
+            userName,
+            'stackData.stackName': stackName,
+            intervalType
+        })
+        .sort({ timestamp: -1 }) // Sort by newest first
+        .limit(24) // Fetch max 24 records
+        .lean();
+
+        console.log(`📥 MongoDB: Found ${mongoData.length} records`);
+
+        // Fetch data from S3
+        const s3Data = await fetchAverageDataFromS3();
+
+        // Filter S3 data for the user, stack, and intervalType
+        const filteredS3Data = s3Data
             .filter(entry => entry.userName === userName && entry.intervalType === intervalType)
             .map(entry => ({
                 ...entry,
                 stackData: entry.stackData.filter(stack => stack.stackName === stackName),
             }))
-            .filter(entry => entry.stackData.length > 0) // Ensure only non-empty stackData entries
-            .slice(-24); // Limit to the last 24 records
+            .filter(entry => entry.stackData.length > 0);
 
-        if (!filteredData || filteredData.length === 0) {
+        console.log(`📥 S3: Found ${filteredS3Data.length} records`);
+
+        // Merge both MongoDB and S3 data
+        const combinedData = [...mongoData, ...filteredS3Data];
+
+        // Sort merged data by timestamp (latest first)
+        combinedData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // Get only the last 24 records
+        const latestData = combinedData.slice(0, 24);
+
+        if (latestData.length === 0) {
             return res.status(404).json({
-                message: `No average data found for userName: ${userName}, stackName: ${stackName}, and intervalType: ${intervalType} in S3.`,
+                message: `❌ No average data found for userName: ${userName}, stackName: ${stackName}, intervalType: ${intervalType}.`,
             });
         }
 
         res.status(200).json({
             status: 200,
             success: true,
-            message: `Last 24 average data points fetched successfully from S3 for user ${userName}, stack ${stackName}, and interval type ${intervalType}.`,
-            data: filteredData,
+            message: `✅ Last 24 average data points fetched successfully for user: ${userName}, stack: ${stackName}, interval type: ${intervalType}.`,
+            data: latestData,
         });
+
     } catch (error) {
-        console.error(`Error fetching average data for user ${userName}, stack ${stackName}, and interval type ${intervalType} from S3:`, error);
-        res.status(500).json({ message: 'Error fetching average data from S3.', error });
+        console.error(`❌ Error fetching average data for user ${userName}, stack ${stackName}, interval ${intervalType}:`, error);
+        res.status(500).json({ message: 'Error fetching average data.', error });
     }
 };
-
 
 
 const findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange = async (req, res) => {
@@ -735,129 +694,6 @@ const fetchLastEntryOfEachDate = async (req, res) => {
     }
 };
 
-
-
-
-
-// const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
-//     try {
-//         const { userName, stackName, intervalType } = req.params;
-//         const { startTime, endTime, format } = req.query;
-
-//         // Validate input parameters
-//         if (!userName || !stackName || !intervalType || !startTime || !endTime || !format) {
-//             return res.status(400).json({ success: false, message: 'Missing required query parameters.' });
-//         }
-
-//         // Parse and validate dates
-//         const startDate = moment(startTime, 'DD-MM-YYYY').startOf('day');
-//         const endDate = moment(endTime, 'DD-MM-YYYY').endOf('day');
-
-//         if (!startDate.isValid() || !endDate.isValid()) {
-//             return res.status(400).json({ success: false, message: 'Invalid date format. Use "DD-MM-YYYY".' });
-//         }
-
-//         // Fetch data from MongoDB
-//         const mongoData = await IotDataAverage.find({
-//             userName: userName.trim(),
-//             'stackData.stackName': stackName.trim(),
-//             intervalType: intervalType.trim(),
-//             timestamp: { $gte: startDate.toDate(), $lte: endDate.toDate() },
-//         }).lean();
-
-//         console.log('Fetched MongoDB Data Length:', mongoData.length);
-
-//         // Fetch data from S3
-//         const s3Data = await fetchAverageDataFromS3();
-//         const filteredS3Data = s3Data
-//             .filter(entry => {
-//                 const entryDate = moment(entry.dateAndTime, 'DD/MM/YYYY');
-//                 const dateValid = entryDate.isBetween(startDate, endDate, 'day', '[]');
-//                 const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
-//                 const intervalMatch = entry.intervalType.trim().toLowerCase() === intervalType.trim().toLowerCase();
-
-//                 return userMatch && intervalMatch && dateValid;
-//             })
-//             .map(entry => ({
-//                 ...entry,
-//                 stackData: entry.stackData.filter(stack =>
-//                     stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
-//                 ),
-//             }))
-//             .filter(entry => entry.stackData.length > 0);
-
-//         console.log('Fetched S3 Filtered Data Length:', filteredS3Data.length);
-
-//         // Combine MongoDB and S3 data
-//         const combinedData = [...mongoData, ...filteredS3Data].sort((a, b) =>
-//             moment(a.timestamp || a.dateAndTime).diff(moment(b.timestamp || b.dateAndTime))
-//         );
-
-//         if (combinedData.length === 0) {
-//             return res.status(404).json({ success: false, message: 'No data found for the specified criteria.' });
-//         }
-
-//         // Extract dynamic fields from stackData
-//         const stackKeys = Object.keys(combinedData[0].stackData[0]?.parameters || {}).filter(key => key !== '_id');
-
-//         if (format === 'csv') {
-//             const fields = ['Date', 'Time', 'Stack Name', ...stackKeys];
-
-//             const csvData = combinedData.flatMap(item =>
-//                 item.stackData.map(stack => {
-//                     const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm'); // Use dateAndTime from JSON
-//                     return {
-//                         Date: dateAndTime.format('DD-MM-YYYY'),
-//                         Time: dateAndTime.format('HH:mm:ss'),
-//                         'Stack Name': stack.stackName,
-//                         ...stack.parameters,
-//                     };
-//                 })
-//             );
-
-//             const parser = new Parser({ fields });
-//             const csv = parser.parse(csvData);
-
-//             res.header('Content-Type', 'text/csv');
-//             res.attachment(`${userName}_${stackName}_average_data.csv`);
-//             return res.send(csv);
-//         } else if (format === 'pdf') {
-//             const doc = new PDFDocument();
-//             res.header('Content-Type', 'application/pdf');
-//             res.attachment(`${userName}_${stackName}_average_data.pdf`);
-
-//             doc.pipe(res);
-//             doc.fontSize(20).text('Average Data Report', { align: 'center' });
-//             doc.fontSize(12).text(`User Name: ${userName}`);
-//             doc.fontSize(12).text(`Stack Name: ${stackName}`);
-//             doc.fontSize(12).text(`Interval Type: ${intervalType}`);
-//             doc.fontSize(12).text(`Date Range: ${startTime} - ${endTime}`);
-//             doc.moveDown();
-
-//             combinedData.forEach(item => {
-//                 item.stackData.forEach(stack => {
-//                     const dateAndTime = moment(item.dateAndTime, 'DD/MM/YYYY HH:mm');
-//                     doc.fontSize(12).text(`Date: ${dateAndTime.format('DD-MM-YYYY')}`);
-//                     doc.text(`Time: ${dateAndTime.format('HH:mm:ss')}`);
-//                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
-
-//                     const keys = Object.keys(stack.parameters || {});
-//                     const tableData = keys.map(key => `${key}: ${stack.parameters[key]}`).join(', ');
-
-//                     doc.text(tableData);
-//                     doc.moveDown();
-//                 });
-//             });
-
-//             doc.end();
-//         } else {
-//             return res.status(400).json({ success: false, message: 'Invalid format requested. Use "csv" or "pdf".' });
-//         }
-//     } catch (error) {
-//         console.error('Error fetching or processing data:', error);
-//         res.status(500).json({ success: false, message: 'Internal Server Error' });
-//     }
-// };
 const downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange = async (req, res) => {
     try {
         const { userName, stackName, intervalType } = req.params;
@@ -1054,11 +890,78 @@ const getTodayLastAverageDataByStackName = async (req, res) => {
     }
 };
 
+// Function to get all hourly averages for a user on a specific date
+const getHourlyAveragesByDate = async (req, res) => {
+    try {
+        const { userName, day, month, year } = req.params;
+        const formattedDate = `${day}/${month}/${year}`; // Expected format: DD/MM/YYYY
+
+        console.log(`📥 Fetching hourly data for user: ${userName} on date: ${formattedDate}`);
+
+        // Debugging: Check the query parameters
+        console.log(`🔍 Querying MongoDB with: { userName: "${userName}", interval: "hour", date: "${formattedDate}" }`);
+
+        // Fetch hourly averages from MongoDB
+        let hourlyData = await IotDataAverage.find({
+            userName,
+            interval: "hour",
+            date: formattedDate,
+        }).lean();
+
+        console.log(`🔍 MongoDB Query Result: ${hourlyData.length} records found`);
+
+        // If no data is found in MongoDB, fetch from S3
+        if (hourlyData.length === 0) {
+            console.log(`⚠️ No hourly data found in MongoDB for ${userName} on ${formattedDate}. Checking S3...`);
+
+            const s3Data = await fetchAverageDataFromS3(); // Fetch all data from S3
+
+            // Debugging: Check if data from S3 is undefined or missing required fields
+            if (!s3Data || s3Data.length === 0) {
+                console.log(`⚠️ No data found in S3 for user: ${userName} on ${formattedDate}`);
+            }
+
+            // Filter the S3 data for the specific user and date (Ensure dateAndTime exists)
+            hourlyData = s3Data.filter(entry => 
+                entry.userName === userName &&
+                entry.date && 
+                entry.date.startsWith(formattedDate) // Ensure dateAndTime is defined before using startsWith
+            );
+
+            console.log(`📥 S3 Query Result: ${hourlyData.length} records found`);
+        }
+
+        // If no data is found in both MongoDB and S3, return an error
+        if (hourlyData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No hourly data found for ${userName} on ${formattedDate}`,
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            count: hourlyData.length,
+            data: hourlyData,
+        });
+
+    } catch (error) {
+        console.error("❌ Error fetching hourly data:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error while fetching hourly averages",
+            error: error.message,
+        });
+    }
+};
+
+
+//findAverageDataUsingUserNameAndStackNameAndIntervalType
 
 
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
-    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName
+    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , getHourlyDataForDailyInterval,getHourlyAveragesByDate,
 };
