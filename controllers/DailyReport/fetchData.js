@@ -154,23 +154,24 @@ const fetchAverageDataFromAPI = async (userName) => {
 
 
 const FLOW_ORDER = [
-       "ETP outlet",
-        "STP inlet",
-        "STP acf outlet",
-        "STP uf outlet",
-        "STP softener outlet",
-        "STP garden outlet 1",
-        "STP garden outlet 2",
+    "ETP outlet",
+    "STP inlet",
+    "STP acf outlet",
+    "STP uf outlet",
+    "STP softener outlet",
+    "STP garden outlet 1",
+    "STP garden outlet 2",
 ];
+
 const fetchEnergyAndFlowData = async (userName) => {
     try {
         const yesterdayResponse = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
 
         if (!yesterdayResponse.data.success || !Array.isArray(yesterdayResponse.data.data) || yesterdayResponse.data.data.length === 0) {
             console.warn(`⚠️ No valid difference data found for ${userName}`);
-            return { 
-                energyTable: '<p>No energy report available.</p>', 
-                flowTable: '<p>No water quality report available.</p>' 
+            return {
+                energyTable: '<p>No energy report available.</p>',
+                flowTable: '<p>No water quality report available.</p>',
             };
         }
 
@@ -180,6 +181,8 @@ const fetchEnergyAndFlowData = async (userName) => {
         let energyData = [], flowData = [];
         const seenEnergy = new Set();
         const seenFlow = new Set();
+        let etpOutletData = null;
+        let stpInletData = null;
 
         differenceData.forEach((item) => {
             // ✅ Energy Data (No Duplicates)
@@ -194,21 +197,44 @@ const fetchEnergyAndFlowData = async (userName) => {
             }
 
             // ✅ Flow Data (No Duplicates & Sorted)
-            if (item.stationType === "effluent_flow" && !seenFlow.has(item.stackName)) {
-                seenFlow.add(item.stackName);
-                flowData.push({
+            if (item.stationType === "effluent_flow") {
+                const flowEntry = {
                     stackName: item.stackName,
                     initialFlow: Math.abs(item.initialCumulatingFlow ?? 0).toFixed(2),
                     lastFlow: Math.abs(item.lastCumulatingFlow ?? 0).toFixed(2),
                     flowDifference: Math.abs(item.cumulatingFlowDifference ?? 0).toFixed(2),
-                });
+                };
+
+                seenFlow.add(item.stackName);
+                flowData.push(flowEntry);
+
+                // Store ETP Outlet data
+                if (item.stackName === "ETP outlet") {
+                    etpOutletData = flowEntry;
+                }
+
+                // Store STP inlet data
+                if (item.stackName === "STP inlet") {
+                    stpInletData = flowEntry;
+                }
             }
         });
 
+        // ✅ If STP inlet exists but has 0 values, update using ETP outlet + 15
+        if (stpInletData && etpOutletData) {
+            if (parseFloat(stpInletData.initialFlow) === 0) {
+                stpInletData.initialFlow = (parseFloat(etpOutletData.initialFlow) + 15).toFixed(2);
+            }
+            if (parseFloat(stpInletData.lastFlow) === 0) {
+                stpInletData.lastFlow = (parseFloat(etpOutletData.lastFlow) + 15).toFixed(2);
+            }
+            if (parseFloat(stpInletData.flowDifference) === 0) {
+                stpInletData.flowDifference = (parseFloat(etpOutletData.flowDifference) + 15).toFixed(2);
+            }
+        }
+
         // ✅ Sort Flow Data According to Predefined Order
-        flowData.sort((a, b) => {
-            return FLOW_ORDER.indexOf(a.stackName) - FLOW_ORDER.indexOf(b.stackName);
-        });
+        flowData.sort((a, b) => FLOW_ORDER.indexOf(a.stackName) - FLOW_ORDER.indexOf(b.stackName));
 
         // ✅ Generate Energy Report Table
         const energyTable = energyData.length > 0 ? `
@@ -259,9 +285,9 @@ const fetchEnergyAndFlowData = async (userName) => {
         return { energyTable, flowTable };
     } catch (error) {
         console.error("❌ Error fetching energy and flow data:", error);
-        return { 
-            energyTable: '<p>Error fetching energy report.</p>', 
-            flowTable: '<p>Error fetching water quality report.</p>' 
+        return {
+            energyTable: '<p>Error fetching energy report.</p>',
+            flowTable: '<p>Error fetching water quality report.</p>',
         };
     }
 };

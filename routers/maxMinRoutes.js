@@ -3,7 +3,6 @@ const router = express.Router();
 const { getMaxMinDataByUserAndStack, getMaxMinDataByUser,
     getMaxMinDataByDateRange
  } = require('../controllers/maxMinController');
-const moment = require('moment-timezone')
 // Route to get data by userName and stackName
 router.get('/minMax/:userName/stack/:stackName', async (req, res) => {
     const { userName, stackName } = req.params;

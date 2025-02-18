@@ -3,46 +3,43 @@ const MaxMinData = require('../models/MinandMax');
 const moment = require('moment');
 
 // This function should be called every hour to update the hourly max/min values
+
+
 const updateMaxMinValues = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {
-            console.error('stackData is not an array or is undefined:', data.stackData);
+            console.error('❌ stackData is not an array or is undefined:', data.stackData);
             return;
         }
 
         const formattedDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
-        const formattedTime = moment().tz('Asia/Kolkata').format('HH:mm A'); // 24-hour format with AM/PM
+        const formattedTime = moment().tz('Asia/Kolkata').format('HH:mm A');
 
         for (const stack of data.stackData) {
-            const { stackName, ...values } = stack;
+            const { stackName, stationType, ...values } = stack;
 
-            // Filter out 'Turbidity' and 'pH'
+            // ✅ Only save if stationType is "effluent"
+            if (stationType !== 'effluent') {
+                console.log(`⚠️ Skipping stack ${stackName}, stationType is not effluent.`);
+                continue;
+            }
+
             const filteredValues = Object.fromEntries(
-                Object.entries(values).filter(
-                    ([key]) => key !== 'Turbidity' && key !== 'pH'
-                )
+                Object.entries(values).filter(([key]) => key !== 'Turbidity' && key !== 'pH')
             );
 
-            // Retrieve the current document for this user and stack
-            const existingData = await MaxandMinData.findOne({
+            // 🔹 **Find existing document for today**
+            let existingData = await MaxMinData.findOne({
                 userName: data.userName,
                 stackName,
-                date: formattedDate
+                date: formattedDate,
             });
 
-            let maxValues = {};
-            let minValues = {};
-            let maxTimestamps = {};
-            let minTimestamps = {};
+            if (!existingData) {
+                console.log(`📌 No Min/Max data found for ${stackName} on ${formattedDate}, creating a new entry.`);
 
-            if (existingData) {
-                maxValues = existingData.maxValues || {};
-                minValues = existingData.minValues || {};
-                maxTimestamps = existingData.maxTimestamps || {};
-                minTimestamps = existingData.minTimestamps || {};
-            } else {
-                // If no document exists, create a new one
-                const newData = new MaxandMinData({
+                // ✅ **Create new document with first received values as min/max**
+                existingData = new MaxMinData({
                     userName: data.userName,
                     stackName,
                     date: formattedDate,
@@ -51,45 +48,76 @@ const updateMaxMinValues = async (data) => {
                     maxTimestamps: {},
                     minTimestamps: {},
                 });
-                await newData.save();
-                continue; // Skip updating this record; will handle in the next iteration
+
+                for (const [key, value] of Object.entries(filteredValues)) {
+                    if (value !== undefined && !isNaN(value)) {
+                        const numValue = parseFloat(value);
+                        existingData.maxValues[key] = numValue;
+                        existingData.minValues[key] = numValue;
+                        existingData.maxTimestamps[key] = [{ date: formattedDate, time: formattedTime }];
+                        existingData.minTimestamps[key] = [{ date: formattedDate, time: formattedTime }];
+                    }
+                }
+
+                await existingData.save();
+                console.log(`✅ New document created for ${stackName}`);
+                continue;
             }
+
+            // 🔹 **Ensure fields exist before updating**
+            existingData.maxValues = existingData.maxValues || {};
+            existingData.minValues = existingData.minValues || {};
+            existingData.maxTimestamps = existingData.maxTimestamps || {};
+            existingData.minTimestamps = existingData.minTimestamps || {};
+
+            let isUpdated = false;
 
             for (const [key, value] of Object.entries(filteredValues)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
 
-                    // Update max values
-                    if (!maxValues[key] || numValue > maxValues[key]) {
-                        maxValues[key] = numValue;
-                        maxTimestamps[key] = { date: formattedDate, time: formattedTime };
+                    if (!existingData.maxValues[key] || numValue > existingData.maxValues[key]) {
+                        existingData.maxValues[key] = numValue;
+                        if (!existingData.maxTimestamps[key]) existingData.maxTimestamps[key] = [];
+                        existingData.maxTimestamps[key].push({ date: formattedDate, time: formattedTime });
+                        console.log(`🔺 Updated max for ${key}: ${numValue}`);
+                        isUpdated = true;
                     }
 
-                    // Update min values
-                    if (!minValues[key] || numValue < minValues[key]) {
-                        minValues[key] = numValue;
-                        minTimestamps[key] = { date: formattedDate, time: formattedTime };
+                    if (!existingData.minValues[key] || numValue < existingData.minValues[key]) {
+                        existingData.minValues[key] = numValue;
+                        if (!existingData.minTimestamps[key]) existingData.minTimestamps[key] = [];
+                        existingData.minTimestamps[key].push({ date: formattedDate, time: formattedTime });
+                        console.log(`🔻 Updated min for ${key}: ${numValue}`);
+                        isUpdated = true;
                     }
                 }
             }
 
-            // Update the document with new max/min values and timestamps
-            await MaxandMinData.updateOne(
-                { userName: data.userName, stackName, date: formattedDate },
-                {
-                    maxValues,
-                    minValues,
-                    maxTimestamps,
-                    minTimestamps,
-                    timestamp: new Date() // Update timestamp to current
-                }
-            );
+            // ✅ **Use `findOneAndUpdate()` to ensure MongoDB updates correctly**
+            if (isUpdated) {
+                await MaxMinData.findOneAndUpdate(
+                    { userName: data.userName, stackName, date: formattedDate },
+                    {
+                        $set: {
+                            maxValues: existingData.maxValues,
+                            minValues: existingData.minValues,
+                            maxTimestamps: existingData.maxTimestamps,
+                            minTimestamps: existingData.minTimestamps,
+                        }
+                    },
+                    { new: true, upsert: true }
+                );
+
+                console.log(`✅ Min/Max values updated for ${stackName}`);
+            } else {
+                console.log(`⚠️ No changes required for ${stackName}`);
+            }
         }
     } catch (error) {
-        console.error('Error updating max/min hourly values:', error);
+        console.error('❌ Error updating min/max values:', error);
     }
 };
-
 
 const getMaxMinDataByUserAndStack = async (userName, stackName) => {
     try {
@@ -112,10 +140,11 @@ const getMaxMinDataByUser = async (userName) => {
         }
         return { success: true, data };
     } catch (error) {
-        console.error('Error fetching max/min data by user:', error);
+        console.error('❌ Error fetching max/min data by user:', error);
         return { success: false, message: 'Error fetching data', error: error.message };
     }
 };
+
 const getMaxMinDataByDateRange = async (req, res) => {
     const { userName, stackName } = req.params;
     const { fromDate, toDate } = req.query;
@@ -160,34 +189,50 @@ const getMaxMinDataByDateRange = async (req, res) => {
     }
 };
 
+
+
+
+
+/**
+ * Function to save or update daily Min/Max values for a given user and stack.
+ */
 const saveDailyMinMaxValues = async (data) => {
     try {
         if (!Array.isArray(data.stackData)) {
-            console.error('stackData is not an array or is undefined:', data.stackData);
+            console.error('❌ stackData is not an array or is undefined:', data.stackData);
             return;
         }
 
         const formattedDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
-        const formattedTime = moment().tz('Asia/Kolkata').format('hh:mm A'); // 12-hour format with AM/PM
+        const formattedTime = moment().tz('Asia/Kolkata').format('HH:mm A');
+
+        console.log(`📌 Processing daily min/max for date: ${formattedDate}`);
 
         for (const stack of data.stackData) {
-            const { stackName, ...values } = stack;
+            const { stackName, stationType, ...values } = stack;
 
-            // Filter out unwanted fields
+            // ✅ Only process if `stationType` is "effluent"
+            if (stationType !== 'effluent') {
+                console.log(`⚠️ Skipping stack ${stackName}, stationType is not effluent.`);
+                continue;
+            }
+
+            // Remove unwanted fields (e.g., Turbidity, pH)
             const filteredValues = Object.fromEntries(
                 Object.entries(values).filter(([key]) => key !== 'Turbidity' && key !== 'pH')
             );
 
-            // Query to check if data for the day exists
-            let existingData = await MaxandMinData.findOne({
+            // 🔹 **Find existing record for today**
+            let existingData = await MaxMinData.findOne({
                 userName: data.userName,
                 stackName,
                 date: formattedDate,
             });
 
             if (!existingData) {
-                // Create a new entry if data for the day doesn't exist
-                existingData = new MaxandMinData({
+                console.log(`📌 No Min/Max data found for ${stackName} on ${formattedDate}. Creating a new entry.`);
+
+                existingData = new MaxMinData({
                     userName: data.userName,
                     stackName,
                     date: formattedDate,
@@ -196,56 +241,80 @@ const saveDailyMinMaxValues = async (data) => {
                     maxTimestamps: {},
                     minTimestamps: {},
                 });
+
+                for (const [key, value] of Object.entries(filteredValues)) {
+                    if (value !== undefined && !isNaN(value)) {
+                        const numValue = parseFloat(value);
+                        existingData.maxValues[key] = numValue;
+                        existingData.minValues[key] = numValue;
+                        existingData.maxTimestamps[key] = [{ date: formattedDate, time: formattedTime }];
+                        existingData.minTimestamps[key] = [{ date: formattedDate, time: formattedTime }];
+                    }
+                }
+
+                await existingData.save();
+                console.log(`✅ New document created for ${stackName}`);
+                continue;
             }
 
-            let updatedMaxHistory = existingData.maxTimestamps || {};
-            let updatedMinHistory = existingData.minTimestamps || {};
+            // 🔹 **Ensure all fields exist before updating**
+            existingData.maxValues = existingData.maxValues || {};
+            existingData.minValues = existingData.minValues || {};
+            existingData.maxTimestamps = existingData.maxTimestamps || {};
+            existingData.minTimestamps = existingData.minTimestamps || {};
+
+            let isUpdated = false;
 
             for (const [key, value] of Object.entries(filteredValues)) {
                 if (value !== undefined && !isNaN(value)) {
                     const numValue = parseFloat(value);
 
-                    // Update max values and timestamps for the day
+                    console.log(`🔹 Processing ${key}: ${numValue}`);
+                    console.log(`🔍 Current Min: ${existingData.minValues[key]}, Max: ${existingData.maxValues[key]}`);
+
                     if (!existingData.maxValues[key] || numValue > existingData.maxValues[key]) {
                         existingData.maxValues[key] = numValue;
-
-                        if (!updatedMaxHistory[key]) {
-                            updatedMaxHistory[key] = [];
-                        }
-
-                        updatedMaxHistory[key].push({
-                            value: numValue,
-                            date: formattedDate,
-                            time: formattedTime,
-                        });
+                        existingData.maxTimestamps[key] = existingData.maxTimestamps[key] || [];
+                        existingData.maxTimestamps[key].push({ date: formattedDate, time: formattedTime });
+                        console.log(`🔺 Updated MAX for ${key}: ${numValue}`);
+                        isUpdated = true;
                     }
 
-                    // Update min values and timestamps for the day
                     if (!existingData.minValues[key] || numValue < existingData.minValues[key]) {
                         existingData.minValues[key] = numValue;
-
-                        if (!updatedMinHistory[key]) {
-                            updatedMinHistory[key] = [];
-                        }
-
-                        updatedMinHistory[key].push({
-                            value: numValue,
-                            date: formattedDate,
-                            time: formattedTime,
-                        });
+                        existingData.minTimestamps[key] = existingData.minTimestamps[key] || [];
+                        existingData.minTimestamps[key].push({ date: formattedDate, time: formattedTime });
+                        console.log(`🔻 Updated MIN for ${key}: ${numValue}`);
+                        isUpdated = true;
                     }
                 }
             }
 
-            // Save the updated data for the day
-            existingData.maxTimestamps = updatedMaxHistory;
-            existingData.minTimestamps = updatedMinHistory;
+            // ✅ **Only update MongoDB if changes were made**
+            if (isUpdated) {
+                await MaxMinData.findOneAndUpdate(
+                    { userName: data.userName, stackName, date: formattedDate },
+                    {
+                        $set: {
+                            maxValues: existingData.maxValues,
+                            minValues: existingData.minValues,
+                            maxTimestamps: existingData.maxTimestamps,
+                            minTimestamps: existingData.minTimestamps,
+                        }
+                    },
+                    { new: true, upsert: true }
+                );
 
-            await existingData.save();
+                console.log(`✅ Min/Max values updated for ${stackName}`);
+            } else {
+                console.log(`⚠️ No changes required for ${stackName}`);
+            }
         }
     } catch (error) {
-        console.error('Error saving daily min/max values:', error);
+        console.error('❌ Error saving daily min/max values:', error);
     }
 };
+
+
 
 module.exports = { updateMaxMinValues,getMaxMinDataByUserAndStack,getMaxMinDataByUser, getMaxMinDataByDateRange,saveDailyMinMaxValues };
