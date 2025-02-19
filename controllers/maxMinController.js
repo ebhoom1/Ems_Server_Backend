@@ -317,4 +317,51 @@ const saveDailyMinMaxValues = async (data) => {
 
 
 
-module.exports = { updateMaxMinValues,getMaxMinDataByUserAndStack,getMaxMinDataByUser, getMaxMinDataByDateRange,saveDailyMinMaxValues };
+
+// Function to get yesterday's min/max data for a user and stack
+const getYesterdayMinMaxData = async (req, res) => {
+    const { userName } = req.params;
+
+    try {
+        // ✅ Get yesterday's date in the format stored in MongoDB (DD/MM/YYYY)
+        const yesterdayFormatted = moment().tz('Asia/Kolkata').subtract(1, 'days').format('DD/MM/YYYY');
+
+        console.log(`📌 Fetching Min/Max data for ${userName} on ${yesterdayFormatted}`);
+
+        // ✅ Query MongoDB for all documents matching userName and yesterday's date
+        const data = await MaxMinData.find({
+            userName,
+            date: yesterdayFormatted
+        });
+
+        if (!data || data.length === 0) {
+            console.log(`⚠️ No Min/Max data found for ${userName} on ${yesterdayFormatted}`);
+            return res.status(404).json({
+                success: false,
+                message: `No Min/Max data found for ${userName} on ${yesterdayFormatted}.`
+            });
+        }
+
+        // ✅ Log the fetched data
+        console.log("Fetched Data:", JSON.stringify(data, null, 2));
+
+        // ✅ Return the fetched data
+        res.status(200).json({
+            success: true,
+            message: `Min/Max data for ${userName} on ${yesterdayFormatted} fetched successfully.`,
+            data
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching yesterday\'s Min/Max data:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error while fetching yesterday's Min/Max data.",
+            error: error.message
+        });
+    }
+};
+
+
+
+module.exports = { updateMaxMinValues,getMaxMinDataByUserAndStack,getMaxMinDataByUser, getMaxMinDataByDateRange,saveDailyMinMaxValues ,getYesterdayMinMaxData };

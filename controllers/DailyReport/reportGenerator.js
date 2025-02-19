@@ -3,7 +3,7 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const puppeteer = require("puppeteer");
 const { generateWaterTable, generateCombinedPDFContent } = require("./reportTemplate");
-const { fetchAverageDataFromAPI, fetchLastMinandMaxData, fetchEnergyAndFlowData } = require("./fetchData");
+const { fetchAverageDataFromAPI, fetchLastMinandMaxData, fetchEnergyAndFlowData ,fetchCalibrationData} = require("./fetchData");
 const User = require("../../models/user");
 
 const transporter = nodemailer.createTransport({
@@ -25,32 +25,31 @@ const generateAndSendReport = async (user) => {
         }
 
         const { companyName, email, userName } = user;
-        
-        // ✅ Fetch previous day's average data
-        const { averageData, date, message } = await fetchAverageDataFromAPI(userName);
 
-        // ✅ Handle case where no data is available
+        // Fetch previous day's average data
+        const { averageData, date, message } = await fetchAverageDataFromAPI(userName);
         if (message === "No Report Available") {
             console.warn(`⚠️ No report available for ${userName} on ${date}`);
             const htmlContent = `<h1>No Report Available for ${companyName} on ${date}</h1>`;
-            
-            // ✅ Generate and send "No Report Available" PDF
             const filePath = path.join(__dirname, "PDFs", `${userName}-NoReport.pdf`);
             await generatePDF(htmlContent, filePath);
             await sendEmail(email, filePath);
             return;
         }
 
-        // ✅ Fetch min/max data
-        const minMaxData = await fetchLastMinandMaxData(userName, "Effluent_SeafoodLab_Monitoring");
+        // Fetch calibration data
+        const calibrationData = await fetchCalibrationData(userName);
 
-        // ✅ Generate water quality report
-        const waterTable = generateWaterTable("Effluent_SeafoodLab_Monitoring", averageData, minMaxData);
+        // Fetch min/max data
+        const { minValues, maxValues } = await fetchLastMinandMaxData(userName);
 
-        // ✅ Fetch energy and flow data
+        // Generate water quality report (pass min/max values)
+        const waterTable = generateWaterTable("Effluent_SeafoodLab_Monitoring", averageData, calibrationData, minValues, maxValues);
+
+        // Fetch energy and flow data
         const { energyTable, flowTable } = await fetchEnergyAndFlowData(userName);
 
-        // ✅ Generate final PDF report
+        // Generate final PDF report
         const htmlContent = await generateCombinedPDFContent(companyName, waterTable, energyTable, flowTable);
         const filePath = path.join(__dirname, "PDFs", `${userName}.pdf`);
 
@@ -60,6 +59,7 @@ const generateAndSendReport = async (user) => {
         console.error("❌ Error generating or sending report:", error);
     }
 };
+
 
 // Generate PDF
 const generatePDF = async (htmlContent, filePath) => {

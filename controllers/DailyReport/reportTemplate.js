@@ -1,47 +1,44 @@
 const axios = require("axios");
 const moment = require("moment");
-const fetchCalibrationExceedData = async (industryType) => {
-    try {
-        const response = await axios.get(`https://api.ocems.ebhoom.com/api/get-calibration-values-industryType/${industryType}`);
-        if (response.data.success) {
-            return response.data.IndustryTypCalibrationExceedValues[0] || {}; // Assuming only one record per industry type
-        } else {
-            console.warn("⚠️ No calibration exceedance data found.");
-            return {};
-        }
-    } catch (error) {
-        console.error("❌ Error fetching calibration exceedance data:", error);
-        return {};
-    }
-};
 
-const generateWaterTable = (stackName, parameters, exceedanceData) => {
+const generateWaterTable = (stackName, parameters, calibrationData, minValues, maxValues) => {
     if (Object.keys(parameters).length === 0) return ''; // Skip empty tables
+
+    console.log("Calibration Data in generateWaterTable:", calibrationData); // Debugging
+    console.log("Min/Max Data in generateWaterTable:", minValues, maxValues); // Debugging
 
     const rows = Object.entries(parameters)
         .map(([param, value]) => {
             const avgValue = value ? parseFloat(value).toFixed(2) : "0.00";
-            const minValue = 0;
-            const maxValue = 0;
+            const normalizedParam = param.toUpperCase();  // Normalize parameter names
 
-            let exceedence = "Within Limit"; // Default message
+            console.log(`Checking parameter: ${param} (normalized: ${normalizedParam})`); // Debugging
 
-            // Check exceedance limits from calibration data
-            if (exceedanceData[param]) {
-                const minLimit = parseFloat(exceedanceData[`${param}Below`] || 0);
-                const maxLimit = parseFloat(exceedanceData[`${param}Above`] || 0);
-                if (minLimit && avgValue < minLimit) exceedence = "Below Limit";
-                if (maxLimit && avgValue > maxLimit) exceedence = "Above Limit";
+            // ✅ Fetch exceedance value correctly (IGNORE PH in exceedance)
+            let exceedence = (normalizedParam !== "PH" && calibrationData && calibrationData[normalizedParam] !== undefined && calibrationData[normalizedParam] !== "")
+                ? calibrationData[normalizedParam]
+                : "-";  // Show "-" if not available
+
+            // ✅ Fetch Min and Max values (DO NOT IGNORE pH)
+            let minValue = minValues && minValues[normalizedParam] !== undefined ? minValues[normalizedParam] : "-";
+            let maxValue = maxValues && maxValues[normalizedParam] !== undefined ? maxValues[normalizedParam] : "-";
+
+            // ✅ **Apply red color to avgValue if it exceeds exceedence**
+            let avgColor = "";
+            if (exceedence !== "-" && !isNaN(parseFloat(exceedence)) && parseFloat(avgValue) > parseFloat(exceedence)) {
+                avgColor = 'style="color: red; font-weight: bold;"'; // **Highlight avgValue in red**
             }
 
+            console.log(`✅ Min: ${minValue}, Max: ${maxValue}, Exceedence: ${exceedence} for ${param}, Avg Color: ${avgColor ? 'RED' : 'NORMAL'}`); // Debugging
+
             return `
-        <tr>
-            <td>${param}</td>
-            <td>${avgValue}</td>
-            <td>${minValue}</td>
-            <td>${maxValue}</td>
-            <td>${exceedence}</td>
-        </tr>`;
+                <tr>
+                    <td>${param}</td>
+                    <td ${avgColor}>${avgValue}</td> <!-- **Apply red color conditionally** -->
+                    <td>${minValue}</td>
+                    <td>${maxValue}</td>
+                    <td>${exceedence}</td>
+                </tr>`;
         })
         .join("");
 
@@ -52,14 +49,18 @@ const generateWaterTable = (stackName, parameters, exceedanceData) => {
                 <tr>
                     <th>Parameter</th>
                     <th>Avg Value</th>
-                    <th>Min Value</th>
-                    <th>Max Value</th>
+                    <th>Min Limit</th>
+                    <th>Max Limit</th>
                     <th>Exceedence</th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
         </table>`;
 };
+
+
+
+
 
 
 const generateCombinedPDFContent = async (companyName, waterTables, energyTable, flowTable) => {
@@ -110,4 +111,4 @@ const generateCombinedPDFContent = async (companyName, waterTables, energyTable,
         </html>`;
 };
 
-module.exports = { generateWaterTable, generateCombinedPDFContent , fetchCalibrationExceedData };
+module.exports = { generateWaterTable, generateCombinedPDFContent  };

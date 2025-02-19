@@ -4,7 +4,7 @@ const moment = require("moment-timezone");
 const AWS = require("aws-sdk");
 const MinandMax = require("../../models/MinandMax");
 const ConsumptionData = require("../../models/ConsumptionData");
-const API="http://localhost:5555"
+const API="https://api/ocems.ebhoom.com"
 // AWS SDK configuration
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -50,19 +50,45 @@ const fetchLastAverageDataFromS3 = async () => {
     }
 };
 
-
-
-// Fetch MinandMax data
-const fetchLastMinandMaxData = async (userName, stackName) => {
+//fetchCalibration
+const fetchCalibrationData = async (userName) => {
     try {
-        const minMaxData = await MinandMax.findOne({ userName, stackName }).sort({ timestamp: -1 });
-
-        return minMaxData ? { minValues: minMaxData.minValues || {}, maxValues: minMaxData.maxValues || {} } : {};
+        const response = await axios.get(`${API}/api/get-calibration-values/${userName}`);
+        console.log("Calibration API Response:", response.data); // Debugging
+        if (response.data.success && response.data.userCalibrationExceedValues.length > 0) {
+            return response.data.userCalibrationExceedValues[0]; // Assuming you want the first entry
+        }
+        return null;
     } catch (error) {
-        console.error("Error fetching MinandMax data:", error);
-        return {};
+        console.error("Error fetching calibration data:", error);
+        return null;
     }
 };
+const fetchLastMinandMaxData = async (userName) => {
+    try {
+        const response = await axios.get(`${API}/api/minMax/yesterday/${userName}`);
+        
+        console.log("📥 Min/Max API Response:", response.data);
+
+        if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+            console.warn(`⚠️ No Min/Max data found for ${userName}`);
+            return { minValues: {}, maxValues: {} };
+        }
+
+        // Assuming we take the first record (Modify this if there are multiple stacks)
+        const minMaxData = response.data.data[0];
+
+        return {
+            minValues: minMaxData.minValues || {},
+            maxValues: minMaxData.maxValues || {},
+        };
+    } catch (error) {
+        console.error("❌ Error fetching Min/Max data:", error);
+        return { minValues: {}, maxValues: {} };
+    }
+};
+
+// Fetch MinandMax data
 
 // Fetch consumption data
 const fetchConsumptionData = async (userName) => {
@@ -111,7 +137,7 @@ const fetchAverageDataFromAPI = async (userName) => {
         const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY"); 
         console.log(`📥 Fetching hourly data for ${userName} on date: ${yesterday}`);
 
-        const url = `http://localhost:5555/api/average/user/${userName}/date/${yesterday}`;
+        const url = `${API}/api/average/user/${userName}/date/${yesterday}`;
         const response = await axios.get(url);
 
         if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
@@ -295,4 +321,4 @@ const fetchEnergyAndFlowData = async (userName) => {
 
 
 
-module.exports = { fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData, fetchEnergyAndFlowData,fetchLastDifferenceDataFromS3 , fetchAverageDataFromAPI };
+module.exports = { fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData, fetchEnergyAndFlowData,fetchLastDifferenceDataFromS3 , fetchAverageDataFromAPI , fetchCalibrationData};

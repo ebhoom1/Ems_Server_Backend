@@ -5,7 +5,7 @@ const nodemailer=require('nodemailer');
 const jwt=require('jsonwebtoken');
 const authenticate = require('../middleware/authenticate');
 
-
+const mongoose = require("mongoose");
 
 
 const keysecret=process.env.SECRET_KEY
@@ -369,11 +369,22 @@ const deleteUser = async (req, res) => {
 
 
 // Get A User
+
+
 const getAUser = async (req, res) => {
     try {
-        const { userId } = req.params;
+        let { userId } = req.params;
+        
+        // Trim the userId to remove unwanted spaces or newlines
+        userId = userId.trim();
+        
+        console.log(`Fetching user with ID: "${userId}"`);
 
-        // Use findById with lean to optimize
+        // Validate if userId is a valid MongoDB ObjectId
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ status: 400, message: "Invalid User ID" });
+        }
+
         const user = await userdb.findById(userId, { password: 0 }).lean();
 
         if (!user) {
@@ -382,10 +393,11 @@ const getAUser = async (req, res) => {
 
         return res.status(200).json({ status: 200, user });
     } catch (error) {
-        console.error(`Error fetching user: ${error.message}`);
-        return res.status(500).json({ status: 500, error: "Internal Server Error" });
+        console.error(`Error fetching user:`, error);
+        return res.status(500).json({ status: 500, error: error.message || "Internal Server Error" });
     }
 };
+
 
 const getAUserByUserName = async (req, res) => {
     try {
