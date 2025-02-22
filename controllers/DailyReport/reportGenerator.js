@@ -5,6 +5,7 @@ const puppeteer = require("puppeteer");
 const { generateWaterTable, generateCombinedPDFContent } = require("./reportTemplate");
 const { fetchAverageDataFromAPI, fetchLastMinandMaxData, fetchEnergyAndFlowData ,fetchCalibrationData} = require("./fetchData");
 const User = require("../../models/user");
+const moment = require("moment-timezone");
 
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -25,6 +26,7 @@ const generateAndSendReport = async (user) => {
         }
 
         const { companyName, email, userName } = user;
+        const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY"); // Ensure yesterday is available here
 
         // Fetch previous day's average data
         const { averageData, date, message } = await fetchAverageDataFromAPI(userName);
@@ -59,6 +61,7 @@ const generateAndSendReport = async (user) => {
         console.error("❌ Error generating or sending report:", error);
     }
 };
+
 
 
 // Generate PDF

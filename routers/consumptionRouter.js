@@ -11,7 +11,7 @@ const {
     
 } = require('../controllers/consumptionController');
 const {getConsumptionData,getConsumptionDataByStacks,getConsumptionDataFromMongo,getConsumptionDataStackName,getLatestConsumptionData, getConsumptionDataByDateRange,getTodayConsumptionData} = require('../controllers/consumption');
-
+const { getInflowOutflow } = require('../controllers/consumptionController');
 // Route to get data by userName and stackName
 router.get('/consumptionData/:userName/:stackName', getConsumptionDataByUserNameAndStackName);
 
@@ -47,4 +47,18 @@ router.get('/consumption-today',getTodayConsumptionData)
 // Route to fetch consumption data by userName, stackName, date, and hour
 router.get('/consumptionData', getConsumptionDataFromMongo);
 
+//new route 
+router.get('/consumptionData/latest-inflow-outflow/:userName/:product_id', async (req, res) => {
+    const { userName, product_id } = req.params;
+
+    try {
+        const inflowOutflow = await getInflowOutflow(userName, product_id);
+        if (!inflowOutflow) {
+            return res.status(404).json({ message: "Not enough data points for inflow calculation." });
+        }
+        res.status(200).json({ message: "Inflow & Outflow data fetched successfully.", data: inflowOutflow });
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching inflow-outflow data.", error: error.message });
+    }
+});
 module.exports = router;

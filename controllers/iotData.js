@@ -117,152 +117,121 @@ const checkTimeInterval = async (data, user) => {
         };
     };
 
-
+    
     const handleSaveMessage = async (req, res) => {
-        const data = req.body;
-    
-        // Perform validations
-        const requiredFieldsCheck = checkRequiredFields(data, ['product_id', 'companyName', 'industryType', 'userName', 'mobileNumber', 'email']);
-        if (!requiredFieldsCheck.success) {
-            return res.status(400).json(requiredFieldsCheck);
-        }
-    
-        // Log data only for specific user
-        if (data.userName === 'KSPCB013') {
-            console.log('Received data for KSPCB013:', data);
-        }
-    
-        const stacks = data.stacks || data.stackData;
-        if (!Array.isArray(stacks) || stacks.length === 0) {
-            return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
-        }
-    
-        const pumps = data.pumps || []; // Extract pumps array, default to empty
-    
-        const user = await userdb.findOne({ userName: data.userName });
-        const exceedanceCheck = await checkExceedance(stacks, user);
-        const timeIntervalCheck = await checkTimeInterval(data, user);
-    
-        // Format date and time
-        const date = moment().format('DD/MM/YYYY');
-        const time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
-    
-        // Emit real-time data before saving
-        req.io.to(data.userName).emit('stackDataUpdate', {
-            userName: data.userName,
-            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
-            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
-            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
-            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-            stackData: stacks.map(stack => ({ ...stack })),
-            pumps: pumps.map(pump => ({
-                pumpId: pump.pumpId,
-                pumpName: pump.pumpName,
-                status: pump.status,
-            })),
-            timestamp: new Date(),
-        });
-    
         try {
-            for (const stack of stacks) {
-                const { stackName, flowRate, power, current, voltage } = stack;
+            const data = req.body;
     
-                if (!stackName || flowRate === undefined) {
-                    console.error('Invalid stack data:', stack);
-                    continue;
-                }
+            // 🛠️ Debugging: Log every incoming request
+            console.log(`📥 [${new Date().toISOString()}] API request received from: ${req.ip}`);
+            console.log("🔄 Full request body:", JSON.stringify(data, null, 2));
     
-                // Check if stackName exists; update or add it
-                const existingEntry = await IotData.findOne({
-                    userName: data.userName,
-                    'stackData.stackName': stackName,
-                });
-    
-                if (existingEntry) {
-                    // Update existing stack
-                    await IotData.updateOne(
-                        {
-                            userName: data.userName,
-                            'stackData.stackName': stackName,
-                        },
-                        {
-                            $set: {
-                                'stackData.$.flowRate': flowRate,
-                                'stackData.$.power': power,
-                                'stackData.$.current': current,
-                                'stackData.$.voltage': voltage,
-                                'stackData.$.timestamp': new Date(),
-                            },
-                        }
-                    );
-                } else {
-                    // Add new stack
-                    await IotData.updateOne(
-                        { userName: data.userName },
-                        {
-                            $push: {
-                                stackData: {
-                                    stackName,
-                                    flowRate,
-                                    power,
-                                    current,
-                                    voltage,
-                                    timestamp: new Date(),
-                                },
-                            },
-                        },
-                        { upsert: true }
-                    );
-                }
+            // ✅ Perform basic validations
+            if (!data.userName || !data.product_id) {
+                console.error("❌ Missing required fields:", data);
+                return res.status(400).json({ success: false, message: "Missing userName or product_id" });
             }
     
-            // Prepare entry for saving other data
-            const sanitizedStackData = stacks.map(stack => {
-                const { ...restOfStack } = stack;
-                return restOfStack;
+            // 🔍 Check if user exists in MongoDB
+            console.log(`🔎 Checking user in DB: ${data.userName}`);
+            const user = await userdb.findOne({ userName: data.userName });
+    
+            if (!user) {
+                console.error(`❌ User not found in DB for userName: ${data.userName}`);
+                return res.status(404).json({ success: false, message: "User not found." });
+            }
+            console.log(`✅ User Found: ${data.userName}`);
+    
+            // 🛠️ Debug: Check stackData before processing
+            const stacks = data.stackData || [];
+            if (!Array.isArray(stacks) || stacks.length === 0) {
+                console.error(`❌ Missing or invalid stacks data for user: ${data.userName}`, stacks);
+                return res.status(400).json({ success: false, message: "Stacks data is required.", missingFields: ["stacks"] });
+            }
+    
+            const pumps = data.pumps || [];
+    
+            // ✅ Emit real-time update
+            req.io.to(data.userName).emit("stackDataUpdate", {
+                userName: data.userName,
+                stackData: stacks.map(stack => ({ ...stack })),
+                pumps: pumps.map(pump => ({
+                    pumpId: pump.pumpId,
+                    pumpName: pump.pumpName,
+                    status: pump.status,
+                })),
+                timestamp: new Date(),
             });
     
-            const newEntryData = {
+            // ✅ Log data only for "KSPCB005"
+            if (data.userName === "KSPCB005") {
+                console.log(`📊 Logging data for KSPCB005: ${JSON.stringify(data, null, 2)}`);
+            }
+    
+            // ✅ Check if the same entry already exists before inserting
+            const existingEntry = await IotData.findOne({ userName: data.userName, timestamp: data.timestamp });
+    
+            if (existingEntry) {
+                console.log(`⚠️ Duplicate entry detected for user: ${data.userName}, skipping save.`);
+                return res.status(200).json({
+                    success: false,
+                    message: "Duplicate entry detected, skipping save.",
+                    entryId: existingEntry._id,
+                    savedData: existingEntry,
+                });
+            }
+    
+            // ✅ Prepare entry for saving
+            const formattedEntry = {
                 ...data,
-                stackData: sanitizedStackData,
+                stackData: stacks.map(stack => ({ ...stack })),
                 pumps: pumps.map(pump => ({
                     pumpId: pump.pumpId,
                     pumpName: pump.pumpName,
                     status: pump.status,
                     timestamp: new Date(),
                 })),
-                date,
-                time,
+                date: data.date || new Date().toISOString().split("T")[0], // Default to today’s date if missing
+                time: data.time || new Date().toISOString().split("T")[1].split(".")[0], // Default to current time if missing
                 timestamp: new Date(),
-                exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
-                ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
-                timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
-                timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-                validationMessage: data.validationMessage || 'Validated',
-                validationStatus: data.validationStatus || 'Valid',
+                exceedanceComment: "Within limits", // Default values
+                ExceedanceColor: "green",
+                timeIntervalComment: "Within allowed time interval",
+                timeIntervalColor: "green",
+                validationMessage: data.validationMessage || "Validated",
+                validationStatus: data.validationStatus || "Valid",
             };
     
-            // Save additional data
-            const newEntry = new IotData(newEntryData);
+            // ✅ Save data to MongoDB
+            const newEntry = new IotData(formattedEntry);
             await newEntry.save();
     
-            // Update max and min values for stack data
-            await updateMaxMinValues(newEntryData);
+            // ✅ Log successful save
+            console.log(`✅ MongoDB Save Successful for user: ${data.userName}, Entry ID: ${newEntry._id}`);
     
-            // Handle additional functionalities
-            handleExceedValues();
-            await saveOrUpdateLastEntryByUserName(newEntryData);
+            // ✅ Fetch saved entry and verify logging
+            const savedData = await IotData.findOne({ userName: data.userName }).sort({ timestamp: -1 });
     
+            // ✅ Log data if userName is "KSPCB005"
+            if (data.userName === "KSPCB005") {
+                console.log(`📊 Latest saved data for KSPCB005: ${JSON.stringify(savedData, null, 2)}`);
+            }
+    
+            // ✅ Send response
             res.status(200).json({
                 success: true,
-                message: 'New Entry data saved successfully',
-                newEntry,
+                message: "New Entry data saved successfully",
+                entryId: newEntry._id,
+                savedData,
             });
+    
         } catch (error) {
-            console.error('Error saving data:', error);
-            res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
+            console.error("❌ Error in handleSaveMessage:", error);
+            res.status(500).json({ success: false, message: "Error saving data", error: error.message });
         }
     };
+    
+    
     
     
     
@@ -412,25 +381,7 @@ const getIotDataByCompanyNameAndStackName = async (req, res) => {
 
 
 
-// const getAllIotData =async (req,res)=>{
-//     try{
-//         const allData =await IotData.find({});
-        
-//         res.status(200).json({
-//             status:200,
-//             success:true,
-//             message:'All IoT data fetched Succesfully',
-//             data:allData
-//         })
-//     }catch(error){
-//         console.error('Error fetching IoT data:',error);
-//         res.status(500).json({
-//             success:false,
-//             message:'Error fetching IoT data',
-//             error:error.message
-//         })
-//     }
-// }
+
 
 const getLatestIoTData = async (req, res) => {
     const { userName } = req.params;
@@ -911,98 +862,6 @@ const downloadIotDataByUserName = async (req, res) => {
 };
 
 
-// const downloadIotDataByUserNameAndStackName = async (req, res) => {
-//     try {
-//         let { userName, stackName, fromDate, toDate, format, page = 1 } = req.query;
-
-//         // Decode parameters and validate input
-//         userName = decodeURIComponent(userName.trim());
-//         stackName = decodeURIComponent(stackName.trim());
-
-//         const parsedFromDate = moment(fromDate, 'DD-MM-YYYY').startOf('day').toDate();
-//         const parsedToDate = moment(toDate, 'DD-MM-YYYY').endOf('day').toDate();
-
-//         if (!parsedFromDate || !parsedToDate || !userName || !stackName) {
-//             return res.status(400).send('Missing required query parameters');
-//         }
-
-//         // Use pagination to fetch data in batches (page size is handled internally by skip)
-//         const pageSize = 1000;  // Fetch 1000 records per batch
-//         const skip = (page - 1) * pageSize;
-
-//         // Query IoT data with pagination and filtering
-//         const data = await IotData.find({
-//             userName,
-//             'stackData.stackName': stackName,
-//             timestamp: { $gte: parsedFromDate, $lte: parsedToDate }
-//         })
-//         .skip(skip)
-//         .limit(pageSize)
-//         .lean();
-
-//         if (data.length === 0) {
-//             return res.status(404).send('No data found for the specified criteria');
-//         }
-
-//         // Extract dynamic fields from the stackData, excluding '_id'
-//         const stackKeys = Object.keys(data[0].stackData[0]?.parameters || {}).filter(key => key !== '_id');
-
-//         if (format === 'csv') {
-//             // Prepare CSV data
-//             const fields = ['Date', 'Time', 'Stack Name', ...stackKeys];
-//             const csvData = data.flatMap(item =>
-//                 item.stackData.map(stack => ({
-//                     Date: moment(item.timestamp).format('DD-MM-YYYY'),
-//                     Time: moment(item.timestamp).format('HH:mm:ss'),
-//                     'Stack Name': stack.stackName,
-//                     ...stack.parameters,
-//                 }))
-//             );
-
-//             const parser = new Parser({ fields });
-//             const csv = parser.parse(csvData);
-
-//             res.header('Content-Type', 'text/csv');
-//             res.attachment(`${userName}_${stackName}_iot_data.csv`);
-//             return res.send(csv);
-//         } else if (format === 'pdf') {
-//             // Generate PDF with paginated data
-//             const doc = new PDFDocument();
-//             res.header('Content-Type', 'application/pdf');
-//             res.attachment(`${userName}_${stackName}_iot_data.pdf`);
-
-//             doc.pipe(res);
-//             doc.fontSize(20).text('IoT Data Report', { align: 'center' });
-//             doc.fontSize(12).text(`User Name: ${userName}`);
-//             doc.fontSize(12).text(`Stack Name: ${stackName}`);
-//             doc.fontSize(12).text(`Date Range: ${fromDate} - ${toDate}`);
-//             doc.moveDown();
-
-//             data.forEach(item => {
-//                 item.stackData.forEach(stack => {
-//                     doc.fontSize(12).text(`Date: ${moment(item.timestamp).format('DD-MM-YYYY')}`);
-//                     doc.text(`Time: ${moment(item.timestamp).format('HH:mm:ss')}`);
-//                     doc.fontSize(12).text(`Stack: ${stack.stackName}`, { underline: true });
-
-//                     const keys = Object.keys(stack.parameters || {});
-//                     const tableData = keys.map(key => `${key}: ${stack.parameters[key]}`).join(', ');
-
-//                     doc.text(tableData);
-//                     doc.moveDown();
-//                 });
-//             });
-
-//             doc.end();
-//         } else {
-//             res.status(400).send('Invalid format requested');
-//         }
-//     } catch (error) {
-//         console.error('Error fetching or processing data:', error);
-//         res.status(500).send('Internal Server Error');
-//     }
-// };
-
-//
 const downloadIotDataByUserNameAndStackName = async (req, res) => {
     try {
         let { userName, stackName, fromDate, toDate, format, page = 1 } = req.query;

@@ -4,7 +4,7 @@ const moment = require("moment-timezone");
 const AWS = require("aws-sdk");
 const MinandMax = require("../../models/MinandMax");
 const ConsumptionData = require("../../models/ConsumptionData");
-const API="https://api/ocems.ebhoom.com"
+const API="http://localhost:5555"
 // AWS SDK configuration
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -134,10 +134,12 @@ const fetchLastDifferenceDataFromS3 = async () => {
 
 const fetchAverageDataFromAPI = async (userName) => {
     try {
-        const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY"); 
-        console.log(`📥 Fetching hourly data for ${userName} on date: ${yesterday}`);
+        const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY");
+        console.log("Debug: Yesterday's date ->", yesterday); // Debugging
 
         const url = `${API}/api/average/user/${userName}/date/${yesterday}`;
+        console.log(`📥 Fetching hourly data for ${userName} on date: ${yesterday}`);
+
         const response = await axios.get(url);
 
         if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
@@ -170,12 +172,13 @@ const fetchAverageDataFromAPI = async (userName) => {
 
         console.log(`📊 Computed average data for ${userName} on ${yesterday}:`, averageData);
         return { averageData, date: yesterday };
+
     } catch (error) {
         console.error(`❌ Error fetching average data from API for ${userName} on ${yesterday}:`, error);
-        return { message: "No Report Available", date: yesterday };
+        console.trace();
+        return { message: "No Report Available", date: moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY") };
     }
 };
-
 
 
 
@@ -223,7 +226,7 @@ const fetchEnergyAndFlowData = async (userName) => {
             }
 
             // ✅ Flow Data (No Duplicates & Sorted)
-            if (item.stationType === "effluent_flow") {
+            if (item.stationType === "effluent_flow" && !seenFlow.has(item.stackName)) {
                 const flowEntry = {
                     stackName: item.stackName,
                     initialFlow: Math.abs(item.initialCumulatingFlow ?? 0).toFixed(2),
@@ -231,7 +234,7 @@ const fetchEnergyAndFlowData = async (userName) => {
                     flowDifference: Math.abs(item.cumulatingFlowDifference ?? 0).toFixed(2),
                 };
 
-                seenFlow.add(item.stackName);
+                seenFlow.add(item.stackName); // Add stackName to seenFlow set
                 flowData.push(flowEntry);
 
                 // Store ETP Outlet data
@@ -317,7 +320,6 @@ const fetchEnergyAndFlowData = async (userName) => {
         };
     }
 };
-
 
 
 

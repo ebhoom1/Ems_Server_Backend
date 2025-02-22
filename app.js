@@ -80,7 +80,7 @@ const server = http.createServer(app);
 const io = socketIO(server, {
     cors: {
         origin: ['https://ocems.ebhoom.com','https://api.ocems.ebhoom.com','https://ems.ebhoom.com',
-        'http://ems.ebhoom.com','http://localhost:3000','http://localhost:3002','http://localhost:3001'], // Include other origins as needed
+        'http://ems.ebhoom.com','http://localhost:5555','http://localhost:3000','http://localhost:3002','http://localhost:3001'], // Include other origins as needed
         methods: ["GET", "POST","PUT","PATCH","DELETE"],
     }
 });
@@ -92,7 +92,7 @@ DB();
 
 // Middleware
 app.use(cors({
-    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001'  ],
+    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555'  ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -308,7 +308,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-cron.schedule('7 1 * * *', async () => {
+cron.schedule('21 1 * * *', async () => {
     try {
         const users = await User.find(); // Fetch all users from the database
         for (const user of users) {

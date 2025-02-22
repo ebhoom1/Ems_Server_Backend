@@ -16,14 +16,11 @@ const s3 = new AWS.S3();
 
 const calculateDailyDifferenceFromS3 = async () => {
     try {
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
-        const fileKey = 'hourly_data/hourlyData.json'; // Path to the hourly data JSON file
+        const bucketName = 'ems-ebhoom-bucket'; // Your S3 bucket
+        const fileKey = 'hourly_data/hourlyData.json'; // Path to hourly data JSON file
 
         console.log('Fetching hourly data from S3...');
-        const params = {
-            Bucket: bucketName,
-            Key: fileKey,
-        };
+        const params = { Bucket: bucketName, Key: fileKey };
 
         const s3Object = await s3.getObject(params).promise();
         const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
@@ -41,12 +38,12 @@ const calculateDailyDifferenceFromS3 = async () => {
         console.log(`Hourly data found for today: ${filteredData.length} records`);
 
         const results = [];
-
-        // Group data by user and stack
         const groupedData = {};
+
         for (const entry of filteredData) {
             for (const stack of entry.stacks) {
                 const key = `${entry.userName}_${stack.stackName}`;
+
                 if (!groupedData[key]) {
                     groupedData[key] = {
                         userName: entry.userName,
@@ -57,46 +54,56 @@ const calculateDailyDifferenceFromS3 = async () => {
                     };
                 }
 
-                // Assign initial and last values
+                // ✅ Save the first incoming value of the day as `initialFlow`
                 if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
                     groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
                 }
+
+                // ✅ Save the last available value as `lastFlow` (if before 11:45 PM, default to 0)
                 if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
                     groupedData[key].last = { ...stack, timestamp: entry.timestamp };
                 }
             }
         }
 
-        // Calculate differences
+        // ✅ **Calculate Differences & Store Initial Data Even Before 11:45 PM**
         for (const key in groupedData) {
             const { userName, stackName, stationType, initial, last } = groupedData[key];
 
-            if (initial && last) {
+            if (initial) {
                 console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
                 console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
 
+                // ✅ Before 11:45 PM: `lastCumulatingFlow` will be `0`, ensuring initial data is available
+                // ✅ After 11:45 PM: The correct `lastCumulatingFlow` will be stored
                 const result = {
                     userName,
                     stackName,
                     stationType,
                     date: today,
                     initialEnergy: initial.energy || 0,
-                    lastEnergy: last.energy || 0,
-                    energyDifference: (last.energy || 0) - (initial.energy || 0),
+                    lastEnergy: last?.energy || 0,
+                    energyDifference: (last?.energy || 0) - (initial.energy || 0),
                     initialCumulatingFlow: initial.cumulatingFlow || 0,
-                    lastCumulatingFlow: last.cumulatingFlow || 0,
-                    cumulatingFlowDifference: (last.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
+                    lastCumulatingFlow: last?.cumulatingFlow || 0,
+                    cumulatingFlowDifference: (last?.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
                     time: moment().format('HH:mm:ss'),
                     intervalType: 'day',
                     interval: "daily"
                 };
+
+                // ✅ Ensure `lastCumulatingFlow` is **0** before 11:45 PM
+                if (!moment().tz('Asia/Kolkata').isSame(moment().set({ hour: 23, minute: 45 }), 'minute')) {
+                    result.lastCumulatingFlow = 0;
+                    result.cumulatingFlowDifference = 0;
+                }
 
                 results.push(result);
                 console.log('✅ Calculated result:', result);
             }
         }
 
-        // Save results to the database
+        // ✅ Save results to the database
         if (results.length > 0) {
             await DifferenceData.insertMany(results);
             console.log('📦 Daily differences saved successfully.');
@@ -107,6 +114,7 @@ const calculateDailyDifferenceFromS3 = async () => {
         console.error('❌ Error calculating daily differences from S3:', error);
     }
 };
+
 
 
 
@@ -689,6 +697,103 @@ const getEnergyAndFlowDataByDateRange = async (userName, fromDate, toDate) => {
 };
 
 
+const getLastCumulativeFlowOfLastMonth = async (req, res) => {
+    try {
+        const { userName, stackName } = req.params;
+
+        if (!userName || !stackName) {
+            return res.status(400).json({
+                success: false,
+                message: "userName and stackName are required.",
+            });
+        }
+
+        // Get last month dynamically
+        const today = moment().tz("Asia/Kolkata");
+        const lastMonth = today.subtract(1, "month");
+        const lastMonthYear = lastMonth.year();
+        const lastMonthNumber = lastMonth.month() + 1; // Month is 0-indexed in Moment.js
+
+        // Fetch stack data for the user from MongoDB for the previous month
+        const lastEntries = await DifferenceData.find({
+            userName,
+            stackName,
+            date: new RegExp(`/${lastMonthNumber}/${lastMonthYear}$`), // Matches any day in last month
+        })
+        .sort({ timestamp: -1 }) // Get latest entries first
+        .select("userName stackName lastCumulatingFlow date timestamp")
+        .lean();
+
+        if (lastEntries.length > 0) {
+            return res.status(200).json({
+                success: true,
+                message: `Last cumulative flow for ${stackName} of ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from MongoDB.`,
+                data: lastEntries,
+            });
+        }
+
+        // If no data in MongoDB, fetch from S3
+        console.log("Fetching last month data from S3...");
+        const bucketName = "ems-ebhoom-bucket"; // Your S3 bucket name
+        const fileKey = "difference_data/hourlyDifferenceData.json"; // Your S3 file path
+
+        const params = {
+            Bucket: bucketName,
+            Key: fileKey,
+        };
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject(params).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+
+            // Filter data for the user, stack, and previous month
+            s3Data = s3FileData.filter(entry => {
+                const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
+                return entry.userName === userName && entry.stackName === stackName && entryDate.month() + 1 === lastMonthNumber && entryDate.year() === lastMonthYear;
+            });
+
+            if (s3Data.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: `No data found for ${stackName} of ${userName} in S3 for ${lastMonthNumber}/${lastMonthYear}.`,
+                });
+            }
+
+            // Get the latest entry for the stack
+            const latestEntry = s3Data.reduce((latest, entry) => {
+                return moment(entry.timestamp).isAfter(moment(latest.timestamp)) ? entry : latest;
+            }, s3Data[0]);
+
+            return res.status(200).json({
+                success: true,
+                message: `Last cumulative flow for ${stackName} of ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from S3.`,
+                data: latestEntry,
+            });
+        } catch (s3Error) {
+            if (s3Error.code === "NoSuchKey") {
+                console.warn("⚠ No data file found in S3.");
+            } else {
+                console.error("❌ Error fetching data from S3:", s3Error.message);
+            }
+
+            return res.status(500).json({
+                success: false,
+                message: "Error fetching data from S3.",
+                error: s3Error.message,
+            });
+        }
+    } catch (error) {
+        console.error("❌ Error fetching last cumulative flow of last month:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
+
+
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
     getAllDifferenceDataByUserName,
@@ -699,5 +804,6 @@ module.exports = {
     getTodayDifferenceData,
     getEnergyAndFlowDataByDateRange,
     getYesterdayDifferenceData ,
+    getLastCumulativeFlowOfLastMonth ,
 };
 

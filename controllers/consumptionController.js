@@ -2,11 +2,63 @@ const IotData = require('../models/iotData');
 const ConsumptionData = require('../models/ConsumptionData');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
+const getInflowOutflow = async (userName, product_id) => {
+    try {
+        const data = await IotData.find({ userName, product_id })
+            .sort({ timestamp: -1 }) // Sort by latest first
+            .limit(2); // Get last two records
+
+        if (data.length < 2) {
+            console.log("Not enough data points for inflow calculation.");
+            return { inflowData: {}, outflowData: {} };
+        }
+
+        let inflowData = {};
+        let outflowData = {};
+
+        // Loop through stackData to calculate inflow and outflow
+        data[1].stackData.forEach((prevStack) => {
+            const currentStack = data[0].stackData.find(s => s.stackName === prevStack.stackName);
+
+            if (currentStack) {
+                // Ensure cumulatingFlow is defined, default to 0 if missing
+                const prevCumulatingFlow = prevStack.cumulatingFlow || 0;
+                const currentCumulatingFlow = currentStack.cumulatingFlow || 0;
+
+                // Calculate inflow as the difference in cumulative flow
+                const inflow = currentCumulatingFlow - prevCumulatingFlow;
+                inflowData[prevStack.stackName] = inflow < 0 ? 0 : inflow; // Avoid negative values
+
+                // Calculate outflow for outlets and ETP
+                if (prevStack.stackName.includes("outlet") || prevStack.stackName.includes("ETP")) {
+                    outflowData[prevStack.stackName] = currentCumulatingFlow;
+                }
+            }
+        });
+
+        return {
+            inflowData,
+            outflowData
+        };
+
+    } catch (error) {
+        console.error("Error in calculating inflow/outflow:", error);
+        return { inflowData: {}, outflowData: {} };
+    }
+};
 
 // Function to filter IoT data by station type and calculate total consumption
 const calculateTotalConsumption = async (userName, product_id, startTime, endTime, intervalType) => {
     try {
-        const data = await IotData.aggregate([
+        // Fetch inflow and outflow data using the helper function
+        const { inflowData, outflowData } = await getInflowOutflow(userName, product_id);
+
+        // Log inflow and outflow data for debugging
+        console.log("Inflow Data:", inflowData);
+        console.log("Outflow Data:", outflowData);
+
+        // Fetch the aggregated data for the given time range
+        const aggregatedData = await IotData.aggregate([
             {
                 $match: {
                     userName,
@@ -31,11 +83,12 @@ const calculateTotalConsumption = async (userName, product_id, startTime, endTim
             }
         ]);
 
-        if (data.length === 0) {
+        if (aggregatedData.length === 0) {
             console.log(`No relevant data found for ${userName} - ${intervalType}`);
             return;
         }
 
+        // Fetch user details
         const userRecord = await IotData.findOne(
             { userName, product_id },
             { companyName: 1, email: 1, mobileNumber: 1 }
@@ -46,10 +99,12 @@ const calculateTotalConsumption = async (userName, product_id, startTime, endTim
             return;
         }
 
+        // Format the interval timestamp in IST
         const intervalIST = moment()
             .tz('Asia/Kolkata')
             .format('ddd MMM DD YYYY HH:mm:ss [GMT+0530] (India Standard Time)');
 
+        // Create the consumption entry
         const consumptionEntry = new ConsumptionData({
             userName,
             product_id,
@@ -58,22 +113,22 @@ const calculateTotalConsumption = async (userName, product_id, startTime, endTim
             mobileNumber: userRecord.mobileNumber,
             interval: intervalIST,
             intervalType,
-            totalConsumptionData: data.map(stack => ({
+            totalConsumptionData: aggregatedData.map(stack => ({
                 stackName: stack._id,
                 stationType: stack.stationType || 'NIL',
-                inflow: stack.inflow || 0,
-                finalflow: stack.cumulatingFlow || 0,
+                inflow: inflowData[stack._id] || 0,  // Use calculated inflow
+                finalflow: outflowData[stack._id] || 0, // Use calculated outflow
                 energy: stack.energy || 0
             }))
         });
 
+        // Save the consumption entry
         await consumptionEntry.save();
-        // console.log(`Saved consumption data for ${userName} - ${intervalType}`);
+        console.log(`Saved consumption data for ${userName} - ${intervalType}`);
     } catch (error) {
         console.error(`Error in calculating consumption: ${error.message}`);
     }
 };
-
 // Helper function to get the start and end time for the interval
 const getStartAndEndTime = (intervalType) => {
     const endTime = moment().utc();
@@ -121,12 +176,16 @@ const scheduleTotalConsumptionCalculation = () => {
     ];
 
     intervals.forEach(({ cronTime, intervalType }) => {
+        console.log(`Scheduled ${intervalType} consumption calculation.`);
         cron.schedule(cronTime, async () => {
-            // console.log(`Running ${intervalType} consumption calculation...`);
+            console.log(`Running ${intervalType} consumption calculation...`);
             await runConsumptionCalculation(intervalType);
         });
     });
 };
+
+
+
 
 // Get consumption data by userName and stackName
 const getConsumptionDataByUserNameAndStackName = async (req, res) => {
@@ -398,5 +457,5 @@ module.exports = {
     getAllConsumptionData,
     getConsumptionDataByUserNameAndStackNameAndInterval,
     getConsumptionDataByUserNameAndDateRange,
-    getTodayConsumptionData
+    getTodayConsumptionData, getInflowOutflow ,
 };
