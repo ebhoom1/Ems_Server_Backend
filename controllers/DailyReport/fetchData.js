@@ -4,7 +4,7 @@ const moment = require("moment-timezone");
 const AWS = require("aws-sdk");
 const MinandMax = require("../../models/MinandMax");
 const ConsumptionData = require("../../models/ConsumptionData");
-const API="http://localhost:5555"
+const API="https://api.ocems.ebhoom.com"
 // AWS SDK configuration
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
