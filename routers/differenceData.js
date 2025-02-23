@@ -9,7 +9,8 @@ const {
   getTodayDifferenceData,
   getEnergyAndFlowDataByDateRange, 
   getYesterdayDifferenceData ,
-  getLastCumulativeFlowOfLastMonth
+  getLastCumulativeFlowOfLastMonth ,
+  getLastCumulativeFlowForUser
 } = require('../controllers/differenceData');
 
 // Helper function to validate intervals
@@ -295,4 +296,6 @@ router.get('/differenceData/yesterday/:userName', async (req, res) => {
 
 
 router.get("/lastMonthFlow/:userName/:stackName", getLastCumulativeFlowOfLastMonth);
+router.get("/lastMonthFlow/:userName", getLastCumulativeFlowForUser);
+
 module.exports = router;

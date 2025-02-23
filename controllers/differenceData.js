@@ -792,6 +792,103 @@ const getLastCumulativeFlowOfLastMonth = async (req, res) => {
         });
     }
 };
+const getLastCumulativeFlowForUser = async (req, res) => {
+    try {
+        const { userName } = req.params;
+
+        if (!userName) {
+            return res.status(400).json({
+                success: false,
+                message: "userName is required.",
+            });
+        }
+
+        // Get last month dynamically
+        const today = moment().tz("Asia/Kolkata");
+        const lastMonth = today.subtract(1, "month");
+        const lastMonthYear = lastMonth.year();
+        const lastMonthNumber = lastMonth.month() + 1; // Month is 0-indexed in Moment.js
+
+        // Fetch data for the user from MongoDB for the previous month
+        const lastEntries = await DifferenceData.find({
+            userName,
+            date: new RegExp(`/${lastMonthNumber}/${lastMonthYear}$`), // Matches any day in last month
+        })
+        .sort({ timestamp: -1 }) // Get latest entries first
+        .select("userName stackName lastCumulatingFlow date timestamp")
+        .lean();
+
+        if (lastEntries.length > 0) {
+            return res.status(200).json({
+                success: true,
+                message: `Last cumulative flow for ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from MongoDB.`,
+                data: lastEntries,
+            });
+        }
+
+        // If no data in MongoDB, fetch from S3
+        console.log("Fetching last month data from S3...");
+        const bucketName = "ems-ebhoom-bucket"; // Your S3 bucket name
+        const fileKey = "difference_data/hourlyDifferenceData.json"; // Your S3 file path
+
+        const params = {
+            Bucket: bucketName,
+            Key: fileKey,
+        };
+
+        let s3Data = [];
+        try {
+            const s3Object = await s3.getObject(params).promise();
+            const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+
+            // Filter data for the user and previous month
+            s3Data = s3FileData.filter(entry => {
+                const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
+                return entry.userName === userName && entryDate.month() + 1 === lastMonthNumber && entryDate.year() === lastMonthYear;
+            });
+
+            if (s3Data.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: `No data found for ${userName} in S3 for ${lastMonthNumber}/${lastMonthYear}.`,
+                });
+            }
+
+            // Get the latest entry for each stack
+            const latestEntries = {};
+            s3Data.forEach(entry => {
+                if (!latestEntries[entry.stackName] || moment(entry.timestamp).isAfter(moment(latestEntries[entry.stackName].timestamp))) {
+                    latestEntries[entry.stackName] = entry;
+                }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: `Last cumulative flow for ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from S3.`,
+                data: Object.values(latestEntries),
+            });
+        } catch (s3Error) {
+            if (s3Error.code === "NoSuchKey") {
+                console.warn("⚠ No data file found in S3.");
+            } else {
+                console.error("❌ Error fetching data from S3:", s3Error.message);
+            }
+
+            return res.status(500).json({
+                success: false,
+                message: "Error fetching data from S3.",
+                error: s3Error.message,
+            });
+        }
+    } catch (error) {
+        console.error("❌ Error fetching last cumulative flow of last month:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
 
 
 module.exports = {
@@ -805,5 +902,6 @@ module.exports = {
     getEnergyAndFlowDataByDateRange,
     getYesterdayDifferenceData ,
     getLastCumulativeFlowOfLastMonth ,
+    getLastCumulativeFlowForUser
 };
 
