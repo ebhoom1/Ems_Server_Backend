@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 const axios = require('axios');
-const moment = require('moment-timezone'); // Use moment-timezone for accurate timezones
+const moment = require('moment-timezone'); // Ensure moment-timezone is properly imported
 const userdb = require('../models/user'); // Import user schema
 
 const RETRY_DELAY = 5000; // 5 seconds
@@ -82,35 +82,80 @@ const setupMqttClient = (io) => {
 
                     const currentTime = moment().tz('Asia/Kolkata').toDate();
 
-                    for (const pump of pumps) {
-                        const { pumpId, pumpName, status } = pump;
+                  
 
-                        if (!pumpId || !pumpName || typeof status === 'undefined') {
-                            console.error('Invalid pump data:', pump);
-                            continue;
-                        }
+for (const pump of pumps) {
 
-                        const payload = {
-                            product_id,
-                            userName: userDetails.userName,
-                            email: userDetails.email,
-                            mobileNumber: userDetails.mobileNumber,
-                            companyName: userDetails.companyName,
-                            industryType: userDetails.industryType,
-                            pumpData: {
-                                pumpId,
-                                pumpName,
-                                status,
-                            },
-                            date: moment().format('DD/MM/YYYY'),
-                            time: moment().format('HH:mm'),
-                            timestamp: currentTime,
-                        };
+    const { pumpId, pumpName, status } = pump;
 
-                        await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
-                        io.to(product_id.toString()).emit('pumpFeedback', payload);
-                        console.log('Pump feedback data successfully sent and saved:', payload);
-                    }
+
+
+    if (!pumpId || !pumpName || typeof status === 'undefined') {
+
+        console.error('Invalid pump data:', pump);
+
+        continue;
+
+    }
+
+
+
+    const currentTime = moment().tz('Asia/Kolkata').toDate(); // Ensure correct time format
+
+
+
+    const payload = {
+
+        product_id,
+
+        userName: userDetails.userName,
+
+        email: userDetails.email,
+
+        mobileNumber: userDetails.mobileNumber,
+
+        companyName: userDetails.companyName,
+
+        industryType: userDetails.industryType,
+
+        pumpData: {
+
+            pumpId,
+
+            pumpName,
+
+            status,
+
+        },
+
+        date: moment(currentTime).format('DD/MM/YYYY'),
+
+        time: moment(currentTime).format('HH:mm'),
+
+        timestamp: currentTime,
+
+    };
+
+
+
+    try {
+
+        await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
+
+        io.to(product_id.toString()).emit('pumpFeedback', payload);
+
+        console.log('Pump feedback data successfully sent and saved:', payload);
+
+    } catch (error) {
+
+        console.error('Error sending pump feedback data:', error.response ? error.response.data : error.message);
+
+    }
+
+}
+
+
+
                 }
 
                 return; // Skip further processing for pump control feedback
