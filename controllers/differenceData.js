@@ -137,14 +137,23 @@ const calculateDailyDifferenceFromS3 = async () => {
 //     console.log('Difference calculation scheduled to run every 5 minutes.');
 // };
 const scheduleDifferenceCalculation = () => {
+    // Schedule at 12:05 AM daily: will capture the initial cumulatingFlow,
+    // and the logic inside calculateDailyDifferenceFromS3() will set lastCumulatingFlow to 0.
+    cron.schedule('5 0 * * *', async () => {
+        console.log('Running difference calculation at 12:05 AM...');
+        await calculateDailyDifferenceFromS3();
+    });
 
-    cron.schedule('45 23 * * *', async () => { // Runs at 11:45 PM every night
+    // Schedule at 11:45 PM daily: will capture the last cumulatingFlow value.
+    cron.schedule('45 23 * * *', async () => {
         console.log('Running difference calculation at 11:45 PM...');
         await calculateDailyDifferenceFromS3();
     });
 
-    console.log('Difference calculation scheduled to run at 11:45 PM every night.');
+    console.log('Difference calculation scheduled to run at 12:05 AM and 11:45 PM daily.');
 };
+
+scheduleDifferenceCalculation();
 
 
 
