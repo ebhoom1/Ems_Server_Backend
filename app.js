@@ -36,7 +36,8 @@ const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
 const socketIO = require('socket.io');
-
+const fuelRoutes = require('./routers/fuelRoutes');
+const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -141,11 +142,11 @@ app.use('/api', billRoutes);
 app.use('/api', liveStationRoutes);
 app.use('/api', logoRouter);
 app.use('/api', maxMinRoutes);
-
+app.use('/api/fuel', fuelRoutes);
 app.use('/api', avoidUsersRoutes);
 app.use('/api', wasteRoutes);
 
-
+app.use('/api', generatorVehicleRoutes);
 
 
 // WebSockets for real-time chat
@@ -308,7 +309,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-cron.schedule('29 1 * * *', async () => {
+cron.schedule('32 2 * * *', async () => {
     try {
         const users = await User.find(); // Fetch all users from the database
         for (const user of users) {

@@ -16,11 +16,14 @@ const s3 = new AWS.S3();
 
 const calculateDailyDifferenceFromS3 = async () => {
     try {
-        const bucketName = 'ems-ebhoom-bucket'; // Your S3 bucket
-        const fileKey = 'hourly_data/hourlyData.json'; // Path to hourly data JSON file
+        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const fileKey = 'hourly_data/hourlyData.json'; // Path to the hourly data JSON file
 
         console.log('Fetching hourly data from S3...');
-        const params = { Bucket: bucketName, Key: fileKey };
+        const params = {
+            Bucket: bucketName,
+            Key: fileKey,
+        };
 
         const s3Object = await s3.getObject(params).promise();
         const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
@@ -38,12 +41,12 @@ const calculateDailyDifferenceFromS3 = async () => {
         console.log(`Hourly data found for today: ${filteredData.length} records`);
 
         const results = [];
-        const groupedData = {};
 
+        // Group data by user and stack
+        const groupedData = {};
         for (const entry of filteredData) {
             for (const stack of entry.stacks) {
                 const key = `${entry.userName}_${stack.stackName}`;
-
                 if (!groupedData[key]) {
                     groupedData[key] = {
                         userName: entry.userName,
@@ -54,56 +57,46 @@ const calculateDailyDifferenceFromS3 = async () => {
                     };
                 }
 
-                // ✅ Save the first incoming value of the day as `initialFlow`
+                // Assign initial and last values
                 if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
                     groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
                 }
-
-                // ✅ Save the last available value as `lastFlow` (if before 11:45 PM, default to 0)
                 if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
                     groupedData[key].last = { ...stack, timestamp: entry.timestamp };
                 }
             }
         }
 
-        // ✅ **Calculate Differences & Store Initial Data Even Before 11:45 PM**
+        // Calculate differences
         for (const key in groupedData) {
             const { userName, stackName, stationType, initial, last } = groupedData[key];
 
-            if (initial) {
+            if (initial && last) {
                 console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
                 console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
 
-                // ✅ Before 11:45 PM: `lastCumulatingFlow` will be `0`, ensuring initial data is available
-                // ✅ After 11:45 PM: The correct `lastCumulatingFlow` will be stored
                 const result = {
                     userName,
                     stackName,
                     stationType,
                     date: today,
                     initialEnergy: initial.energy || 0,
-                    lastEnergy: last?.energy || 0,
-                    energyDifference: (last?.energy || 0) - (initial.energy || 0),
+                    lastEnergy: last.energy || 0,
+                    energyDifference: (last.energy || 0) - (initial.energy || 0),
                     initialCumulatingFlow: initial.cumulatingFlow || 0,
-                    lastCumulatingFlow: last?.cumulatingFlow || 0,
-                    cumulatingFlowDifference: (last?.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
+                    lastCumulatingFlow: last.cumulatingFlow || 0,
+                    cumulatingFlowDifference: (last.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
                     time: moment().format('HH:mm:ss'),
                     intervalType: 'day',
                     interval: "daily"
                 };
-
-                // ✅ Ensure `lastCumulatingFlow` is **0** before 11:45 PM
-                if (!moment().tz('Asia/Kolkata').isSame(moment().set({ hour: 23, minute: 45 }), 'minute')) {
-                    result.lastCumulatingFlow = 0;
-                    result.cumulatingFlowDifference = 0;
-                }
 
                 results.push(result);
                 console.log('✅ Calculated result:', result);
             }
         }
 
-        // ✅ Save results to the database
+        // Save results to the database
         if (results.length > 0) {
             await DifferenceData.insertMany(results);
             console.log('📦 Daily differences saved successfully.');
@@ -114,7 +107,6 @@ const calculateDailyDifferenceFromS3 = async () => {
         console.error('❌ Error calculating daily differences from S3:', error);
     }
 };
-
 
 
 
@@ -137,24 +129,14 @@ const calculateDailyDifferenceFromS3 = async () => {
 //     console.log('Difference calculation scheduled to run every 5 minutes.');
 // };
 const scheduleDifferenceCalculation = () => {
-    // Schedule at 12:05 AM daily: will capture the initial cumulatingFlow,
-    // and the logic inside calculateDailyDifferenceFromS3() will set lastCumulatingFlow to 0.
-    cron.schedule('5 0 * * *', async () => {
-        console.log('Running difference calculation at 12:05 AM...');
-        await calculateDailyDifferenceFromS3();
-    });
 
-    // Schedule at 11:45 PM daily: will capture the last cumulatingFlow value.
-    cron.schedule('45 23 * * *', async () => {
+    cron.schedule('45 23 * * *', async () => { // Runs at 11:45 PM every night
         console.log('Running difference calculation at 11:45 PM...');
         await calculateDailyDifferenceFromS3();
     });
 
-    console.log('Difference calculation scheduled to run at 12:05 AM and 11:45 PM daily.');
+    console.log('Difference calculation scheduled to run at 11:45 PM every night.');
 };
-
-scheduleDifferenceCalculation();
-
 
 
 // Controller to fetch difference data by userName and interval
@@ -512,8 +494,8 @@ const getYesterdayDifferenceData = async (userName) => {
                 { date: formattedYesterdayDate },
             ],
         })
-        .select("userName stackName date timestamp initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference")
-        .sort({ timestamp: -1 })
+        .select("userName stackName date time timestamp initialEnergy lastEnergy energyDifference initialCumulatingFlow lastCumulatingFlow cumulatingFlowDifference")
+        .sort({ timestamp: -1 }) // Sorting by timestamp to get the latest first
         .lean();
 
         const filteredDbData = dbData.filter(entry => entry.date === formattedYesterdayDate);
@@ -552,10 +534,24 @@ const getYesterdayDifferenceData = async (userName) => {
 
         if (combinedData.length === 0) {
             console.warn(`⚠ No data found for ${userName} on ${formattedYesterdayDate}`);
-            return [];  // ✅ **Return empty array instead of throwing an error**
+            return []; // ✅ **Return empty array instead of throwing an error**
         }
 
-        return combinedData;
+        // ✅ **Step 4: Get Only the Last Entered Value for Each stackName**
+        const latestEntries = {};
+        combinedData.forEach(entry => {
+            if (
+                !latestEntries[entry.stackName] || 
+                new Date(entry.timestamp) > new Date(latestEntries[entry.stackName].timestamp)
+            ) {
+                latestEntries[entry.stackName] = entry;
+            }
+        });
+
+        const latestData = Object.values(latestEntries);
+
+        console.log(`Final Filtered Data (Only Last Entered for Each StackName): ${latestData.length}`);
+        return latestData;
     } catch (error) {
         console.error("Error fetching yesterday's difference data:", error);
         throw error;
@@ -911,6 +907,8 @@ module.exports = {
     getEnergyAndFlowDataByDateRange,
     getYesterdayDifferenceData ,
     getLastCumulativeFlowOfLastMonth ,
-    getLastCumulativeFlowForUser
+    getLastCumulativeFlowForUser,
+    calculateDailyDifferenceFromS3,
 };
+
 

@@ -194,9 +194,9 @@ const FLOW_ORDER = [
 
 const fetchEnergyAndFlowData = async (userName) => {
     try {
-        const yesterdayResponse = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
-
-        if (!yesterdayResponse.data.success || !Array.isArray(yesterdayResponse.data.data) || yesterdayResponse.data.data.length === 0) {
+        const response = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
+        
+        if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
             console.warn(`⚠️ No valid difference data found for ${userName}`);
             return {
                 energyTable: '<p>No energy report available.</p>',
@@ -204,9 +204,9 @@ const fetchEnergyAndFlowData = async (userName) => {
             };
         }
 
-        const differenceData = yesterdayResponse.data.data;
-        console.log(`📥 Fetched ${differenceData.length} records for ${userName} from differenceData API.`);
-
+        const differenceData = response.data.data;
+        console.log(`📥 Fetched ${differenceData.length} records for ${userName} from differenceData API.`, differenceData);
+        
         let energyData = [], flowData = [];
         const seenEnergy = new Set();
         const seenFlow = new Set();
@@ -214,42 +214,36 @@ const fetchEnergyAndFlowData = async (userName) => {
         let stpInletData = null;
 
         differenceData.forEach((item) => {
-            // ✅ Energy Data (No Duplicates)
             if (item.stationType === "energy" && !seenEnergy.has(item.stackName)) {
                 seenEnergy.add(item.stackName);
                 energyData.push({
                     stackName: item.stackName,
-                    initialEnergy: Math.abs(item.initialEnergy ?? 0).toFixed(2),
-                    lastEnergy: Math.abs(item.lastEnergy ?? 0).toFixed(2),
-                    energyDifference: Math.abs(item.energyDifference ?? 0).toFixed(2),
+                    initialEnergy: parseFloat(item.initialEnergy || 0).toFixed(2),
+                    lastEnergy: parseFloat(item.lastEnergy || 0).toFixed(2),
+                    energyDifference: parseFloat(item.energyDifference || 0).toFixed(2),
                 });
             }
 
-            // ✅ Flow Data (No Duplicates & Sorted)
             if (item.stationType === "effluent_flow" && !seenFlow.has(item.stackName)) {
+                seenFlow.add(item.stackName);
                 const flowEntry = {
                     stackName: item.stackName,
-                    initialFlow: Math.abs(item.initialCumulatingFlow ?? 0).toFixed(2),
-                    lastFlow: Math.abs(item.lastCumulatingFlow ?? 0).toFixed(2),
-                    flowDifference: Math.abs(item.cumulatingFlowDifference ?? 0).toFixed(2),
+                    initialFlow: parseFloat(item.initialCumulatingFlow || 0).toFixed(2),
+                    lastFlow: parseFloat(item.lastCumulatingFlow || 0).toFixed(2),
+                    flowDifference: parseFloat(item.cumulatingFlowDifference || 0).toFixed(2),
                 };
 
-                seenFlow.add(item.stackName); // Add stackName to seenFlow set
                 flowData.push(flowEntry);
 
-                // Store ETP Outlet data
                 if (item.stackName === "ETP outlet") {
                     etpOutletData = flowEntry;
                 }
-
-                // Store STP inlet data
                 if (item.stackName === "STP inlet") {
                     stpInletData = flowEntry;
                 }
             }
         });
 
-        // ✅ If STP inlet exists but has 0 values, update using ETP outlet + 15
         if (stpInletData && etpOutletData) {
             if (parseFloat(stpInletData.initialFlow) === 0) {
                 stpInletData.initialFlow = (parseFloat(etpOutletData.initialFlow) + 15).toFixed(2);
@@ -262,13 +256,14 @@ const fetchEnergyAndFlowData = async (userName) => {
             }
         }
 
-        // ✅ Sort Flow Data According to Predefined Order
         flowData.sort((a, b) => FLOW_ORDER.indexOf(a.stackName) - FLOW_ORDER.indexOf(b.stackName));
 
-        // ✅ Generate Energy Report Table
+        console.log("Processed Energy Data:", energyData);
+        console.log("Processed Flow Data:", flowData);
+
         const energyTable = energyData.length > 0 ? `
-            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
-            <table class="report-table">
+            <h1>Energy Report</h1>
+            <table>
                 <thead>
                     <tr>
                         <th>Station</th>
@@ -288,10 +283,9 @@ const fetchEnergyAndFlowData = async (userName) => {
                 </tbody>
             </table>` : '<p>No energy report available.</p>';
 
-        // ✅ Generate Flow Report Table (Sorted)
         const flowTable = flowData.length > 0 ? `
-            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Water Quality Report</h1>
-            <table class="report-table">
+            <h1>Water Quality Report</h1>
+            <table>
                 <thead>
                     <tr>
                         <th>Station</th>

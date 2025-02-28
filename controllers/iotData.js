@@ -139,8 +139,22 @@ const handleSaveMessage = async (req, res) => {
 
     const pumps = data.pumps || []; // Extract pumps array, default to empty
 
+    // Filter out stacks with negative values for BOD, COD, or TSS
+    const validStacks = stacks.filter(stack => {
+        const { BOD, COD, TSS } = stack;
+        return BOD >= 0 && COD >= 0 && TSS >= 0; // Only keep stacks with non-negative values
+    });
+
+    if (validStacks.length === 0) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'No valid stacks found. BOD, COD, and TSS must be non-negative.', 
+            invalidStacks: stacks 
+        });
+    }
+
     const user = await userdb.findOne({ userName: data.userName });
-    const exceedanceCheck = await checkExceedance(stacks, user);
+    const exceedanceCheck = await checkExceedance(validStacks, user);
     const timeIntervalCheck = await checkTimeInterval(data, user);
 
     // Format date and time
@@ -154,7 +168,7 @@ const handleSaveMessage = async (req, res) => {
         ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
         timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
         timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-        stackData: stacks.map(stack => ({ ...stack })),
+        stackData: validStacks.map(stack => ({ ...stack })), // Emit only valid stacks
         pumps: pumps.map(pump => ({
             pumpId: pump.pumpId,
             pumpName: pump.pumpName,
@@ -164,8 +178,8 @@ const handleSaveMessage = async (req, res) => {
     });
 
     try {
-        for (const stack of stacks) {
-            const { stackName, flowRate, power, current, voltage } = stack;
+        for (const stack of validStacks) {
+            const { stackName, flowRate, power, current, voltage, BOD, COD, TSS } = stack;
 
             if (!stackName || flowRate === undefined) {
                 console.error('Invalid stack data:', stack);
@@ -191,6 +205,9 @@ const handleSaveMessage = async (req, res) => {
                             'stackData.$.power': power,
                             'stackData.$.current': current,
                             'stackData.$.voltage': voltage,
+                            'stackData.$.BOD': BOD,
+                            'stackData.$.COD': COD,
+                            'stackData.$.TSS': TSS,
                             'stackData.$.timestamp': new Date(),
                         },
                     }
@@ -207,6 +224,9 @@ const handleSaveMessage = async (req, res) => {
                                 power,
                                 current,
                                 voltage,
+                                BOD,
+                                COD,
+                                TSS,
                                 timestamp: new Date(),
                             },
                         },
@@ -217,14 +237,14 @@ const handleSaveMessage = async (req, res) => {
         }
 
         // Prepare entry for saving other data
-        const sanitizedStackData = stacks.map(stack => {
+        const sanitizedStackData = validStacks.map(stack => {
             const { ...restOfStack } = stack;
             return restOfStack;
         });
 
         const newEntryData = {
             ...data,
-            stackData: sanitizedStackData,
+            stackData: sanitizedStackData, // Save only valid stacks
             pumps: pumps.map(pump => ({
                 pumpId: pump.pumpId,
                 pumpName: pump.pumpName,
@@ -255,8 +275,6 @@ const handleSaveMessage = async (req, res) => {
         const updatedLastEntry = await saveOrUpdateLastEntryByUserName(newEntryData);
         console.log(`✅ LastIoTData updated:`, JSON.stringify(updatedLastEntry, null, 2));
         
-        
-        
         res.status(200).json({
             success: true,
             message: 'New Entry data saved successfully',
@@ -267,8 +285,6 @@ const handleSaveMessage = async (req, res) => {
         res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
     }
 };
-
-
 
 
 
