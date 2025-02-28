@@ -132,29 +132,37 @@ const handleSaveMessage = async (req, res) => {
         console.log('Received data for KSPCB013:', data);
     }
 
-    const stacks = data.stacks || data.stackData;
+    let stacks = data.stacks || data.stackData;
     if (!Array.isArray(stacks) || stacks.length === 0) {
         return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
     }
 
-    const pumps = data.pumps || []; // Extract pumps array, default to empty
+    const pumps = data.pumps || [];
 
-    // Filter out stacks with negative values for BOD, COD, or TSS
-    const validStacks = stacks.filter(stack => {
-        const { BOD, COD, TSS } = stack;
-        return BOD >= 0 && COD >= 0 && TSS >= 0; // Only keep stacks with non-negative values
+    // Remove negative values from stack parameters
+    stacks = stacks.map(stack => {
+        const sanitizedStack = { stackName: stack.stackName, stationType: stack.stationType };
+        
+        for (const [key, value] of Object.entries(stack)) {
+            if (key !== 'stackName' && key !== 'stationType') {
+                const numericValue = parseFloat(value);
+                if (!isNaN(numericValue) && numericValue >= 0) {
+                    sanitizedStack[key] = value;
+                }
+            }
+        }
+        return sanitizedStack;
     });
 
-    if (validStacks.length === 0) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'No valid stacks found. BOD, COD, and TSS must be non-negative.', 
-            invalidStacks: stacks 
-        });
+    // Remove empty stack entries after sanitization
+    stacks = stacks.filter(stack => Object.keys(stack).length > 2);
+
+    if (stacks.length === 0) {
+        return res.status(400).json({ success: false, message: 'No valid stack data to save after filtering out negative values.' });
     }
 
     const user = await userdb.findOne({ userName: data.userName });
-    const exceedanceCheck = await checkExceedance(validStacks, user);
+    const exceedanceCheck = await checkExceedance(stacks, user);
     const timeIntervalCheck = await checkTimeInterval(data, user);
 
     // Format date and time
@@ -168,7 +176,7 @@ const handleSaveMessage = async (req, res) => {
         ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
         timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
         timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-        stackData: validStacks.map(stack => ({ ...stack })), // Emit only valid stacks
+        stackData: stacks,
         pumps: pumps.map(pump => ({
             pumpId: pump.pumpId,
             pumpName: pump.pumpName,
@@ -178,57 +186,30 @@ const handleSaveMessage = async (req, res) => {
     });
 
     try {
-        for (const stack of validStacks) {
-            const { stackName, flowRate, power, current, voltage, BOD, COD, TSS } = stack;
-
-            if (!stackName || flowRate === undefined) {
-                console.error('Invalid stack data:', stack);
-                continue;
-            }
-
-            // Check if stackName exists; update or add it
+        for (const stack of stacks) {
             const existingEntry = await IotData.findOne({
                 userName: data.userName,
-                'stackData.stackName': stackName,
+                'stackData.stackName': stack.stackName,
             });
 
             if (existingEntry) {
-                // Update existing stack
                 await IotData.updateOne(
                     {
                         userName: data.userName,
-                        'stackData.stackName': stackName,
+                        'stackData.stackName': stack.stackName,
                     },
                     {
                         $set: {
-                            'stackData.$.flowRate': flowRate,
-                            'stackData.$.power': power,
-                            'stackData.$.current': current,
-                            'stackData.$.voltage': voltage,
-                            'stackData.$.BOD': BOD,
-                            'stackData.$.COD': COD,
-                            'stackData.$.TSS': TSS,
-                            'stackData.$.timestamp': new Date(),
+                            'stackData.$': { ...stack, timestamp: new Date() },
                         },
                     }
                 );
             } else {
-                // Add new stack
                 await IotData.updateOne(
                     { userName: data.userName },
                     {
                         $push: {
-                            stackData: {
-                                stackName,
-                                flowRate,
-                                power,
-                                current,
-                                voltage,
-                                BOD,
-                                COD,
-                                TSS,
-                                timestamp: new Date(),
-                            },
+                            stackData: { ...stack, timestamp: new Date() },
                         },
                     },
                     { upsert: true }
@@ -237,14 +218,9 @@ const handleSaveMessage = async (req, res) => {
         }
 
         // Prepare entry for saving other data
-        const sanitizedStackData = validStacks.map(stack => {
-            const { ...restOfStack } = stack;
-            return restOfStack;
-        });
-
         const newEntryData = {
             ...data,
-            stackData: sanitizedStackData, // Save only valid stacks
+            stackData: stacks,
             pumps: pumps.map(pump => ({
                 pumpId: pump.pumpId,
                 pumpName: pump.pumpName,
@@ -262,19 +238,15 @@ const handleSaveMessage = async (req, res) => {
             validationStatus: data.validationStatus || 'Valid',
         };
 
-        // Save additional data
         const newEntry = new IotData(newEntryData);
         await newEntry.save();
 
-        // Update max and min values for stack data
         await updateMaxMinValues(newEntryData);
-
-        // Handle additional functionalities
         handleExceedValues();
         console.log("\n🔄 IoT Data being processed:", JSON.stringify(newEntryData, null, 2));
         const updatedLastEntry = await saveOrUpdateLastEntryByUserName(newEntryData);
         console.log(`✅ LastIoTData updated:`, JSON.stringify(updatedLastEntry, null, 2));
-        
+
         res.status(200).json({
             success: true,
             message: 'New Entry data saved successfully',
@@ -285,6 +257,7 @@ const handleSaveMessage = async (req, res) => {
         res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
     }
 };
+
 
 
 
