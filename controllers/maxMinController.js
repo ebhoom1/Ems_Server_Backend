@@ -175,10 +175,24 @@ const getMaxMinDataByDateRange = async (req, res) => {
             });
         }
 
+        // Filter out negative values from minValues
+        const filteredData = data.map(item => {
+            const positiveMinValues = {};
+            for (const key in item.minValues) {
+                if (item.minValues[key] >= 0) {
+                    positiveMinValues[key] = item.minValues[key];
+                }
+            }
+            return {
+                ...item.toObject(),
+                minValues: positiveMinValues
+            };
+        });
+
         res.status(200).json({
             success: true,
             message: `Data fetched successfully for user: ${userName}, stack: ${stackName} within the date range.`,
-            data
+            data: filteredData
         });
     } catch (error) {
         console.error("Error fetching data by date range:", error);

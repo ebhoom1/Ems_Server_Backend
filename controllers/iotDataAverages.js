@@ -380,7 +380,6 @@ const calculateAverageForTimeRange = async (req, res) => {
             const stackMatch = entry.stackData.some(
                 stack => stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
             );
-
             return userMatch && stackMatch && entryDate.isBetween(startMoment, endMoment, 'day', '[]');
         });
 
@@ -390,26 +389,28 @@ const calculateAverageForTimeRange = async (req, res) => {
             });
         }
 
-        // Extract and aggregate parameters
+        // Extract and aggregate parameters (only non-negative values)
         const parametersSum = {};
-        let totalEntries = 0;
+        const parametersCount = {};
 
         filteredData.forEach(entry => {
             entry.stackData.forEach(stack => {
                 if (stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()) {
                     Object.entries(stack.parameters).forEach(([key, value]) => {
-                        if (typeof value === 'number' && !isNaN(value)) {
+                        // Only consider valid numbers that are not negative
+                        if (typeof value === 'number' && !isNaN(value) && value >= 0) {
                             parametersSum[key] = (parametersSum[key] || 0) + value;
+                            parametersCount[key] = (parametersCount[key] || 0) + 1;
                         }
                     });
-                    totalEntries++;
                 }
             });
         });
 
-        // Compute the averages
+        // Compute the averages per parameter
         const averagedParameters = Object.entries(parametersSum).reduce((acc, [key, sum]) => {
-            acc[key] = parseFloat((sum / totalEntries).toFixed(2)); // Calculate average and round to 2 decimal places
+            const count = parametersCount[key] || 1;
+            acc[key] = parseFloat((sum / count).toFixed(2));
             return acc;
         }, {});
 
@@ -419,9 +420,8 @@ const calculateAverageForTimeRange = async (req, res) => {
             success: true,
             message: `Averages calculated successfully for ${userName}, stack: ${stackName} from ${formattedStartDate} to ${formattedEndDate}`,
             data: averagedParameters,
-            totalEntries,
+            totalEntries: filteredData.length,
         });
-
     } catch (error) {
         console.error('❌ Error calculating averages:', error);
         res.status(500).json({ message: 'Error calculating averages from S3.', error: error.message });
