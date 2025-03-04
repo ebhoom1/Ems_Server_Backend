@@ -30,6 +30,7 @@ const liveStationRoutes = require('./routers/liveStationRoutes');
 const logoRouter = require('./routers/logoRouter');
 const maxMinRoutes = require('./routers/maxMinRoutes');
 const avoidUsersRoutes = require('./routers/avoidUsers');
+const dailyConsumptionRoutes = require('./routers/dailyConsumptionRoutes');
 const wasteRoutes = require('./routers/wasteAndGeneratorRouter');
 const User = require('./models/user'); // Ensure you import the User model
 const { getAllDeviceCredentials } = require('./controllers/user');
@@ -145,7 +146,7 @@ app.use('/api', maxMinRoutes);
 app.use('/api/fuel', fuelRoutes);
 app.use('/api', avoidUsersRoutes);
 app.use('/api', wasteRoutes);
-
+app.use('/api', dailyConsumptionRoutes);
 app.use('/api', generatorVehicleRoutes);
 
 
@@ -309,7 +310,7 @@ setupCronJobsForHourlyS3Upload();
 // Scheduling the Daily Report to the user
 // Scheduling the Daily Report to the user
 console.log('Starting Daily Report Scheduling...');
-cron.schedule('32 2 * * *', async () => {
+cron.schedule('33 1 * * *', async () => {
     try {
         const users = await User.find(); // Fetch all users from the database
         for (const user of users) {

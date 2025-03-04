@@ -3,7 +3,7 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const puppeteer = require("puppeteer");
 const { generateWaterTable, generateCombinedPDFContent } = require("./reportTemplate");
-const { fetchAverageDataFromAPI, fetchLastMinandMaxData, fetchEnergyAndFlowData ,fetchCalibrationData} = require("./fetchData");
+const { fetchYesterdayAverageData, fetchLastMinandMaxData, fetchEnergyAndFlowData ,fetchCalibrationData, fetchUserStackNames} = require("./fetchData");
 const User = require("../../models/user");
 const moment = require("moment-timezone");
 
@@ -26,16 +26,21 @@ const generateAndSendReport = async (user) => {
         }
 
         const { companyName, email, userName } = user;
-        const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY"); // Ensure yesterday is available here
+        const stackNames = await fetchUserStackNames(userName);
+        if (stackNames.length === 0) {
+            console.warn(`⚠️ No valid effluent stack names found for ${userName}`);
+            return;  // Exit function if no valid stack is found
+        }
+        
+        // ✅ Use the first effluent stack (modify if needed)
+        const stackName = stackNames[0];
+        console.log(`✅ Using stack: ${stackName} for ${userName}`);
+                const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY"); // Ensure yesterday is available here
 
         // Fetch previous day's average data
-        const { averageData, date, message } = await fetchAverageDataFromAPI(userName);
-        if (message === "No Report Available") {
-            console.warn(`⚠️ No report available for ${userName} on ${date}`);
-            const htmlContent = `<h1>No Report Available for ${companyName} on ${date}</h1>`;
-            const filePath = path.join(__dirname, "PDFs", `${userName}-NoReport.pdf`);
-            await generatePDF(htmlContent, filePath);
-            await sendEmail(email, filePath);
+        const averageData = await fetchYesterdayAverageData(userName, stackName);
+        if (Object.keys(averageData).length === 0) {
+            console.warn(`⚠️ No report available for ${userName}`);
             return;
         }
 

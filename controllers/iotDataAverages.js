@@ -428,6 +428,106 @@ const calculateAverageForTimeRange = async (req, res) => {
     }
 };
 
+//yesteradys average
+const calculateYesterdayAverage = async (req, res) => {
+    const { userName, stackName } = req.params;
+
+    try {
+        // ✅ Get yesterday's date formatted as DD/MM/YYYY
+        const yesterdayFormatted = moment().tz('Asia/Kolkata').subtract(1, 'days').format('DD/MM/YYYY');
+
+        console.log(`📌 Calculating Yesterday's Average Data for ${userName}, Stack: ${stackName}, Date: ${yesterdayFormatted}`);
+
+        // ✅ Fetch data from MongoDB
+        const mongoData = await IotDataAverage.find({
+            userName,
+            'stackData.stackName': stackName,
+            interval: 'hour',
+            date: yesterdayFormatted,
+        }).lean();
+
+        console.log(`📊 MongoDB: Fetched ${mongoData.length} hourly records for yesterday.`);
+
+        // ✅ Fetch data from S3
+        const s3Data = await fetchAverageDataFromS3();
+        const filteredS3Data = s3Data.filter(entry => 
+            entry.userName === userName &&
+            entry.stackData.some(stack => stack.stackName === stackName) &&
+            entry.date === yesterdayFormatted &&
+            entry.interval === 'hour'
+        );
+
+        console.log(`📥 S3: Fetched ${filteredS3Data.length} hourly records for yesterday.`);
+
+        // ✅ Combine data from MongoDB and S3
+        const combinedData = [...mongoData, ...filteredS3Data];
+
+        if (combinedData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No hourly data found for ${userName}, Stack: ${stackName} on ${yesterdayFormatted}.`,
+            });
+        }
+
+        // ✅ Extract product_id from the first valid entry
+        const product_id = combinedData[0].product_id || "UNKNOWN_PRODUCT";
+
+        // ✅ Aggregate Data (Compute Averages - Ignore Negative Values)
+        const parametersSum = {};
+        const parametersCount = {};
+
+        combinedData.forEach(entry => {
+            entry.stackData.forEach(stack => {
+                if (stack.stackName === stackName) {
+                    Object.entries(stack.parameters).forEach(([key, value]) => {
+                        if (typeof value === 'number' && !isNaN(value) && value >= 0) { // Ignore negative values
+                            parametersSum[key] = (parametersSum[key] || 0) + value;
+                            parametersCount[key] = (parametersCount[key] || 0) + 1;
+                        }
+                    });
+                }
+            });
+        });
+
+        // ✅ Compute the final averages per parameter (ignoring negatives)
+        const averagedParameters = Object.entries(parametersSum).reduce((acc, [key, sum]) => {
+            const count = parametersCount[key] || 1;
+            acc[key] = parseFloat((sum / count).toFixed(2));
+            return acc;
+        }, {});
+
+        console.log(`✅ Computed Averages (Ignoring Negative Values):`, JSON.stringify(averagedParameters, null, 2));
+
+        // ✅ Save Yesterday's Average Data in MongoDB
+        const averageEntry = new IotDataAverage({
+            userName,
+            product_id,
+            interval: 'day',
+            intervalType: 'day', // ✅ Required Field
+            date: yesterdayFormatted,
+            timestamp: moment().tz('Asia/Kolkata').subtract(1, 'days').startOf('day').toDate(),
+            stackData: [{ stackName, parameters: averagedParameters }],
+        });
+
+        await averageEntry.save();
+        console.log(`✅ Successfully Saved Yesterday's Average Data for ${userName}, Stack: ${stackName}`);
+
+        res.status(200).json({
+            success: true,
+            message: `Yesterday's average data calculated successfully for ${userName}, Stack: ${stackName}.`,
+            data: averageEntry,
+        });
+
+    } catch (error) {
+        console.error('❌ Error calculating yesterday\'s average data:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error while calculating yesterday's average data.",
+            error: error.message,
+        });
+    }
+};
+
 
 
 const getHourlyDataForDailyInterval = async (req, res) => {
@@ -1046,5 +1146,5 @@ module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDat
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
-    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange
+    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , calculateYesterdayAverage,getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange
 };

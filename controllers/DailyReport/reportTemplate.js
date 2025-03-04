@@ -2,45 +2,36 @@ const axios = require("axios");
 const moment = require("moment");
 
 const generateWaterTable = (stackName, parameters, calibrationData, minValues, maxValues) => {
-    if (Object.keys(parameters).length === 0) return ''; // Skip empty tables
+    if (Object.keys(parameters).length === 0) return '';
 
-    console.log("Calibration Data in generateWaterTable:", calibrationData); // Debugging
-    console.log("Min/Max Data in generateWaterTable:", minValues, maxValues); // Debugging
+    console.log("🔍 Parameters in generateWaterTable:", JSON.stringify(parameters, null, 2));
+    console.log("🔍 Min Values in generateWaterTable:", JSON.stringify(minValues, null, 2));
+    console.log("🔍 Max Values in generateWaterTable:", JSON.stringify(maxValues, null, 2));
 
     const rows = Object.entries(parameters)
-        .map(([param, value]) => {
-            const avgValue = value ? parseFloat(value).toFixed(2) : "0.00";
-            const normalizedParam = param.toUpperCase();  // Normalize parameter names
+    .filter(([param]) => param.toLowerCase() !== "_id") // Exclude `_id`
+    .map(([param, value]) => {     
+           const avgValue = value ? parseFloat(value).toFixed(2) : "0.00";
+        const paramKey = param.toLowerCase(); // Ensure case consistency
 
-            console.log(`Checking parameter: ${param} (normalized: ${normalizedParam})`); // Debugging
+        let exceedence = calibrationData?.[paramKey] ?? "-";
+        let minValue = minValues?.[paramKey] ?? "-";
+        let maxValue = maxValues?.[paramKey] ?? "-";
 
-            // ✅ Fetch exceedance value correctly (IGNORE PH in exceedance)
-            let exceedence = (normalizedParam !== "PH" && calibrationData && calibrationData[normalizedParam] !== undefined && calibrationData[normalizedParam] !== "")
-                ? calibrationData[normalizedParam]
-                : "-";  // Show "-" if not available
+        console.log(`📝 ${param}: Avg=${avgValue}, Min=${minValue}, Max=${maxValue}, Exceedence=${exceedence}`);
 
-            // ✅ Fetch Min and Max values (DO NOT IGNORE pH)
-            let minValue = minValues && minValues[normalizedParam] !== undefined ? minValues[normalizedParam] : "-";
-            let maxValue = maxValues && maxValues[normalizedParam] !== undefined ? maxValues[normalizedParam] : "-";
+        let avgColor = exceedence !== "-" && parseFloat(avgValue) > parseFloat(exceedence) ? 
+            'style="color: red; font-weight: bold;"' : "";
 
-            // ✅ **Apply red color to avgValue if it exceeds exceedence**
-            let avgColor = "";
-            if (exceedence !== "-" && !isNaN(parseFloat(exceedence)) && parseFloat(avgValue) > parseFloat(exceedence)) {
-                avgColor = 'style="color: red; font-weight: bold;"'; // **Highlight avgValue in red**
-            }
-
-            console.log(`✅ Min: ${minValue}, Max: ${maxValue}, Exceedence: ${exceedence} for ${param}, Avg Color: ${avgColor ? 'RED' : 'NORMAL'}`); // Debugging
-
-            return `
-                <tr>
-                    <td>${param}</td>
-                    <td ${avgColor}>${avgValue}</td> <!-- **Apply red color conditionally** -->
-                    <td>${minValue}</td>
-                    <td>${maxValue}</td>
-                    <td>${exceedence}</td>
-                </tr>`;
-        })
-        .join("");
+        return `
+            <tr>
+                <td>${param}</td>
+                <td ${avgColor}>${avgValue}</td>
+                <td>${minValue}</td>
+                <td>${maxValue}</td>
+                <td>${exceedence}</td>
+            </tr>`;
+    }).join("");
 
     return `
         <h2 style="color:rgb(0, 7, 9); font-size: 1.5rem; text-align: center; margin-top: 30px; text-decoration: underline;">Quality Report</h2>
@@ -57,6 +48,7 @@ const generateWaterTable = (stackName, parameters, calibrationData, minValues, m
             <tbody>${rows}</tbody>
         </table>`;
 };
+
 
 
 

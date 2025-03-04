@@ -356,14 +356,28 @@ const getYesterdayMinMaxData = async (req, res) => {
             });
         }
 
-        // ✅ Log the fetched data
-        console.log("Fetched Data:", JSON.stringify(data, null, 2));
+        // ✅ Process data to remove negative values from minValues
+        const sanitizedData = data.map(entry => {
+            const sanitizedMinValues = {};
+            
+            for (const [key, value] of Object.entries(entry.minValues)) {
+                sanitizedMinValues[key] = value < 0 ? null : value; // Replace negative values with null
+            }
 
-        // ✅ Return the fetched data
+            return {
+                ...entry.toObject(),
+                minValues: sanitizedMinValues
+            };
+        });
+
+        // ✅ Log the sanitized data
+        console.log("Sanitized Data:", JSON.stringify(sanitizedData, null, 2));
+
+        // ✅ Return the sanitized data
         res.status(200).json({
             success: true,
             message: `Min/Max data for ${userName} on ${yesterdayFormatted} fetched successfully.`,
-            data
+            data: sanitizedData
         });
 
     } catch (error) {

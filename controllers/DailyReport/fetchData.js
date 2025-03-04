@@ -5,6 +5,7 @@ const AWS = require("aws-sdk");
 const MinandMax = require("../../models/MinandMax");
 const ConsumptionData = require("../../models/ConsumptionData");
 const API="https://api.ocems.ebhoom.com"
+
 // AWS SDK configuration
 AWS.config.update({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -13,6 +14,37 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
+
+// ✅ Fetch stack names for a given user
+
+// ✅ Fetch stack names for a given user, filtering only "effluent" stationType
+const fetchUserStackNames = async (userName) => {
+    try {
+        const response = await axios.get(`${API}/api/get-stacknames-by-userName/${userName}`);
+        
+        if (!response.data || response.data.status !== 200 || !Array.isArray(response.data.stackNames)) {
+            console.warn(`⚠️ No stack names found for ${userName}`);
+            return [];
+        }
+
+        // ✅ Filter only stacks where `stationType === "effluent"`
+        const effluentStacks = response.data.stackNames
+            .filter(stack => stack.stationType === "effluent")
+            .map(stack => stack.name);
+
+        if (effluentStacks.length === 0) {
+            console.warn(`⚠️ No effluent stacks found for ${userName}`);
+            return [];
+        }
+
+        console.log(`✅ Effluent Stacks for ${userName}:`, effluentStacks);
+        return effluentStacks;
+    } catch (error) {
+        console.error(`❌ Error fetching stack names for ${userName}:`, error.message);
+        return [];
+    }
+};
+
 
 // Fetch last average data from S3
 const fetchLastAverageDataFromS3 = async () => {
@@ -67,26 +99,41 @@ const fetchCalibrationData = async (userName) => {
 const fetchLastMinandMaxData = async (userName) => {
     try {
         const response = await axios.get(`${API}/api/minMax/yesterday/${userName}`);
-        
-        console.log("📥 Min/Max API Response:", response.data);
+        console.log("📥 Min/Max API Raw Response:", JSON.stringify(response.data, null, 2));
 
         if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
             console.warn(`⚠️ No Min/Max data found for ${userName}`);
             return { minValues: {}, maxValues: {} };
         }
 
-        // Assuming we take the first record (Modify this if there are multiple stacks)
         const minMaxData = response.data.data[0];
 
-        return {
-            minValues: minMaxData.minValues || {},
-            maxValues: minMaxData.maxValues || {},
+        // Function to normalize keys and preserve null values
+        const normalizeKeys = (obj) => {
+            return Object.fromEntries(
+                Object.entries(obj || {}).map(([key, value]) => [
+                    key.toLowerCase(),
+                    value !== null ? value : "N/A"  // ✅ Keep null values as "N/A" instead of replacing them with wrong numbers
+                ])
+            );
         };
+
+        const processedData = {
+            minValues: normalizeKeys(minMaxData.minValues),
+            maxValues: normalizeKeys(minMaxData.maxValues),
+        };
+
+        console.log("✅ Corrected Min Values:", JSON.stringify(processedData.minValues, null, 2));
+        console.log("✅ Corrected Max Values:", JSON.stringify(processedData.maxValues, null, 2));
+
+        return processedData;
     } catch (error) {
         console.error("❌ Error fetching Min/Max data:", error);
         return { minValues: {}, maxValues: {} };
     }
 };
+
+
 
 // Fetch MinandMax data
 
@@ -132,53 +179,26 @@ const fetchLastDifferenceDataFromS3 = async () => {
  */
 
 
-const fetchAverageDataFromAPI = async (userName) => {
+// Fetch yesterday's average data
+const fetchYesterdayAverageData = async (userName, stackName) => {
     try {
-        const yesterday = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY");
-        console.log("Debug: Yesterday's date ->", yesterday); // Debugging
+        const response = await axios.get(`${API}/api/yesterday-average/${userName}/${stackName}`);
+        console.log("📥 Yesterday's Average API Response:", JSON.stringify(response.data, null, 2));
 
-        const url = `${API}/api/average/user/${userName}/date/${yesterday}`;
-        console.log(`📥 Fetching hourly data for ${userName} on date: ${yesterday}`);
-
-        const response = await axios.get(url);
-
-        if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
-            console.warn(`⚠️ No valid data found for ${userName} on ${yesterday}`);
-            return { message: "No Report Available", date: yesterday };
+        if (!response.data.success || !response.data.data || !response.data.data.stackData) {
+            console.warn(`⚠️ No valid average data found for ${userName}, Stack: ${stackName}`);
+            return { parameters: {} };
         }
 
-        const records = response.data.data;
-        const parameterSums = {};
-        const parameterCounts = {};
-
-        records.forEach((entry) => {
-            entry.stackData.forEach((stack) => {
-                Object.entries(stack.parameters).forEach(([param, value]) => {
-                    if (param === "_id") return; // ✅ Skip "_id" in the table
-                    if (!parameterSums[param]) {
-                        parameterSums[param] = 0;
-                        parameterCounts[param] = 0;
-                    }
-                    parameterSums[param] += value;
-                    parameterCounts[param] += 1;
-                });
-            });
-        });
-
-        const averageData = {};
-        Object.keys(parameterSums).forEach((param) => {
-            averageData[param] = (parameterSums[param] / parameterCounts[param]).toFixed(2);
-        });
-
-        console.log(`📊 Computed average data for ${userName} on ${yesterday}:`, averageData);
-        return { averageData, date: yesterday };
-
+        return response.data.data.stackData[0].parameters || {};
     } catch (error) {
-        console.error(`❌ Error fetching average data from API for ${userName} on ${yesterday}:`, error);
-        console.trace();
-        return { message: "No Report Available", date: moment().tz("Asia/Kolkata").subtract(1, "day").format("DD/MM/YYYY") };
+        console.error(`❌ Error fetching yesterday's average data for ${userName}, Stack: ${stackName}:`, error);
+        return { parameters: {} };
     }
 };
+
+
+
 
 
 
@@ -194,9 +214,9 @@ const FLOW_ORDER = [
 
 const fetchEnergyAndFlowData = async (userName) => {
     try {
-        const response = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
-        
-        if (!response.data.success || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+        const yesterdayResponse = await axios.get(`${API}/api/differenceData/yesterday/${userName}`);
+
+        if (!yesterdayResponse.data.success || !Array.isArray(yesterdayResponse.data.data) || yesterdayResponse.data.data.length === 0) {
             console.warn(`⚠️ No valid difference data found for ${userName}`);
             return {
                 energyTable: '<p>No energy report available.</p>',
@@ -204,9 +224,9 @@ const fetchEnergyAndFlowData = async (userName) => {
             };
         }
 
-        const differenceData = response.data.data;
-        console.log(`📥 Fetched ${differenceData.length} records for ${userName} from differenceData API.`, differenceData);
-        
+        const differenceData = yesterdayResponse.data.data;
+        console.log(`📥 Fetched ${differenceData.length} records for ${userName} from differenceData API.`);
+
         let energyData = [], flowData = [];
         const seenEnergy = new Set();
         const seenFlow = new Set();
@@ -214,36 +234,42 @@ const fetchEnergyAndFlowData = async (userName) => {
         let stpInletData = null;
 
         differenceData.forEach((item) => {
+            // ✅ Energy Data (No Duplicates)
             if (item.stationType === "energy" && !seenEnergy.has(item.stackName)) {
                 seenEnergy.add(item.stackName);
                 energyData.push({
                     stackName: item.stackName,
-                    initialEnergy: parseFloat(item.initialEnergy || 0).toFixed(2),
-                    lastEnergy: parseFloat(item.lastEnergy || 0).toFixed(2),
-                    energyDifference: parseFloat(item.energyDifference || 0).toFixed(2),
+                    initialEnergy: Math.abs(item.initialEnergy ?? 0).toFixed(2),
+                    lastEnergy: Math.abs(item.lastEnergy ?? 0).toFixed(2),
+                    energyDifference: Math.abs(item.energyDifference ?? 0).toFixed(2),
                 });
             }
 
+            // ✅ Flow Data (No Duplicates & Sorted)
             if (item.stationType === "effluent_flow" && !seenFlow.has(item.stackName)) {
-                seenFlow.add(item.stackName);
                 const flowEntry = {
                     stackName: item.stackName,
-                    initialFlow: parseFloat(item.initialCumulatingFlow || 0).toFixed(2),
-                    lastFlow: parseFloat(item.lastCumulatingFlow || 0).toFixed(2),
-                    flowDifference: parseFloat(item.cumulatingFlowDifference || 0).toFixed(2),
+                    initialFlow: Math.abs(item.initialCumulatingFlow ?? 0).toFixed(2),
+                    lastFlow: Math.abs(item.lastCumulatingFlow ?? 0).toFixed(2),
+                    flowDifference: Math.abs(item.cumulatingFlowDifference ?? 0).toFixed(2),
                 };
 
+                seenFlow.add(item.stackName); // Add stackName to seenFlow set
                 flowData.push(flowEntry);
 
+                // Store ETP Outlet data
                 if (item.stackName === "ETP outlet") {
                     etpOutletData = flowEntry;
                 }
+
+                // Store STP inlet data
                 if (item.stackName === "STP inlet") {
                     stpInletData = flowEntry;
                 }
             }
         });
 
+        // ✅ If STP inlet exists but has 0 values, update using ETP outlet + 15
         if (stpInletData && etpOutletData) {
             if (parseFloat(stpInletData.initialFlow) === 0) {
                 stpInletData.initialFlow = (parseFloat(etpOutletData.initialFlow) + 15).toFixed(2);
@@ -256,14 +282,13 @@ const fetchEnergyAndFlowData = async (userName) => {
             }
         }
 
+        // ✅ Sort Flow Data According to Predefined Order
         flowData.sort((a, b) => FLOW_ORDER.indexOf(a.stackName) - FLOW_ORDER.indexOf(b.stackName));
 
-        console.log("Processed Energy Data:", energyData);
-        console.log("Processed Flow Data:", flowData);
-
+        // ✅ Generate Energy Report Table
         const energyTable = energyData.length > 0 ? `
-            <h1>Energy Report</h1>
-            <table>
+            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Energy Report</h1>
+            <table class="report-table">
                 <thead>
                     <tr>
                         <th>Station</th>
@@ -283,9 +308,10 @@ const fetchEnergyAndFlowData = async (userName) => {
                 </tbody>
             </table>` : '<p>No energy report available.</p>';
 
+        // ✅ Generate Flow Report Table (Sorted)
         const flowTable = flowData.length > 0 ? `
-            <h1>Water Quality Report</h1>
-            <table>
+            <h1 style="color:rgb(2, 37, 37); font-size: 2rem; text-align: center; margin-top: 30px; text-decoration: underline;">Water Quality Report</h1>
+            <table class="report-table">
                 <thead>
                     <tr>
                         <th>Station</th>
@@ -317,4 +343,4 @@ const fetchEnergyAndFlowData = async (userName) => {
 
 
 
-module.exports = { fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData, fetchEnergyAndFlowData,fetchLastDifferenceDataFromS3 , fetchAverageDataFromAPI , fetchCalibrationData};
+module.exports = {fetchUserStackNames, fetchLastAverageDataFromS3, fetchLastMinandMaxData, fetchConsumptionData, fetchEnergyAndFlowData,fetchLastDifferenceDataFromS3 , fetchYesterdayAverageData , fetchCalibrationData};
