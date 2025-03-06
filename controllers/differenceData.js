@@ -159,6 +159,9 @@ const scheduleDifferenceCalculation = () => {
     console.log('Final difference calculation scheduled to run at 11:45 PM daily.');
 };
 
+
+
+
 // Controller to fetch difference data by userName and interval
 // Controller to fetch difference data by userName and interval with pagination
 const getDifferenceDataByUserNameAndInterval = async (userName, interval, page = 1, limit = 50) => {
@@ -722,198 +725,338 @@ const getEnergyAndFlowDataByDateRange = async (userName, fromDate, toDate) => {
 };
 
 
-const getLastCumulativeFlowOfLastMonth = async (req, res) => {
+const getLastCumulativeFlowOfMonth = async (req, res) => {
     try {
-        const { userName, stackName } = req.params;
-
-        if (!userName || !stackName) {
-            return res.status(400).json({
-                success: false,
-                message: "userName and stackName are required.",
-            });
+      const { userName, stackName, month } = req.params;
+  
+      if (!userName || !stackName) {
+        return res.status(400).json({
+          success: false,
+          message: "userName and stackName are required.",
+        });
+      }
+  
+      let selectedMonth, selectedYear;
+      if (month) {
+        selectedMonth = parseInt(month, 10);
+        if (isNaN(selectedMonth) || selectedMonth < 1 || selectedMonth > 12) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid month provided. Please provide a month between 1 and 12.",
+          });
         }
-
-        // Get last month dynamically
+        // For circular chart, use current year
+        selectedYear = moment().tz("Asia/Kolkata").year();
+      } else {
+        // Default to last month if month is not provided
         const today = moment().tz("Asia/Kolkata");
         const lastMonth = today.subtract(1, "month");
-        const lastMonthYear = lastMonth.year();
-        const lastMonthNumber = lastMonth.month() + 1; // Month is 0-indexed in Moment.js
-
-        // Fetch stack data for the user from MongoDB for the previous month
-        const lastEntries = await DifferenceData.find({
-            userName,
-            stackName,
-            date: new RegExp(`/${lastMonthNumber}/${lastMonthYear}$`), // Matches any day in last month
-        })
-        .sort({ timestamp: -1 }) // Get latest entries first
+        selectedYear = lastMonth.year();
+        selectedMonth = lastMonth.month() + 1;
+      }
+  
+      // Try MongoDB first
+      const lastEntries = await DifferenceData.find({
+        userName,
+        stackName,
+        date: new RegExp(`/${selectedMonth}/${selectedYear}$`),
+      })
+        .sort({ timestamp: -1 })
         .select("userName stackName lastCumulatingFlow date timestamp")
         .lean();
-
-        if (lastEntries.length > 0) {
-            return res.status(200).json({
-                success: true,
-                message: `Last cumulative flow for ${stackName} of ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from MongoDB.`,
-                data: lastEntries,
-            });
-        }
-
-        // If no data in MongoDB, fetch from S3
-        console.log("Fetching last month data from S3...");
-        const bucketName = "ems-ebhoom-bucket"; // Your S3 bucket name
-        const fileKey = "difference_data/hourlyDifferenceData.json"; // Your S3 file path
-
-        const params = {
-            Bucket: bucketName,
-            Key: fileKey,
-        };
-
-        let s3Data = [];
-        try {
-            const s3Object = await s3.getObject(params).promise();
-            const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
-
-            // Filter data for the user, stack, and previous month
-            s3Data = s3FileData.filter(entry => {
-                const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
-                return entry.userName === userName && entry.stackName === stackName && entryDate.month() + 1 === lastMonthNumber && entryDate.year() === lastMonthYear;
-            });
-
-            if (s3Data.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: `No data found for ${stackName} of ${userName} in S3 for ${lastMonthNumber}/${lastMonthYear}.`,
-                });
-            }
-
-            // Get the latest entry for the stack
-            const latestEntry = s3Data.reduce((latest, entry) => {
-                return moment(entry.timestamp).isAfter(moment(latest.timestamp)) ? entry : latest;
-            }, s3Data[0]);
-
-            return res.status(200).json({
-                success: true,
-                message: `Last cumulative flow for ${stackName} of ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from S3.`,
-                data: latestEntry,
-            });
-        } catch (s3Error) {
-            if (s3Error.code === "NoSuchKey") {
-                console.warn("⚠ No data file found in S3.");
-            } else {
-                console.error("❌ Error fetching data from S3:", s3Error.message);
-            }
-
-            return res.status(500).json({
-                success: false,
-                message: "Error fetching data from S3.",
-                error: s3Error.message,
-            });
-        }
-    } catch (error) {
-        console.error("❌ Error fetching last cumulative flow of last month:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal Server Error",
-            error: error.message,
+  
+      if (lastEntries.length > 0) {
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${stackName} of ${userName} in ${selectedMonth}/${selectedYear} fetched successfully from MongoDB.`,
+          data: lastEntries,
         });
+      }
+  
+      // If not in MongoDB, try S3
+      console.log(`Fetching data from S3 for ${userName}, ${stackName} for ${selectedMonth}/${selectedYear}...`);
+      const bucketName = "ems-ebhoom-bucket"; 
+      const fileKey = "difference_data/hourlyDifferenceData.json";
+      const params = { Bucket: bucketName, Key: fileKey };
+  
+      let s3Data = [];
+      try {
+        const s3Object = await s3.getObject(params).promise();
+        const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+  
+        s3Data = s3FileData.filter(entry => {
+          const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
+          return (
+            entry.userName === userName &&
+            entry.stackName === stackName &&
+            entryDate.month() + 1 === selectedMonth &&
+            entryDate.year() === selectedYear
+          );
+        });
+  
+        if (s3Data.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: `No data found for ${stackName} of ${userName} in S3 for ${selectedMonth}/${selectedYear}.`,
+          });
+        }
+  
+        const latestEntry = s3Data.reduce((latest, entry) =>
+          moment(entry.timestamp).isAfter(moment(latest.timestamp)) ? entry : latest
+        , s3Data[0]);
+  
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${stackName} of ${userName} in ${selectedMonth}/${selectedYear} fetched successfully from S3.`,
+          data: latestEntry,
+        });
+      } catch (s3Error) {
+        if (s3Error.code === "NoSuchKey") {
+          console.warn("⚠ No data file found in S3.");
+        } else {
+          console.error("❌ Error fetching data from S3:", s3Error.message);
+        }
+        return res.status(500).json({
+          success: false,
+          message: "Error fetching data from S3.",
+          error: s3Error.message,
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error fetching cumulative flow for selected month:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal Server Error",
+        error: error.message,
+      });
     }
-};
-const getLastCumulativeFlowForUser = async (req, res) => {
+  };
+  
+  /**
+   * Controller for the bar chart (user-level, all stacks).
+   * Expects: userName and month (number as string) as route parameters.
+   * An optional query parameter 'year' can be provided.
+   */
+  const getLastCumulativeFlowForUser = async (req, res) => {
     try {
-        const { userName } = req.params;
-
-        if (!userName) {
-            return res.status(400).json({
-                success: false,
-                message: "userName is required.",
-            });
+      const { userName, month } = req.params;
+      const { year } = req.query;
+  
+      if (!userName || !month) {
+        return res.status(400).json({
+          success: false,
+          message: "userName and month are required.",
+        });
+      }
+  
+      const selectedMonth = parseInt(month, 10);
+      if (isNaN(selectedMonth) || selectedMonth < 1 || selectedMonth > 12) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid month provided. Please provide a month between 1 and 12.",
+        });
+      }
+      const selectedYear = year ? parseInt(year, 10) : moment().tz("Asia/Kolkata").year();
+  
+      // Try MongoDB first
+      const lastEntries = await DifferenceData.find({
+        userName,
+        date: new RegExp(`/${selectedMonth}/${selectedYear}$`),
+      })
+        .sort({ timestamp: -1 })
+        .select("userName stackName lastCumulatingFlow date timestamp stationType")
+        .lean();
+  
+      if (lastEntries.length > 0) {
+        // Group by stackName and select the latest entry for each stack
+        const latestEntries = {};
+        lastEntries.forEach(entry => {
+          if (!latestEntries[entry.stackName] || moment(entry.timestamp).isAfter(moment(latestEntries[entry.stackName].timestamp))) {
+            latestEntries[entry.stackName] = entry;
+          }
+        });
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${userName} in ${selectedMonth}/${selectedYear} fetched successfully from MongoDB.`,
+          data: Object.values(latestEntries),
+        });
+      }
+  
+      // If not in MongoDB, try S3
+      console.log(`Fetching data from S3 for ${userName} for ${selectedMonth}/${selectedYear}...`);
+      const bucketName = "ems-ebhoom-bucket";
+      const fileKey = "difference_data/hourlyDifferenceData.json";
+      const params = { Bucket: bucketName, Key: fileKey };
+  
+      let s3Data = [];
+      try {
+        const s3Object = await s3.getObject(params).promise();
+        const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+  
+        s3Data = s3FileData.filter(entry => {
+          const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
+          return (
+            entry.userName === userName &&
+            entryDate.month() + 1 === selectedMonth &&
+            entryDate.year() === selectedYear
+          );
+        });
+  
+        if (s3Data.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: `No data found for ${userName} in S3 for ${selectedMonth}/${selectedYear}.`,
+          });
         }
-
-        // Get last month dynamically
-        const today = moment().tz("Asia/Kolkata");
-        const lastMonth = today.subtract(1, "month");
-        const lastMonthYear = lastMonth.year();
-        const lastMonthNumber = lastMonth.month() + 1; // Month is 0-indexed in Moment.js
-
-        // Fetch data for the user from MongoDB for the previous month
-        const lastEntries = await DifferenceData.find({
-            userName,
-            date: new RegExp(`/${lastMonthNumber}/${lastMonthYear}$`), // Matches any day in last month
-        })
-        .sort({ timestamp: -1 }) // Get latest entries first
+  
+        const latestEntries = {};
+        s3Data.forEach(entry => {
+          if (!latestEntries[entry.stackName] || moment(entry.timestamp).isAfter(moment(latestEntries[entry.stackName].timestamp))) {
+            latestEntries[entry.stackName] = entry;
+          }
+        });
+  
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${userName} in ${selectedMonth}/${selectedYear} fetched successfully from S3.`,
+          data: Object.values(latestEntries),
+        });
+      } catch (s3Error) {
+        if (s3Error.code === "NoSuchKey") {
+          console.warn("⚠ No data file found in S3.");
+        } else {
+          console.error("❌ Error fetching data from S3:", s3Error.message);
+        }
+        return res.status(500).json({
+          success: false,
+          message: "Error fetching data from S3.",
+          error: s3Error.message,
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error fetching cumulative flow for user by month:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  };
+  
+  
+const getLastCumulativeFlowByMonth = async (req, res) => {
+    try {
+      const { userName, month } = req.params;
+      const { year } = req.query;
+  
+      if (!userName || !month) {
+        return res.status(400).json({
+          success: false,
+          message: "userName and month are required.",
+        });
+      }
+  
+      // Validate month parameter
+      const monthNumber = parseInt(month, 10);
+      if (isNaN(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid month. Please provide a number between 1 and 12.",
+        });
+      }
+  
+      // Use the provided year or default to the current year in Asia/Kolkata timezone
+      const selectedYear = year ? parseInt(year, 10) : moment().tz("Asia/Kolkata").year();
+  
+      // Fetch entries from MongoDB for the selected month and year
+      const entries = await DifferenceData.find({
+        userName,
+        date: new RegExp(`/${monthNumber}/${selectedYear}$`), // matches any day in the given month/year
+      })
+        .sort({ timestamp: -1 }) // Get the latest entries first
         .select("userName stackName lastCumulatingFlow date timestamp")
         .lean();
-
-        if (lastEntries.length > 0) {
-            return res.status(200).json({
-                success: true,
-                message: `Last cumulative flow for ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from MongoDB.`,
-                data: lastEntries,
-            });
-        }
-
-        // If no data in MongoDB, fetch from S3
-        console.log("Fetching last month data from S3...");
-        const bucketName = "ems-ebhoom-bucket"; // Your S3 bucket name
-        const fileKey = "difference_data/hourlyDifferenceData.json"; // Your S3 file path
-
-        const params = {
-            Bucket: bucketName,
-            Key: fileKey,
-        };
-
-        let s3Data = [];
-        try {
-            const s3Object = await s3.getObject(params).promise();
-            const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
-
-            // Filter data for the user and previous month
-            s3Data = s3FileData.filter(entry => {
-                const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
-                return entry.userName === userName && entryDate.month() + 1 === lastMonthNumber && entryDate.year() === lastMonthYear;
-            });
-
-            if (s3Data.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: `No data found for ${userName} in S3 for ${lastMonthNumber}/${lastMonthYear}.`,
-                });
-            }
-
-            // Get the latest entry for each stack
-            const latestEntries = {};
-            s3Data.forEach(entry => {
-                if (!latestEntries[entry.stackName] || moment(entry.timestamp).isAfter(moment(latestEntries[entry.stackName].timestamp))) {
-                    latestEntries[entry.stackName] = entry;
-                }
-            });
-
-            return res.status(200).json({
-                success: true,
-                message: `Last cumulative flow for ${userName} in ${lastMonthNumber}/${lastMonthYear} fetched successfully from S3.`,
-                data: Object.values(latestEntries),
-            });
-        } catch (s3Error) {
-            if (s3Error.code === "NoSuchKey") {
-                console.warn("⚠ No data file found in S3.");
-            } else {
-                console.error("❌ Error fetching data from S3:", s3Error.message);
-            }
-
-            return res.status(500).json({
-                success: false,
-                message: "Error fetching data from S3.",
-                error: s3Error.message,
-            });
-        }
-    } catch (error) {
-        console.error("❌ Error fetching last cumulative flow of last month:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal Server Error",
-            error: error.message,
+  
+      if (entries.length > 0) {
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${userName} for ${monthNumber}/${selectedYear} fetched successfully from MongoDB.`,
+          data: entries,
         });
+      }
+  
+      // If no data is found in MongoDB, fetch from S3
+      console.log(`Fetching data from S3 for ${userName} for ${monthNumber}/${selectedYear}...`);
+      const bucketName = "ems-ebhoom-bucket"; // your S3 bucket name
+      const fileKey = "difference_data/hourlyDifferenceData.json"; // your S3 file path
+  
+      const params = {
+        Bucket: bucketName,
+        Key: fileKey,
+      };
+  
+      let s3Data = [];
+      try {
+        const s3Object = await s3.getObject(params).promise();
+        const s3FileData = JSON.parse(s3Object.Body.toString("utf-8"));
+  
+        // Filter data for the given user, month, and year
+        s3Data = s3FileData.filter((entry) => {
+          const entryDate = moment(entry.date, "DD/MM/YYYY").tz("Asia/Kolkata");
+          return (
+            entry.userName === userName &&
+            entryDate.month() + 1 === monthNumber &&
+            entryDate.year() === selectedYear
+          );
+        });
+  
+        if (s3Data.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: `No data found for ${userName} in S3 for ${monthNumber}/${selectedYear}.`,
+          });
+        }
+  
+        // Group data by stackName and get the latest entry for each stack
+        const latestEntries = {};
+        s3Data.forEach((entry) => {
+          if (
+            !latestEntries[entry.stackName] ||
+            moment(entry.timestamp).isAfter(moment(latestEntries[entry.stackName].timestamp))
+          ) {
+            latestEntries[entry.stackName] = entry;
+          }
+        });
+  
+        return res.status(200).json({
+          success: true,
+          message: `Last cumulative flow for ${userName} for ${monthNumber}/${selectedYear} fetched successfully from S3.`,
+          data: Object.values(latestEntries),
+        });
+      } catch (s3Error) {
+        if (s3Error.code === "NoSuchKey") {
+          console.warn("⚠ No data file found in S3.");
+        } else {
+          console.error("❌ Error fetching data from S3:", s3Error.message);
+        }
+        return res.status(500).json({
+          success: false,
+          message: "Error fetching data from S3.",
+          error: s3Error.message,
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error fetching cumulative flow for selected month:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal Server Error",
+        error: error.message,
+      });
     }
-};
+  };
+
+
+/* selected month */
 
 
 module.exports = {
@@ -926,8 +1069,9 @@ module.exports = {
     getTodayDifferenceData,
     getEnergyAndFlowDataByDateRange,
     getYesterdayDifferenceData ,
-    getLastCumulativeFlowOfLastMonth ,
+    getLastCumulativeFlowOfMonth ,
     getLastCumulativeFlowForUser,
+    getLastCumulativeFlowByMonth
     
 };
 

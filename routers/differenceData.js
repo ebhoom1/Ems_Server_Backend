@@ -9,8 +9,12 @@ const {
   getTodayDifferenceData,
   getEnergyAndFlowDataByDateRange, 
   getYesterdayDifferenceData ,
-  getLastCumulativeFlowOfLastMonth ,
-  getLastCumulativeFlowForUser
+  getLastCumulativeFlowOfMonth ,
+  getLastCumulativeFlowForUser,
+  getLastCumulativeFlowByMonth
+  ,
+  
+
 } = require('../controllers/differenceData');
 
 // Helper function to validate intervals
@@ -294,8 +298,10 @@ router.get('/differenceData/yesterday/:userName', async (req, res) => {
   }
 });
 
+router.get("/cumulative-flow/stack/:userName/:stackName/:month", getLastCumulativeFlowOfMonth);
 
-router.get("/lastMonthFlow/:userName/:stackName", getLastCumulativeFlowOfLastMonth);
-router.get("/lastMonthFlow/:userName", getLastCumulativeFlowForUser);
-
+// Bar Chart Endpoint (user-level, all stacks)
+// Example: GET /api/cumulative-flow/user/HH014/1?year=2025
+router.get("/cumulative-flow/user/:userName/:month", getLastCumulativeFlowForUser);
+router.get("/cumulative-flow/:userName/:month", getLastCumulativeFlowByMonth);
 module.exports = router;
