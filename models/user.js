@@ -35,16 +35,28 @@ const userSchema=new mongoose.Schema({
         type:String,
         required:true
     },
-    email:{
-        type:String,
-        required:true,
-        unique:true,
-        validate(value){
-            if(!validator.isEmail(value)){
-                throw new Error ("not a valid Email")
-            }
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        validate(value) {
+          if (!validator.isEmail(value)) {
+            throw new Error("not a valid Email");
+          }
         }
-    },
+      },
+    
+      // New field:
+      additionalEmail: {
+        type: String,
+        // optional: make it unique if needed
+        // unique: true,
+        validate(value) {
+          if (value && !validator.isEmail(value)) {
+            throw new Error("not a valid Email");
+          }
+        }
+      },
     mobileNumber:{
         type:String,
         required:true

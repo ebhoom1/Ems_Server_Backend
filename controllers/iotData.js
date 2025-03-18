@@ -120,143 +120,218 @@ const checkRequiredFields = (data, requiredFields) => {
 
 const handleSaveMessage = async (req, res) => {
     const data = req.body;
-
+  
     // Perform validations
-    const requiredFieldsCheck = checkRequiredFields(data, ['product_id', 'companyName', 'industryType', 'userName', 'mobileNumber', 'email']);
+    const requiredFieldsCheck = checkRequiredFields(data, [
+      'product_id',
+      'companyName',
+      'industryType',
+      'userName',
+      'mobileNumber',
+      'email',
+    ]);
     if (!requiredFieldsCheck.success) {
-        return res.status(400).json(requiredFieldsCheck);
+      return res.status(400).json(requiredFieldsCheck);
     }
-
+  
     // Log data only for specific user
     if (data.userName === 'KSPCB013') {
-        console.log('Received data for KSPCB013:', data);
+      console.log('Received data for KSPCB013:', data);
     }
-
-    let stacks = data.stacks || data.stackData;
-    if (!Array.isArray(stacks) || stacks.length === 0) {
-        return res.status(400).json({ success: false, message: 'Stacks data is required.', missingFields: ['stacks'] });
+  
+    // Allow saving if either stacks (sensor data) or tankData is provided.
+    let stacks = data.stacks || data.stackData || [];
+    const tankData = data.tankData || [];
+    if (
+      !(
+        (Array.isArray(stacks) && stacks.length > 0) ||
+        (Array.isArray(tankData) && tankData.length > 0)
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'Stacks data or Tank data is required.',
+          missingFields: ['stacks/tankData'],
+        });
     }
-
+  
     const pumps = data.pumps || [];
-
-    // Remove negative values from stack parameters
-    stacks = stacks.map(stack => {
+  
+    // Remove negative values from stack parameters (only for stacks)
+    if (stacks.length > 0) {
+      stacks = stacks.map((stack) => {
         const sanitizedStack = { stackName: stack.stackName, stationType: stack.stationType };
-        
         for (const [key, value] of Object.entries(stack)) {
-            if (key !== 'stackName' && key !== 'stationType') {
-                const numericValue = parseFloat(value);
-                if (!isNaN(numericValue) && numericValue >= 0) {
-                    sanitizedStack[key] = value;
-                }
+          if (key !== 'stackName' && key !== 'stationType') {
+            const numericValue = parseFloat(value);
+            if (!isNaN(numericValue) && numericValue >= 0) {
+              sanitizedStack[key] = value;
             }
+          }
         }
         return sanitizedStack;
-    });
-
-    // Remove empty stack entries after sanitization
-    stacks = stacks.filter(stack => Object.keys(stack).length > 2);
-
-    if (stacks.length === 0) {
-        return res.status(400).json({ success: false, message: 'No valid stack data to save after filtering out negative values.' });
+      });
+  
+      // Remove empty stack entries after sanitization
+      stacks = stacks.filter((stack) => Object.keys(stack).length > 2);
     }
-
+  
+    // If after sanitization there is no valid sensor data and no tank data provided, return error.
+    if (stacks.length === 0 && tankData.length === 0) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message:
+            'No valid sensor or tank data to save after filtering out negative values.',
+        });
+    }
+  
     const user = await userdb.findOne({ userName: data.userName });
     const exceedanceCheck = await checkExceedance(stacks, user);
     const timeIntervalCheck = await checkTimeInterval(data, user);
-
+  
     // Format date and time
     const date = moment().format('DD/MM/YYYY');
     const time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
-
+  
     // Emit real-time data before saving
     req.io.to(data.userName).emit('stackDataUpdate', {
-        userName: data.userName,
-        exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
-        ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
-        timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
-        timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-        stackData: stacks,
-        pumps: pumps.map(pump => ({
-            pumpId: pump.pumpId,
-            pumpName: pump.pumpName,
-            status: pump.status,
-        })),
-        timestamp: new Date(),
+      userName: data.userName,
+      exceedanceComment: exceedanceCheck.exceedanceDetected
+        ? 'Parameter exceedance detected'
+        : 'Within limits',
+      ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
+      timeIntervalComment: timeIntervalCheck.intervalExceeded
+        ? 'Time interval exceeded'
+        : 'Within allowed time interval',
+      timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
+      stackData: stacks,
+      // Include tankData in the event payload (e.g. [{ stackName: 'STP_Tank', dwlrid: 'DWLR01', tankName: 'Tank1', depth: 22 }])
+      tankData: tankData,
+      pumps: pumps.map((pump) => ({
+        pumpId: pump.pumpId,
+        pumpName: pump.pumpName,
+        status: pump.status,
+      })),
+      timestamp: new Date(),
     });
-
+  
     try {
+      // Update or push sensor (stackData) entries
+      if (stacks.length > 0) {
         for (const stack of stacks) {
-            const existingEntry = await IotData.findOne({
+          const existingEntry = await IotData.findOne({
+            userName: data.userName,
+            'stackData.stackName': stack.stackName,
+          });
+  
+          if (existingEntry) {
+            await IotData.updateOne(
+              {
                 userName: data.userName,
                 'stackData.stackName': stack.stackName,
-            });
-
-            if (existingEntry) {
-                await IotData.updateOne(
-                    {
-                        userName: data.userName,
-                        'stackData.stackName': stack.stackName,
-                    },
-                    {
-                        $set: {
-                            'stackData.$': { ...stack, timestamp: new Date() },
-                        },
-                    }
-                );
-            } else {
-                await IotData.updateOne(
-                    { userName: data.userName },
-                    {
-                        $push: {
-                            stackData: { ...stack, timestamp: new Date() },
-                        },
-                    },
-                    { upsert: true }
-                );
-            }
+              },
+              {
+                $set: {
+                  'stackData.$': { ...stack, timestamp: new Date() },
+                },
+              }
+            );
+          } else {
+            await IotData.updateOne(
+              { userName: data.userName },
+              {
+                $push: {
+                  stackData: { ...stack, timestamp: new Date() },
+                },
+              },
+              { upsert: true }
+            );
+          }
         }
-
-        // Prepare entry for saving other data
-        const newEntryData = {
-            ...data,
-            stackData: stacks,
-            pumps: pumps.map(pump => ({
-                pumpId: pump.pumpId,
-                pumpName: pump.pumpName,
-                status: pump.status,
-                timestamp: new Date(),
-            })),
-            date,
-            time,
-            timestamp: new Date(),
-            exceedanceComment: exceedanceCheck.exceedanceDetected ? 'Parameter exceedance detected' : 'Within limits',
-            ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
-            timeIntervalComment: timeIntervalCheck.intervalExceeded ? 'Time interval exceeded' : 'Within allowed time interval',
-            timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
-            validationMessage: data.validationMessage || 'Validated',
-            validationStatus: data.validationStatus || 'Valid',
-        };
-
-        const newEntry = new IotData(newEntryData);
-        await newEntry.save();
-
-        await updateMaxMinValues(newEntryData);
-        handleExceedValues();
-        console.log("\n🔄 IoT Data being processed:", JSON.stringify(newEntryData, null, 2));
-        const updatedLastEntry = await saveOrUpdateLastEntryByUserName(newEntryData);
-        console.log(`✅ LastIoTData updated:`, JSON.stringify(updatedLastEntry, null, 2));
-
-        res.status(200).json({
-            success: true,
-            message: 'New Entry data saved successfully',
-            newEntry,
-        });
+      }
+  
+      // Update or push tankData entries if provided using findOneAndUpdate
+      if (tankData && Array.isArray(tankData) && tankData.length > 0) {
+        for (const tank of tankData) {
+          console.log('Attempting to save tank data:', tank);
+          const existingTank = await IotData.findOne({
+            userName: data.userName,
+            'tankData.tankName': tank.tankName,
+          });
+          if (existingTank) {
+            await IotData.findOneAndUpdate(
+              { userName: data.userName, 'tankData.tankName': tank.tankName },
+              { $set: { 'tankData.$': { ...tank, timestamp: new Date() } } },
+              { new: true }
+            );
+            console.log(`Tank data updated for tankName: ${tank.tankName}`);
+          } else {
+            await IotData.findOneAndUpdate(
+              { userName: data.userName },
+              { $push: { tankData: { ...tank, timestamp: new Date() } } },
+              { new: true, upsert: true }
+            );
+            console.log(`Tank data pushed for tankName: ${tank.tankName}`);
+          }
+        }
+      }
+  
+      // Prepare entry for saving all data (IoT data, pumps, and tank details)
+      const newEntryData = {
+        ...data,
+        stackData: stacks,
+        pumps: pumps.map((pump) => ({
+          pumpId: pump.pumpId,
+          pumpName: pump.pumpName,
+          status: pump.status,
+          timestamp: new Date(),
+        })),
+        // Save tankData (if not provided, default to an empty array)
+        tankData: (tankData && Array.isArray(tankData) && tankData.length > 0)
+          ? tankData
+          : [],
+        date,
+        time,
+        timestamp: new Date(),
+        exceedanceComment: exceedanceCheck.exceedanceDetected
+          ? 'Parameter exceedance detected'
+          : 'Within limits',
+        ExceedanceColor: exceedanceCheck.exceedanceDetected ? 'red' : 'green',
+        timeIntervalComment: timeIntervalCheck.intervalExceeded
+          ? 'Time interval exceeded'
+          : 'Within allowed time interval',
+        timeIntervalColor: timeIntervalCheck.intervalExceeded ? 'purple' : 'green',
+        validationMessage: data.validationMessage || 'Validated',
+        validationStatus: data.validationStatus || 'Valid',
+      };
+  
+      const newEntry = new IotData(newEntryData);
+      await newEntry.save();
+  
+      await updateMaxMinValues(newEntryData);
+      handleExceedValues();
+      console.log('\n🔄 IoT Data being processed:', JSON.stringify(newEntryData, null, 2));
+      const updatedLastEntry = await saveOrUpdateLastEntryByUserName(newEntryData);
+      console.log(`✅ LastIoTData updated:`, JSON.stringify(updatedLastEntry, null, 2));
+  
+      res.status(200).json({
+        success: true,
+        message: 'New Entry data saved successfully',
+        newEntry,
+      });
     } catch (error) {
-        console.error('Error saving data:', error);
-        res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
+      console.error('Error saving data:', error);
+      res.status(500).json({ success: false, message: 'Error saving data', error: error.message });
     }
-};
+  };
+  
+
+
+
 
 
 

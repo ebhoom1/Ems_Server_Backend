@@ -11,8 +11,8 @@ const {
   getYesterdayDifferenceData ,
   getLastCumulativeFlowOfMonth ,
   getLastCumulativeFlowForUser,
-  getLastCumulativeFlowByMonth
-  ,
+  getLastCumulativeFlowByMonth,
+  getDifferenceDataForCurrentMonth,
   
 
 } = require('../controllers/differenceData');
@@ -304,4 +304,5 @@ router.get("/cumulative-flow/stack/:userName/:stackName/:month", getLastCumulati
 // Example: GET /api/cumulative-flow/user/HH014/1?year=2025
 router.get("/cumulative-flow/user/:userName/:month", getLastCumulativeFlowForUser);
 router.get("/cumulative-flow/:userName/:month", getLastCumulativeFlowByMonth);
+router.get('/difference-data/current-month', getDifferenceDataForCurrentMonth);
 module.exports = router;

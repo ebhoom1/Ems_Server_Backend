@@ -25,37 +25,92 @@ const transporter=nodemailer.createTransport({
 
 
 const register = async (req, res) => {
-    const { userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, userType,adminType, industryType,industryPollutionCategory, dataInteval, district, state, address, latitude, longitude,productID } = req.body;
-
+    const {
+      userName, 
+      companyName, 
+      modelName, 
+      fname, 
+      email, 
+      mobileNumber,
+      password, 
+      cpassword, 
+      subscriptionDate, 
+      userType, 
+      adminType,
+      industryType, 
+      industryPollutionCategory, 
+      dataInteval, 
+      district,
+      state, 
+      address, 
+      latitude, 
+      longitude, 
+      productID,
+      // Add this:
+      additionalEmail
+    } = req.body;
+  
     try {
-        const preuser = await userdb.findOne({ email: email });
-        if (preuser) {
-            return res.status(422).json({ error: "This Email Already Register" });
-        } else if (password !== cpassword) {
-            return res.status(422).json({ error: "Password and Confirm Password not Match" });
-        } else {
-            // Calculate endSubscriptionDate
-            const subscriptionDateObj = new Date(subscriptionDate);
-            const endSubscriptionDate = new Date(subscriptionDateObj);
-            endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
-
-            // Format endSubscriptionDate to "YYYY-MM-DD"
-            const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split('T')[0];
-
-            const finalUser = new userdb({
-                userName, companyName, modelName, fname, email, mobileNumber, password, cpassword, subscriptionDate, endSubscriptionDate: formattedEndSubscriptionDate, userType,adminType, industryType,industryPollutionCategory, dataInteval, district, state, address, latitude, longitude,
-                productID,iotLastEnterDate: subscriptionDate
-
-            });
-
-            const storeData = await finalUser.save();
-            return res.status(201).json({ status: 201, storeData });
-        }
+      // Check if primary email is already used
+      const preuser = await userdb.findOne({ email });
+      if (preuser) {
+        return res.status(422).json({ error: "This Email Already Registered" });
+      }
+  
+      // (Optional) If you want to ensure additionalEmail is unique, check it here:
+      // const preuser2 = await userdb.findOne({ additionalEmail });
+      // if (preuser2) {
+      //   return res.status(422).json({ error: "This Additional Email Already Registered" });
+      // }
+  
+      if (password !== cpassword) {
+        return res.status(422).json({ error: "Password and Confirm Password do not match" });
+      }
+  
+      // Calculate endSubscriptionDate
+      const subscriptionDateObj = new Date(subscriptionDate);
+      const endSubscriptionDate = new Date(subscriptionDateObj);
+      endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
+      const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split("T")[0];
+  
+      // Hash the password (already done in the pre-save hook, but doing it here is also fine)
+      const hashedPassword = await bcrypt.hash(password, 12);
+  
+      const finalUser = new userdb({
+        userName,
+        companyName,
+        modelName,
+        fname,
+        email,
+        // Add additionalEmail here
+        additionalEmail,
+        mobileNumber,
+        password: hashedPassword,
+        cpassword,
+        subscriptionDate,
+        endSubscriptionDate: formattedEndSubscriptionDate,
+        userType,
+        adminType,
+        industryType,
+        industryPollutionCategory,
+        dataInteval,
+        district,
+        state,
+        address,
+        latitude,
+        longitude,
+        productID,
+        iotLastEnterDate: subscriptionDate
+      });
+  
+      const storeData = await finalUser.save();
+      return res.status(201).json({ status: 201, storeData });
     } catch (error) {
-        console.log(`Error : ${error}`);
-        return res.status(400).json(error);
-    }
-};
+      console.log(`Error : ${error}`);
+      return res.status(400).json(error);
+    }
+  };
+  
 
 
 
@@ -127,50 +182,62 @@ const updateAdminType = async (req, res) => {
 
   
 const login = async (req, res) => {
-    const { email, password, userType } = req.body;
+  const { email, password, userType } = req.body;
 
-    if (!email || !password || !userType) {
-        return res.status(422).json({ error: "Fill all the details" });
+  if (!email || !password || !userType) {
+    return res.status(422).json({ error: "Fill all the details" });
+  }
+
+  try {
+    // Find a user whose `email` OR `additionalEmail` matches the incoming `email` field
+    const userValid = await userdb.findOne({
+      $or: [
+        { email: email },
+        { additionalEmail: email }
+      ]
+    });
+
+    // If no user found
+    if (!userValid) {
+      return res.status(401).json({ status: 401, message: "Invalid details" });
     }
 
-    try {
-        const userValid = await userdb.findOne({ email });
-
-        if (userValid) {
-            if (userValid.userType !== userType) {
-                return res.status(401).json({ error: "Invalid UserType" });
-            }
-
-            const isMatch = await bcrypt.compare(password, userValid.password);
-            if (!isMatch) {
-                return res.status(422).json({ error: "Invalid User" });
-            } else {
-                // Generate a new token
-                const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
-
-                // Replace the existing token array with the new token
-                userValid.tokens = [{ token }];
-                await userValid.save();
-
-                res.cookie("usercookie", token, {
-                    expires: new Date(Date.now() + 9000000),
-                    httpOnly: true
-                });
-
-                const result = {
-                    userValid,
-                    token
-                };
-                return res.status(200).json({ status: 200, result }); // Send success response
-            }
-        } else {
-            return res.status(401).json({ status: 401, message: "Invalid details" }); // Send invalid details response
-        }
-    } catch (error) {
-        console.error(`Error: ${error}`);
-        return res.status(500).json({ error: "Internal Server Error" + error });
+    // Check userType
+    if (userValid.userType !== userType) {
+      return res.status(401).json({ error: "Invalid UserType" });
     }
+
+    // Compare password (you currently compare with userValid.cpassword)
+    // If your code is actually storing the final hashed password in userValid.password,
+    // you should compare with userValid.password. If you rely on cpassword, keep it as is:
+    const isMatch = await bcrypt.compare(password, userValid.cpassword);
+
+    if (!isMatch) {
+      return res.status(422).json({ error: "Invalid User" });
+    }
+
+    // Generate a new token
+    const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
+
+    // Replace the existing token array with the new token
+    userValid.tokens = [{ token }];
+    await userValid.save();
+
+    // Set a cookie if needed
+    res.cookie("usercookie", token, {
+      expires: new Date(Date.now() + 9000000),
+      httpOnly: true
+    });
+
+    const result = { userValid, token };
+    return res.status(200).json({ status: 200, result });
+  } catch (error) {
+    console.error(`Error: ${error}`);
+    return res.status(500).json({ error: "Internal Server Error" + error });
+  }
 };
+
+
 
 
 

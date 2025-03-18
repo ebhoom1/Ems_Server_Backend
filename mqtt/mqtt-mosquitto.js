@@ -160,31 +160,27 @@ for (const pump of pumps) {
 
                 return; // Skip further processing for pump control feedback
             }
-
             for (const item of data) {
                 const { product_id, userName, stacks } = item;
-
+            
                 if (!product_id || !userName || !Array.isArray(stacks) || stacks.length === 0) {
                     console.error('Invalid data: Missing product_id, userName, or stack data.');
                     continue;
                 }
-
+            
                 const currentTime = moment().tz('Asia/Kolkata').toDate();
                 const timeKey = `${product_id}_${userName}`;
-
                 if (lastProcessedTime[timeKey]) {
                     const lastTime = lastProcessedTime[timeKey];
                     const timeDifference = currentTime - lastTime;
-                    const timeThreshold = 1000;
-
+                    const timeThreshold = 1000; // 1 second threshold to filter duplicates
                     if (timeDifference < timeThreshold) {
                         console.log('Ignoring duplicate message:', item);
                         continue;
                     }
                 }
-
                 lastProcessedTime[timeKey] = currentTime;
-
+            
                 const userDetails = await userdb.findOne({
                     productID: product_id,
                     userName,
@@ -192,34 +188,77 @@ for (const pump of pumps) {
                         $elemMatch: { name: { $in: stacks.map((stack) => stack.stackName) } },
                     },
                 });
-
                 if (!userDetails) {
                     console.error(`No matching user found for product_id: ${product_id}, userName: ${userName}`);
                     continue;
                 }
-
-                const payload = {
-                    product_id,
-                    userName: userDetails.userName,
-                    email: userDetails.email,
-                    mobileNumber: userDetails.mobileNumber,
-                    companyName: userDetails.companyName,
-                    industryType: userDetails.industryType,
-                    stackData: stacks.map((stack) => ({
-                        stackName: stack.stackName,
-                        ...Object.fromEntries(
-                            Object.entries(stack).filter(([key, value]) => key !== 'stackName' && value !== 'N/A')
-                        ),
-                    })),
-                    date: moment().format('DD/MM/YYYY'),
-                    time: moment().format('HH:mm'),
-                    timestamp: new Date(),
-                };
-
-                await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', payload);
-                io.to(product_id.toString()).emit('data', payload);
-                console.log('Data successfully sent:', payload);
+            
+                // Partition stacks into sensor data and tank data.
+                const sensorStacks = stacks.filter(stack => !stack.hasOwnProperty('TankName'));
+                const tankStacks = stacks.filter(stack => stack.hasOwnProperty('TankName'));
+            
+                // If sensor data exists, build and send the sensor payload.
+                if (sensorStacks.length > 0) {
+                    let sensorPayload = {
+                        product_id,
+                        userName: userDetails.userName,
+                        email: userDetails.email,
+                        mobileNumber: userDetails.mobileNumber,
+                        companyName: userDetails.companyName,
+                        industryType: userDetails.industryType,
+                        stacks: sensorStacks.map((stack) => ({
+                            stackName: stack.stackName,
+                            ...Object.fromEntries(
+                                Object.entries(stack).filter(([key, value]) => key !== 'stackName' && value !== 'N/A')
+                            ),
+                        })),
+                        date: moment().format('DD/MM/YYYY'),
+                        time: moment().format('HH:mm'),
+                        timestamp: new Date(),
+                    };
+                    console.log('Sending sensor payload:', sensorPayload);
+                    try {
+                        await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', sensorPayload);
+                        io.to(product_id.toString()).emit('data', sensorPayload);
+                        console.log('Sensor data successfully sent:', sensorPayload);
+                    } catch (error) {
+                        console.error('Error sending sensor data:', error.response ? error.response.data : error.message);
+                    }
+                }
+            
+                // If tank data exists, build and send the tank payload.
+                if (tankStacks.length > 0) {
+                    let tankPayload = {
+                        product_id,
+                        userName: userDetails.userName,
+                        email: userDetails.email,
+                        mobileNumber: userDetails.mobileNumber,
+                        companyName: userDetails.companyName,
+                        industryType: userDetails.industryType,
+                        stacks: [], // include an empty array to satisfy the API requirement
+                        tankData: tankStacks.map((tank) => ({
+                            stackName: tank.stackName,
+                            dwlrid: tank.dwlrid,
+                            tankName: tank.TankName,
+                            depth: tank.depth,
+                        })),
+                        date: moment().format('DD/MM/YYYY'),
+                        time: moment().format('HH:mm'),
+                        timestamp: new Date(),
+                    };
+                    console.log('Sending tank payload:', tankPayload);
+                    try {
+                        await axios.post('https://api.ocems.ebhoom.com/api/handleSaveMessage', tankPayload);
+                        io.to(product_id.toString()).emit('data', tankPayload);
+                        console.log('Tank data successfully sent:', tankPayload);
+                    } catch (error) {
+                        console.error('Error sending tank data:', error.response ? error.response.data : error.message);
+                    }
+                }
+                
             }
+            
+            
         } catch (error) {
             console.error('Error handling MQTT message:', error);
         }

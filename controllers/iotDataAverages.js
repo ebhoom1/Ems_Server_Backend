@@ -12,18 +12,17 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
     const nowIST = moment().tz('Asia/Kolkata'); // Get current IST time
 
     let startTime, endTime;
-
     if (interval === 'hour') {
         startTime = nowIST.clone().startOf('hour').toDate(); // Example: 01:00:00
-        endTime = nowIST.clone().endOf('hour').toDate(); // Example: 01:59:59
+        endTime = nowIST.clone().endOf('hour').toDate();       // Example: 01:59:59
     } else if (interval === 'day') {
-        startTime = nowIST.clone().subtract(1, 'day').startOf('day').toDate(); // Example: Yesterday 00:00:00
-        endTime = nowIST.clone().subtract(1, 'day').endOf('day').toDate(); // Example: Yesterday 23:59:59
+        startTime = nowIST.clone().subtract(1, 'day').startOf('day').toDate(); // Yesterday 00:00:00
+        endTime = nowIST.clone().subtract(1, 'day').endOf('day').toDate();       // Yesterday 23:59:59
     } else {
         return console.log(`⚠️ Unsupported interval: ${interval}`);
     }
 
-    console.log(`\n🔍 Starting Average Calculation for: ${userName}, Stack: ${stackName}, Interval: ${interval}`);
+    console.log(`\n🔍 Starting Average Calculation for: ${userName}, Stack: ${stackName || "All"}, Interval: ${interval}`);
     console.log(`⏳ Time Range: ${startTime} - ${endTime}`);
 
     try {
@@ -35,15 +34,14 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
                 interval: 'day',
                 date: nowIST.clone().subtract(1, 'day').format('DD/MM/YYYY'),
             });
-
             if (existingDailyEntry) {
                 console.log(`⚠️ Daily average entry already exists for ${userName}, Stack: ${stackName}. Skipping.`);
                 return;
             }
         }
 
-        // **Fetch IoT Data from MongoDB**
-        const data = await IotData.aggregate([
+        // Build the aggregation pipeline
+        const pipeline = [
             { 
                 $match: { 
                     userName, 
@@ -51,27 +49,39 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
                     timestamp: { $gte: startTime, $lt: endTime } 
                 } 
             },
-            { $unwind: '$stackData' },
-            { 
-                $match: { 
-                    'stackData.stackName': stackName, 
-                    'stackData.stationType': 'effluent' 
-                } 
-            } 
-        ]);
+            { $unwind: '$stackData' }
+        ];
 
+        // If a stackName is provided, match on it and exclude stationTypes "energy" and "effluent flow".
+        // Otherwise, include all records (even with no stackName) that have stationType "effluent" or "emmision".
+        if (stackName) {
+            pipeline.push({
+                $match: {
+                    'stackData.stackName': stackName,
+                    'stackData.stationType': { $nin: ["energy", "effluent flow"] }
+                }
+            });
+        } else {
+            pipeline.push({
+                $match: {
+                    'stackData.stationType': { $in: ["effluent", "emmision"] }
+                }
+            });
+        }
+
+        const data = await IotData.aggregate(pipeline);
         console.log(`📊 Extracted ${data.length} IoT Data Entries`);
 
         if (data.length === 0) {
-            console.log(`⚠️ No IoT Data found for ${userName}, Stack: ${stackName}, Interval: ${interval}. Skipping.`);
+            console.log(`⚠️ No IoT Data found for ${userName}, Stack: ${stackName || "All"}, Interval: ${interval}. Skipping.`);
             return;
         }
 
         // **Group and Calculate Averages**
         const stackGroups = data.reduce((acc, entry) => {
+            // Destructure stackData to remove stationType and stackName from parameters
             const { stackName, stationType, ...parameters } = entry.stackData;
             if (!acc.parameters) acc.parameters = {};
-
             Object.entries(parameters).forEach(([key, value]) => {
                 value = parseFloat(value);
                 if (!isNaN(value)) {  
@@ -79,7 +89,6 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
                     acc.parameters[key].push(value);
                 }
             });
-
             return acc;
         }, {});
 
@@ -88,11 +97,16 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
         // **Compute Averages**
         const averagedParameters = Object.entries(stackGroups.parameters).reduce((acc, [key, values]) => {
             const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-            acc[key] = parseFloat(avg.toFixed(2));  
+            acc[key] = parseFloat(avg.toFixed(2));
             return acc;
         }, {});
 
-        console.log(`✅ Computed Averages for ${userName}, Stack: ${stackName}:`, JSON.stringify(averagedParameters, null, 2));
+        console.log(`✅ Computed Averages for ${userName}, Stack: ${stackName || "All"}:`, JSON.stringify(averagedParameters, null, 2));
+
+        // Determine the stationType for the saved average.
+        // If a stackName is provided, we take the stationType from the first record.
+        // Otherwise, label it as "effluent/emmision".
+        const stationTypeForAverage = stackName ? data[0].stackData.stationType : 'effluent/emmision';
 
         // **Create and Save the Average Entry**
         const averageEntry = new IotDataAverage({
@@ -103,14 +117,14 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
             date: nowIST.clone().subtract(interval === 'day' ? 1 : 0, 'day').format('DD/MM/YYYY'),
             timestamp: nowIST.clone().subtract(interval === 'day' ? 1 : 0, 'day').toDate(),
             stackData: [{
-                stackName,
-                stationType: 'effluent',
+                stackName: stackName || "All",
+                stationType: stationTypeForAverage,
                 parameters: averagedParameters,
             }],
         });
 
         await averageEntry.save();
-        console.log(`✅ Successfully Saved Average Data for ${userName}, Stack: ${stackName}, Interval: ${interval}`);
+        console.log(`✅ Successfully Saved Average Data for ${userName}, Stack: ${stackName || "All"}, Interval: ${interval}`);
 
     } catch (error) {
         console.error(`❌ Error Saving Averages for ${userName}, Stack: ${stackName}, Interval: ${interval}:`, error);
@@ -344,89 +358,89 @@ const uploadToS3 = async (data, filePath) => {
 
 const calculateAverageForTimeRange = async (req, res) => {
     const { userName, stackName } = req.params;
-    const { startDate, endDate } = req.query;
-
+    const { startDate, endDate } = req.query; // expected format: DD-MM-YYYY
+  
     try {
-        // Validate input parameters
-        if (!userName || !stackName || !startDate || !endDate) {
-            return res.status(400).json({ message: 'Missing required query parameters: userName, stackName, startDate, endDate' });
-        }
-
-        // Parse start and end dates with strict validation
-        const startMoment = moment(startDate, 'DD-MM-YYYY', true);
-        const endMoment = moment(endDate, 'DD-MM-YYYY', true);
-
-        if (!startMoment.isValid() || !endMoment.isValid()) {
-            return res.status(400).json({ message: 'Invalid date format. Use DD-MM-YYYY.' });
-        }
-
-        // Convert to standard format (YYYY-MM-DD) for consistency
-        const formattedStartDate = startMoment.format('YYYY-MM-DD');
-        const formattedEndDate = endMoment.format('YYYY-MM-DD');
-
-        console.log(`🔍 Fetching average data for ${userName}, stack: ${stackName} from ${formattedStartDate} to ${formattedEndDate}`);
-
-        // Fetch data from S3
-        const allData = await fetchAverageDataFromS3();
-
-        if (!allData || allData.length === 0) {
-            return res.status(404).json({ message: 'No data available in S3.' });
-        }
-
-        // Filter data for the specified user, stack, and date range
-        const filteredData = allData.filter(entry => {
-            const entryDate = moment(entry.date, 'DD/MM/YYYY'); // Ensure date format matches
-            const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
-            const stackMatch = entry.stackData.some(
-                stack => stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
-            );
-            return userMatch && stackMatch && entryDate.isBetween(startMoment, endMoment, 'day', '[]');
+      // Validate required parameters
+      if (!userName || !stackName || !startDate || !endDate) {
+        return res.status(400).json({ message: 'Missing required query parameters: userName, stackName, startDate, endDate' });
+      }
+  
+      // Parse start and end dates using DD-MM-YYYY format and set boundaries for the full day
+      const startMoment = moment(startDate, 'DD-MM-YYYY', true).startOf('day');
+      const endMoment = moment(endDate, 'DD-MM-YYYY', true).endOf('day');
+  
+      if (!startMoment.isValid() || !endMoment.isValid()) {
+        return res.status(400).json({ message: 'Invalid date format. Use DD-MM-YYYY.' });
+      }
+  
+      // For logging, convert to ISO (YYYY-MM-DD)
+      const isoStart = startMoment.format('YYYY-MM-DD');
+      const isoEnd = endMoment.format('YYYY-MM-DD');
+      console.log(`🔍 Fetching average data for ${userName}, stack: ${stackName} from ${isoStart} to ${isoEnd}`);
+  
+      // Fetch data from S3
+      const allData = await fetchAverageDataFromS3();
+      if (!allData || allData.length === 0) {
+        return res.status(404).json({ message: 'No data available in S3.' });
+      }
+  
+      // Filter data for the specified user, stack, and timestamp range.
+      // Here we assume each entry.timestamp is stored as an ISO string (e.g., "2025-03-11T00:25:00.376Z").
+      const filteredData = allData.filter(entry => {
+        const entryMoment = moment(entry.timestamp);
+        const userMatch = entry.userName.trim().toLowerCase() === userName.trim().toLowerCase();
+        const stackMatch = entry.stackData.some(
+          stack => stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()
+        );
+        return userMatch && stackMatch && entryMoment.isValid() && entryMoment.isBetween(startMoment, endMoment, null, '[]');
+      });
+  
+      if (filteredData.length === 0) {
+        return res.status(404).json({
+          message: `No average data found for userName: ${userName}, stackName: ${stackName}, and the specified time range.`,
         });
-
-        if (filteredData.length === 0) {
-            return res.status(404).json({
-                message: `No average data found for userName: ${userName}, stackName: ${stackName}, and the specified time range.`,
+      }
+  
+      // Aggregate parameter values (only considering non-negative numbers)
+      const parametersSum = {};
+      const parametersCount = {};
+  
+      filteredData.forEach(entry => {
+        entry.stackData.forEach(stack => {
+          if (stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()) {
+            Object.entries(stack.parameters).forEach(([key, value]) => {
+              if (typeof value === 'number' && !isNaN(value) && value >= 0) {
+                parametersSum[key] = (parametersSum[key] || 0) + value;
+                parametersCount[key] = (parametersCount[key] || 0) + 1;
+              }
             });
-        }
-
-        // Extract and aggregate parameters (only non-negative values)
-        const parametersSum = {};
-        const parametersCount = {};
-
-        filteredData.forEach(entry => {
-            entry.stackData.forEach(stack => {
-                if (stack.stackName.trim().toLowerCase() === stackName.trim().toLowerCase()) {
-                    Object.entries(stack.parameters).forEach(([key, value]) => {
-                        // Only consider valid numbers that are not negative
-                        if (typeof value === 'number' && !isNaN(value) && value >= 0) {
-                            parametersSum[key] = (parametersSum[key] || 0) + value;
-                            parametersCount[key] = (parametersCount[key] || 0) + 1;
-                        }
-                    });
-                }
-            });
+          }
         });
-
-        // Compute the averages per parameter
-        const averagedParameters = Object.entries(parametersSum).reduce((acc, [key, sum]) => {
-            const count = parametersCount[key] || 1;
-            acc[key] = parseFloat((sum / count).toFixed(2));
-            return acc;
-        }, {});
-
-        console.log(`✅ Computed Averages for ${userName}, Stack: ${stackName}:`, JSON.stringify(averagedParameters, null, 2));
-
-        res.status(200).json({
-            success: true,
-            message: `Averages calculated successfully for ${userName}, stack: ${stackName} from ${formattedStartDate} to ${formattedEndDate}`,
-            data: averagedParameters,
-            totalEntries: filteredData.length,
-        });
+      });
+  
+      // Calculate averages and round to 2 decimal places
+      const averagedParameters = Object.entries(parametersSum).reduce((acc, [key, sum]) => {
+        const count = parametersCount[key] || 1;
+        acc[key] = parseFloat((sum / count).toFixed(2));
+        return acc;
+      }, {});
+  
+      console.log(`✅ Computed Averages for ${userName}, Stack: ${stackName}:`, JSON.stringify(averagedParameters, null, 2));
+  
+      res.status(200).json({
+        success: true,
+        message: `Averages calculated successfully for ${userName}, stack: ${stackName} from ${isoStart} to ${isoEnd}`,
+        data: averagedParameters,
+        totalEntries: filteredData.length,
+      });
     } catch (error) {
-        console.error('❌ Error calculating averages:', error);
-        res.status(500).json({ message: 'Error calculating averages from S3.', error: error.message });
+      console.error('❌ Error calculating averages:', error);
+      res.status(500).json({ message: 'Error calculating averages from S3.', error: error.message });
     }
-};
+  };
+  
+
 
 //yesteradys average
 const calculateYesterdayAverage = async (req, res) => {

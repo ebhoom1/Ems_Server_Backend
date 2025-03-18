@@ -147,62 +147,83 @@ const getMaxMinDataByUser = async (userName) => {
 
 const getMaxMinDataByDateRange = async (req, res) => {
     const { userName, stackName } = req.params;
-    const { fromDate, toDate } = req.query;
-
+    const { fromDate, toDate } = req.query; // expected format: DD/MM/YYYY
+  
     try {
-        if (!fromDate || !toDate) {
-            return res.status(400).json({ message: 'fromDate and toDate are required query parameters.' });
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: 'fromDate and toDate are required query parameters.' });
+      }
+  
+      // Parse input dates using DD/MM/YYYY format
+      const startMoment = moment(fromDate, 'DD/MM/YYYY', true);
+      const endMoment = moment(toDate, 'DD/MM/YYYY', true);
+  
+      if (!startMoment.isValid() || !endMoment.isValid()) {
+        return res.status(400).json({ message: 'Invalid date format. Use DD/MM/YYYY.' });
+      }
+  
+      // Convert dates to match the stored MongoDB format (assumed as "DD/MM/YYYY")
+      const startDateFormatted = startMoment.format('DD/MM/YYYY');
+      const endDateFormatted = endMoment.format('DD/MM/YYYY');
+  
+      // Construct MongoDB query ensuring case-insensitive matching on stackName
+      const query = {
+        userName,
+        stackName: { $regex: new RegExp(stackName.trim(), "i") },
+        date: { $gte: startDateFormatted, $lte: endDateFormatted }
+      };
+      console.log("MongoDB Query:", JSON.stringify(query, null, 2));
+  
+      // Fetch data from MongoDB
+      const data = await MaxMinData.find(query);
+      if (!data || data.length === 0) {
+        return res.status(404).json({
+          message: `No data found for user: ${userName}, stack: ${stackName} between ${fromDate} and ${toDate}.`
+        });
+      }
+  
+      // Aggregate the smallest positive min values for each parameter across all documents.
+      // For each key, find the smallest value > 0.
+      const aggregatedMinValues = {};
+      Object.keys(data[0].minValues).forEach(key => {
+        const positiveValues = data
+          .map(item => item.minValues[key])
+          .filter(value => value > 0);
+        if (positiveValues.length > 0) {
+          aggregatedMinValues[key] = Math.min(...positiveValues);
         }
-
-        // Format dates to match MongoDB format
-        const startDateFormatted = moment(fromDate, "DD/MM/YYYY").format("DD/MM/YYYY");
-        const endDateFormatted = moment(toDate, "DD/MM/YYYY").format("DD/MM/YYYY");
-
-        // Debugging: Log the query
-        const query = {
-            userName,
-            stackName: { $regex: new RegExp(stackName.trim(), "i") },
-            date: { $gte: startDateFormatted, $lte: endDateFormatted }
+      });
+  
+      // Adjust each document's minValues:
+      // For 'Temp', if its min value is 0, replace it with the aggregated min positive value.
+      const filteredData = data.map(item => {
+        const adjustedMinValues = {};
+        for (const key in item.minValues) {
+          if (key === 'Temp' && item.minValues[key] === 0) {
+            adjustedMinValues[key] = aggregatedMinValues[key] !== undefined ? aggregatedMinValues[key] : 0;
+          } else {
+            adjustedMinValues[key] = item.minValues[key];
+          }
+        }
+        return {
+          ...item.toObject(),
+          minValues: adjustedMinValues
         };
-        console.log("MongoDB Query:", JSON.stringify(query, null, 2));
-
-        // Fetch data from MongoDB
-        const data = await MaxMinData.find(query);
-
-        if (!data || data.length === 0) {
-            return res.status(404).json({
-                message: `No data found for user: ${userName}, stack: ${stackName} between ${fromDate} and ${toDate}.`
-            });
-        }
-
-        // Filter out negative values from minValues
-        const filteredData = data.map(item => {
-            const positiveMinValues = {};
-            for (const key in item.minValues) {
-                if (item.minValues[key] >= 0) {
-                    positiveMinValues[key] = item.minValues[key];
-                }
-            }
-            return {
-                ...item.toObject(),
-                minValues: positiveMinValues
-            };
-        });
-
-        res.status(200).json({
-            success: true,
-            message: `Data fetched successfully for user: ${userName}, stack: ${stackName} within the date range.`,
-            data: filteredData
-        });
+      });
+  
+      res.status(200).json({
+        success: true,
+        message: `Data fetched successfully for user: ${userName}, stack: ${stackName} within the date range.`,
+        data: filteredData
+      });
     } catch (error) {
-        console.error("Error fetching data by date range:", error);
-        res.status(500).json({
-            message: "Internal Server Error while fetching data.",
-            error: error.message
-        });
+      console.error("Error fetching data by date range:", error);
+      res.status(500).json({
+        message: "Internal Server Error while fetching data.",
+        error: error.message
+      });
     }
-};
-
+  };
 
 
 
