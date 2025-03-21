@@ -101,53 +101,75 @@ const saveInitialData = async () => {
 
 // Function to calculate final differences and update the existing DifferenceData records
 const calculateFinalDifference = async () => {
-    try {
-        const today = moment().startOf('day').format('DD/MM/YYYY');
-        const filteredData = await fetchHourlyData(today);
-        if (filteredData.length === 0) {
-            console.log('No hourly data available for final calculation.');
-            return;
-        }
+  try {
+      const today = moment().startOf('day').format('DD/MM/YYYY');
+      const filteredData = await fetchHourlyData(today);
+      if (filteredData.length === 0) {
+          console.log('No hourly data available for final calculation.');
+          return;
+      }
 
-        // Group data by userName and stackName to capture the latest record as final reading
-        const finalRecords = {};
-        filteredData.forEach(entry => {
-            entry.stacks.forEach(stack => {
-                const key = `${entry.userName}_${stack.stackName}`;
-                if (!finalRecords[key] || moment(entry.timestamp).isAfter(moment(finalRecords[key].timestamp))) {
-                    finalRecords[key] = {
-                        lastEnergy: stack.energy || 0,
-                        lastCumulatingFlow: stack.cumulatingFlow || 0,
-                        timestamp: entry.timestamp
-                    };
-                }
-            });
-        });
+      // Group data by userName and stackName to capture the latest record as final reading
+      const finalRecords = {};
+      filteredData.forEach(entry => {
+          entry.stacks.forEach(stack => {
+              const key = `${entry.userName}_${stack.stackName}`;
+              if (!finalRecords[key] || moment(entry.timestamp).isAfter(moment(finalRecords[key].timestamp))) {
+                  finalRecords[key] = {
+                      lastEnergy: stack.energy || 0,
+                      lastCumulatingFlow: stack.cumulatingFlow || 0,
+                      timestamp: entry.timestamp
+                  };
+              }
+          });
+      });
 
-        // For each group, update the corresponding DifferenceData document with final values and differences
-        for (const key in finalRecords) {
-            const [userName, stackName] = key.split('_');
-            const finalRecord = finalRecords[key];
-            const existingRecord = await DifferenceData.findOne({ userName, stackName, date: today, interval: 'daily' });
-            if (existingRecord) {
-                const updatedData = {
-                    lastEnergy: finalRecord.lastEnergy,
-                    lastCumulatingFlow: finalRecord.lastCumulatingFlow,
-                    energyDifference: finalRecord.lastEnergy - existingRecord.initialEnergy,
-                    cumulatingFlowDifference: finalRecord.lastCumulatingFlow - existingRecord.initialCumulatingFlow,
-                    time: moment().format('HH:mm:ss')
-                };
+      // For each group, update the corresponding DifferenceData document with final values and differences
+      for (const key in finalRecords) {
+          const [userName, stackName] = key.split('_');
+          let existingRecord = await DifferenceData.findOne({ userName, stackName, date: today, interval: 'daily' });
+          
+          // If not found in MongoDB, try fetching from S3
+          if (!existingRecord) {
+              try {
+                  console.log(`No initial record found in MongoDB for ${userName} - ${stackName}, checking S3...`);
+                  const bucketName = 'ems-ebhoom-bucket';
+                  const s3Key = 'difference_data/hourlyDifferenceData.json';
+                  const s3Object = await s3.getObject({ Bucket: bucketName, Key: s3Key }).promise();
+                  const s3DiffData = JSON.parse(s3Object.Body.toString('utf-8'));
+                  
+                  existingRecord = s3DiffData.find(entry =>
+                      entry.userName === userName &&
+                      entry.stackName === stackName &&
+                      entry.date === today &&
+                      entry.interval === 'daily'
+                  );
+              } catch (s3Err) {
+                  console.error(`Error fetching difference data from S3 for ${userName} - ${stackName}:`, s3Err);
+              }
+          }
 
-                await DifferenceData.updateOne({ _id: existingRecord._id }, { $set: updatedData });
-                console.log(`Final difference updated for ${userName} - ${stackName}:`, updatedData);
-            } else {
-                console.log(`No initial record found for ${userName} - ${stackName} for ${today}`);
-            }
-        }
-    } catch (error) {
-        console.error('Error calculating final difference:', error);
-    }
+          if (existingRecord) {
+              const finalRecord = finalRecords[key];
+              const updatedData = {
+                  lastEnergy: finalRecord.lastEnergy,
+                  lastCumulatingFlow: finalRecord.lastCumulatingFlow,
+                  energyDifference: finalRecord.lastEnergy - existingRecord.initialEnergy,
+                  cumulatingFlowDifference: finalRecord.lastCumulatingFlow - existingRecord.initialCumulatingFlow,
+                  time: moment().format('HH:mm:ss')
+              };
+
+              await DifferenceData.updateOne({ _id: existingRecord._id }, { $set: updatedData });
+              console.log(`Final difference updated for ${userName} - ${stackName}:`, updatedData);
+          } else {
+              console.log(`No initial record found for ${userName} - ${stackName} for ${today}`);
+          }
+      }
+  } catch (error) {
+      console.error('Error calculating final difference:', error);
+  }
 };
+
 
 // Function to schedule both cron jobs
 const scheduleDifferenceCalculation = () => {
