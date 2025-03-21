@@ -17,129 +17,157 @@ const s3 = new AWS.S3();
 /**
  * Helper: Fetch hourly data from S3; if none found, fallback to MongoDB.
  */
-const calculateDailyDifferenceFromS3 = async () => {
+// Function to capture and save the initial readings for the day
+
+
+// Assuming HourlyData and DifferenceData are Mongoose models
+
+
+// Function to fetch hourly data from S3 (fallback to MongoDB if needed)
+const fetchHourlyData = async (today) => {
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'hourly_data/hourlyData.json';
+    let hourlyData = [];
     try {
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
-        const fileKey = 'hourly_data/hourlyData.json'; // Path to the hourly data JSON file
-
         console.log('Fetching hourly data from S3...');
-        const params = {
-            Bucket: bucketName,
-            Key: fileKey,
-        };
-
+        const params = { Bucket: bucketName, Key: fileKey };
         const s3Object = await s3.getObject(params).promise();
-        const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
-
-        const today = moment().startOf('day').format('DD/MM/YYYY');
-        console.log('Calculating daily differences for date:', today);
-
-        const filteredData = hourlyData.filter(entry => entry.date === today);
-
+        hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (s3Error) {
+        console.error('Error fetching data from S3:', s3Error);
+    }
+    // Filter S3 data for today
+    let filteredData = hourlyData.filter(entry => entry.date === today);
+    if (filteredData.length === 0) {
+        console.log('No hourly data found in S3 for today, checking MongoDB...');
+        filteredData = await HourlyData.find({ date: today }).lean();
         if (filteredData.length === 0) {
-            console.log('No hourly data found for today in S3.');
+            console.log('No hourly data found in MongoDB either.');
+        }
+    }
+    return filteredData;
+};
+
+// Function to save initial data (upsert into DifferenceData)
+const saveInitialData = async () => {
+    try {
+        const today = moment().startOf('day').format('DD/MM/YYYY');
+        const filteredData = await fetchHourlyData(today);
+        if (filteredData.length === 0) {
+            console.log('No hourly data available for initial capture.');
             return;
         }
 
-        console.log(`Hourly data found for today: ${filteredData.length} records`);
-
-        const results = [];
-
-        // Group data by user and stack
-        const groupedData = {};
-        for (const entry of filteredData) {
-            for (const stack of entry.stacks) {
+        // Group data by userName and stackName to capture the earliest record as initial reading
+        const initialRecords = {};
+        filteredData.forEach(entry => {
+            entry.stacks.forEach(stack => {
                 const key = `${entry.userName}_${stack.stackName}`;
-                if (!groupedData[key]) {
-                    groupedData[key] = {
+                // If not set or this entry's timestamp is earlier, update the record
+                if (!initialRecords[key] || moment(entry.timestamp).isBefore(moment(initialRecords[key].timestampRaw))) {
+                    initialRecords[key] = {
                         userName: entry.userName,
                         stackName: stack.stackName,
                         stationType: stack.stationType,
-                        initial: null,
-                        last: null,
+                        initialEnergy: stack.energy || 0,
+                        initialCumulatingFlow: stack.cumulatingFlow || 0,
+                        date: today,
+                        interval: 'daily',
+                        intervalType: 'day',
+                        time: moment().format('HH:mm:ss'),
+                        // Store the raw timestamp for comparison
+                        timestampRaw: entry.timestamp,
+                        // Set current timestamp for record creation/update
+                        timestamp: new Date()
                     };
                 }
+            });
+        });
 
-                // Assign initial and last values
-                if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
-                    groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
-                }
-                if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
-                    groupedData[key].last = { ...stack, timestamp: entry.timestamp };
-                }
-            }
-        }
-
-        // Calculate differences
-        for (const key in groupedData) {
-            const { userName, stackName, stationType, initial, last } = groupedData[key];
-
-            if (initial && last) {
-                console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
-                console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
-
-                const result = {
-                    userName,
-                    stackName,
-                    stationType,
-                    date: today,
-                    initialEnergy: initial.energy || 0,
-                    lastEnergy: last.energy || 0,
-                    energyDifference: (last.energy || 0) - (initial.energy || 0),
-                    initialCumulatingFlow: initial.cumulatingFlow || 0,
-                    lastCumulatingFlow: last.cumulatingFlow || 0,
-                    cumulatingFlowDifference: (last.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
-                    time: moment().format('HH:mm:ss'),
-                    intervalType: 'day',
-                    interval: "daily"
-                };
-
-                results.push(result);
-                console.log('✅ Calculated result:', result);
-            }
-        }
-
-        // Save results to the database
-        if (results.length > 0) {
-            await DifferenceData.insertMany(results);
-            console.log('📦 Daily differences saved successfully.');
-        } else {
-            console.log('⚠️ No results to save.');
+        // Upsert each initial record into DifferenceData (only if not already inserted)
+        for (const key in initialRecords) {
+            const record = initialRecords[key];
+            await DifferenceData.updateOne(
+                { userName: record.userName, stackName: record.stackName, date: record.date, interval: 'daily' },
+                { $setOnInsert: record },
+                { upsert: true }
+            );
+            console.log(`Initial data saved for ${record.userName} - ${record.stackName}`);
         }
     } catch (error) {
-        console.error('❌ Error calculating daily differences from S3:', error);
+        console.error('Error saving initial data:', error);
     }
 };
 
+// Function to calculate final differences and update the existing DifferenceData records
+const calculateFinalDifference = async () => {
+    try {
+        const today = moment().startOf('day').format('DD/MM/YYYY');
+        const filteredData = await fetchHourlyData(today);
+        if (filteredData.length === 0) {
+            console.log('No hourly data available for final calculation.');
+            return;
+        }
 
+        // Group data by userName and stackName to capture the latest record as final reading
+        const finalRecords = {};
+        filteredData.forEach(entry => {
+            entry.stacks.forEach(stack => {
+                const key = `${entry.userName}_${stack.stackName}`;
+                if (!finalRecords[key] || moment(entry.timestamp).isAfter(moment(finalRecords[key].timestamp))) {
+                    finalRecords[key] = {
+                        lastEnergy: stack.energy || 0,
+                        lastCumulatingFlow: stack.cumulatingFlow || 0,
+                        timestamp: entry.timestamp
+                    };
+                }
+            });
+        });
 
+        // For each group, update the corresponding DifferenceData document with final values and differences
+        for (const key in finalRecords) {
+            const [userName, stackName] = key.split('_');
+            const finalRecord = finalRecords[key];
+            const existingRecord = await DifferenceData.findOne({ userName, stackName, date: today, interval: 'daily' });
+            if (existingRecord) {
+                const updatedData = {
+                    lastEnergy: finalRecord.lastEnergy,
+                    lastCumulatingFlow: finalRecord.lastCumulatingFlow,
+                    energyDifference: finalRecord.lastEnergy - existingRecord.initialEnergy,
+                    cumulatingFlowDifference: finalRecord.lastCumulatingFlow - existingRecord.initialCumulatingFlow,
+                    time: moment().format('HH:mm:ss')
+                };
 
-// const scheduleDifferenceCalculation = () => {
-//     cron.schedule('0 0 * * *', async () => {
-//         console.log('Running daily difference calculation...');
-//         await calculateDailyDifference();
-//     });
-
-//     console.log('Daily difference calculation scheduled at midnight.');
-// };
-
-// const scheduleDifferenceCalculation = () => {
-//     cron.schedule('0 * * * *', async () => { // Runs every 5 minutes
-//         console.log('Running difference calculation every 5 minutes...');
-//         await calculateDailyDifferenceFromS3();
-//     });
-
-//     console.log('Difference calculation scheduled to run every 5 minutes.');
-// };
-const scheduleDifferenceCalculation = () => {
-
-    cron.schedule('45 23 * * *', async () => { // Runs at 11:45 PM every night
-        console.log('Running difference calculation at 11:45 PM...');
-        await calculateDailyDifferenceFromS3();
-    });
-
-    console.log('Difference calculation scheduled to run at 11:45 PM every night.');
+                await DifferenceData.updateOne({ _id: existingRecord._id }, { $set: updatedData });
+                console.log(`Final difference updated for ${userName} - ${stackName}:`, updatedData);
+            } else {
+                console.log(`No initial record found for ${userName} - ${stackName} for ${today}`);
+            }
+        }
+    } catch (error) {
+        console.error('Error calculating final difference:', error);
+    }
 };
+
+// Function to schedule both cron jobs
+const scheduleDifferenceCalculation = () => {
+    // Schedule initial data capture at 1:05 AM daily
+    cron.schedule('5 1 * * *', async () => {
+        console.log('Running initial data capture cron job at 1:05 AM...');
+        await saveInitialData();
+    });
+    console.log('Initial data capture scheduled to run at 1:05 AM daily.');
+
+    // Schedule final difference calculation at 11:45 PM daily
+    cron.schedule('45 23 * * *', async () => {
+        console.log('Running final difference calculation cron job at 11:45 PM...');
+        await calculateFinalDifference();
+    });
+    console.log('Final difference calculation scheduled to run at 11:45 PM daily.');
+};
+
+// Start the scheduled jobs
+scheduleDifferenceCalculation();
 
 
 
