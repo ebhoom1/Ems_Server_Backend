@@ -47,16 +47,18 @@ const userSchema=new mongoose.Schema({
       },
     
       // New field:
-      additionalEmail: {
-        type: String,
-        // optional: make it unique if needed
-        // unique: true,
-        validate(value) {
-          if (value && !validator.isEmail(value)) {
-            throw new Error("not a valid Email");
-          }
+      additionalEmails: {
+        type: [String],
+        default: [],
+        validate: {
+          validator: function(emails) {
+            // Ensure each email is valid if provided
+            return Array.isArray(emails) && emails.every(email => validator.isEmail(email));
+          },
+          message: "One or more additional emails are invalid."
         }
       },
+    
     mobileNumber:{
         type:String,
         required:true

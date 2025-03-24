@@ -46,8 +46,7 @@ const register = async (req, res) => {
       latitude, 
       longitude, 
       productID,
-      // Add this:
-      additionalEmail
+      additionalEmails // expect an array of additional emails
     } = req.body;
   
     try {
@@ -56,12 +55,6 @@ const register = async (req, res) => {
       if (preuser) {
         return res.status(422).json({ error: "This Email Already Registered" });
       }
-  
-      // (Optional) If you want to ensure additionalEmail is unique, check it here:
-      // const preuser2 = await userdb.findOne({ additionalEmail });
-      // if (preuser2) {
-      //   return res.status(422).json({ error: "This Additional Email Already Registered" });
-      // }
   
       if (password !== cpassword) {
         return res.status(422).json({ error: "Password and Confirm Password do not match" });
@@ -73,7 +66,7 @@ const register = async (req, res) => {
       endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
       const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split("T")[0];
   
-      // Hash the password (already done in the pre-save hook, but doing it here is also fine)
+      // Hash the password
       const hashedPassword = await bcrypt.hash(password, 12);
   
       const finalUser = new userdb({
@@ -82,8 +75,7 @@ const register = async (req, res) => {
         modelName,
         fname,
         email,
-        // Add additionalEmail here
-        additionalEmail,
+        additionalEmails, // Save the array of additional emails
         mobileNumber,
         password: hashedPassword,
         cpassword,
@@ -110,6 +102,7 @@ const register = async (req, res) => {
       return res.status(400).json(error);
     }
   };
+  
   
 
 
@@ -178,71 +171,54 @@ const updateAdminType = async (req, res) => {
 
 
 // user login
-  
-
-  
 const login = async (req, res) => {
-  const { email, password, userType } = req.body;
-
-  if (!email || !password || !userType) {
-    return res.status(422).json({ error: "Fill all the details" });
-  }
-
-  try {
-    // Find a user whose `email` OR `additionalEmail` matches the incoming `email` field
-    const userValid = await userdb.findOne({
-      $or: [
-        { email: email },
-        { additionalEmail: email }
-      ]
-    });
-
-    // If no user found
-    if (!userValid) {
-      return res.status(401).json({ status: 401, message: "Invalid details" });
+    const { email, password, userType } = req.body;
+  
+    if (!email || !password || !userType) {
+      return res.status(422).json({ error: "Fill all the details" });
     }
-
-    // Check userType
-    if (userValid.userType !== userType) {
-      return res.status(401).json({ error: "Invalid UserType" });
+  
+    try {
+      // Find a user whose `email` OR one of `additionalEmails` matches the incoming `email`
+      const userValid = await userdb.findOne({
+        $or: [
+          { email: email },
+          { additionalEmails: email }  // MongoDB will check if the email exists within the array
+        ]
+      });
+  
+      if (!userValid) {
+        return res.status(401).json({ status: 401, message: "Invalid details" });
+      }
+  
+      if (userValid.userType !== userType) {
+        return res.status(401).json({ error: "Invalid UserType" });
+      }
+  
+      // Compare the provided password with the stored hashed password.
+      // (Ensure you compare against the actual password field if it contains the hash)
+      const isMatch = await bcrypt.compare(password, userValid.cpassword);
+  
+      if (!isMatch) {
+        return res.status(422).json({ error: "Invalid User" });
+      }
+  
+      const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
+      userValid.tokens = [{ token }];
+      await userValid.save();
+  
+      res.cookie("usercookie", token, {
+        expires: new Date(Date.now() + 9000000),
+        httpOnly: true
+      });
+  
+      const result = { userValid, token };
+      return res.status(200).json({ status: 200, message: "Login Successful", result });
+    } catch (error) {
+      console.error(`Error: ${error}`);
+      return res.status(500).json({ error: "Internal Server Error" + error });
     }
-
-    // Compare password (you currently compare with userValid.cpassword)
-    // If your code is actually storing the final hashed password in userValid.password,
-    // you should compare with userValid.password. If you rely on cpassword, keep it as is:
-    const isMatch = await bcrypt.compare(password, userValid.cpassword);
-
-    if (!isMatch) {
-      return res.status(422).json({ error: "Invalid User" });
-    }
-
-    // Generate a new token
-    const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
-
-    // Replace the existing token array with the new token
-    userValid.tokens = [{ token }];
-    await userValid.save();
-
-    // Set a cookie if needed
-    res.cookie("usercookie", token, {
-      expires: new Date(Date.now() + 9000000),
-      httpOnly: true
-    });
-
-    const result = { userValid, token };
-    return res.status(200).json({ status: 200, result });
-  } catch (error) {
-    console.error(`Error: ${error}`);
-    return res.status(500).json({ error: "Internal Server Error" + error });
-  }
-};
-
-
-
-
-
-
-
+  };
 
 
  // user Valid 

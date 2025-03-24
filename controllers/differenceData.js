@@ -24,6 +24,89 @@ const s3 = new AWS.S3();
 
 
 // Function to fetch hourly data from S3 (fallback to MongoDB if needed)
+/* const recalcDifferenceData = async () => {
+  try {
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'hourly_data/hourlyData.json';
+
+    console.log('Fetching complete hourly data from S3...');
+    const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+    const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+    const dataByDate = hourlyData.reduce((acc, entry) => {
+      if (!acc[entry.date]) {
+        acc[entry.date] = [];
+      }
+      acc[entry.date].push(entry);
+      return acc;
+    }, {});
+
+    for (const date in dataByDate) {
+      const dailyData = dataByDate[date];
+
+      const groupedData = {};
+      dailyData.forEach(entry => {
+        entry.stacks.forEach(stack => {
+          const key = `${entry.userName}_${stack.stackName}`;
+          if (!groupedData[key]) {
+            groupedData[key] = [];
+          }
+          groupedData[key].push({
+            userName: entry.userName,
+            timestamp: entry.timestamp,
+            stack: stack
+          });
+        });
+      });
+
+      for (const key in groupedData) {
+        const entries = groupedData[key];
+        entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const firstEntry = entries[0];
+        const lastEntry = entries[entries.length - 1];
+
+        const energyDifference = (lastEntry.stack.energy || 0) - (firstEntry.stack.energy || 0);
+        const cumulatingFlowDifference = (lastEntry.stack.cumulatingFlow || 0) - (firstEntry.stack.cumulatingFlow || 0);
+
+        const differenceRecord = {
+          userName: firstEntry.userName,
+          stackName: firstEntry.stack.stackName,
+          stationType: firstEntry.stack.stationType,
+          date: date,
+          interval: 'daily',
+          time: moment(lastEntry.timestamp).format('HH:mm:ss'),
+          initialEnergy: firstEntry.stack.energy || 0,
+          lastEnergy: lastEntry.stack.energy || 0,
+          energyDifference: energyDifference,
+          initialCumulatingFlow: firstEntry.stack.cumulatingFlow || 0,
+          lastCumulatingFlow: lastEntry.stack.cumulatingFlow || 0,
+          cumulatingFlowDifference: cumulatingFlowDifference,
+          timestamp: new Date()
+        };
+
+        await DifferenceData.updateOne(
+          { userName: differenceRecord.userName, stackName: differenceRecord.stackName, date: differenceRecord.date, interval: 'daily' },
+          { $set: differenceRecord },
+          { upsert: true }
+        );
+
+        console.log(`Difference data recalculated for ${differenceRecord.userName} - ${differenceRecord.stackName} on ${date}`);
+      }
+    }
+    console.log('Recalculation of difference data complete.');
+  } catch (error) {
+    console.error('Error recalculating difference data:', error);
+  }
+}; */
+
+// Schedule the cron job to run every day at 3:00 AM
+/* cron.schedule('0 3 * * *', async () => {
+  console.log('Cron job running at 3:00 AM: recalculating difference data...');
+  await recalcDifferenceData();
+});
+
+console.log('Cron job scheduled to run every day at 3:00 AM'); */
 const fetchHourlyData = async (today) => {
     const bucketName = 'ems-ebhoom-bucket';
     const fileKey = 'hourly_data/hourlyData.json';
@@ -113,8 +196,8 @@ const calculateFinalDifference = async () => {
       const finalRecords = {};
       filteredData.forEach(entry => {
           entry.stacks.forEach(stack => {
-              const key = `${entry.userName}_${stack.stackName}`;
-              if (!finalRecords[key] || moment(entry.timestamp).isAfter(moment(finalRecords[key].timestamp))) {
+            const key = `${entry.userName}|${stack.stackName}`;
+            if (!finalRecords[key] || moment(entry.timestamp).isAfter(moment(finalRecords[key].timestamp))) {
                   finalRecords[key] = {
                       lastEnergy: stack.energy || 0,
                       lastCumulatingFlow: stack.cumulatingFlow || 0,
@@ -126,8 +209,8 @@ const calculateFinalDifference = async () => {
 
       // For each group, update the corresponding DifferenceData document with final values and differences
       for (const key in finalRecords) {
-          const [userName, stackName] = key.split('_');
-          let existingRecord = await DifferenceData.findOne({ userName, stackName, date: today, interval: 'daily' });
+        const [userName, stackName] = key.split('|');
+        let existingRecord = await DifferenceData.findOne({ userName, stackName, date: today, interval: 'daily' });
           
           // If not found in MongoDB, try fetching from S3
           if (!existingRecord) {
@@ -1156,5 +1239,3 @@ module.exports = {
     getLastCumulativeFlowByMonth,
     getDifferenceDataForCurrentMonth,
 };
-
-
