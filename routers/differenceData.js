@@ -13,6 +13,7 @@ const {
   getLastCumulativeFlowForUser,
   getLastCumulativeFlowByMonth,
   getDifferenceDataForCurrentMonth,
+  getFirstDayMonthlyDifferenceData,
   
 
 } = require('../controllers/differenceData');
@@ -305,4 +306,5 @@ router.get("/cumulative-flow/stack/:userName/:stackName/:month", getLastCumulati
 router.get("/cumulative-flow/user/:userName/:month", getLastCumulativeFlowForUser);
 router.get("/cumulative-flow/:userName/:month", getLastCumulativeFlowByMonth);
 router.get('/difference-data/current-month', getDifferenceDataForCurrentMonth);
+router.get('/first-day-monthly-difference', getFirstDayMonthlyDifferenceData);
 module.exports = router;

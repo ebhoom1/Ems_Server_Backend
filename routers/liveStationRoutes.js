@@ -9,22 +9,31 @@ router.post(
   liveStationController.createLiveStation // Controller function to create live station
 );
 
-// Route to get live station by userName
+// Route to get live station by userName and stationName
 router.get(
-  '/find-live-station/:userName',
+  '/find-live-station/:userName/:stationName',
   liveStationController.getLiveStationByUserName // Controller function to get live station
 );
 
-// Route to edit live station image by userName
+// Route to edit live station by userName and stationName
 router.patch(
-  '/edit-live-station/:userName',
+  '/edit-live-station/:userName/:stationName',
   liveStationController.uploadImage, // Middleware to handle image upload
-  liveStationController.editLiveStation // Controller function to update live station image
+  liveStationController.editLiveStation // Controller function to update live station
 );
 
-// Route to delete a live station by userName
-router.delete('/delete-live-station/:userName', liveStationController.deleteLiveStationByUserName);
+// Route to delete a live station by userName and stationName
+router.delete(
+  '/delete-live-station/:userName/:stationName',
+  liveStationController.deleteLiveStationByUserName
+);
 
-router.delete('/liveStation/images/deleteAll',liveStationController.deleteAllImages);
-
+router.delete(
+  '/liveStation/images/deleteAll',
+  liveStationController.deleteAllImages
+);
+router.get(
+  '/live-stations/:userName',
+  liveStationController.getLiveStationsByUserName
+);
 module.exports = router;

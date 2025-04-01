@@ -13,69 +13,91 @@ const s3 = new AWS.S3(); // make sure AWS is configured properly
 //
 // Function to save the initial data (works well as per your existing code)
 //
+// UPDATED saveInitialData Function
+
 const saveInitialData = async () => {
+  try {
+    const today = moment().startOf('day').format('DD/MM/YYYY');
+    const yesterday = moment().subtract(1, 'day').startOf('day').format('DD/MM/YYYY');
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'hourly_data/hourlyData.json';
+    let hourlyData = [];
+    
+    console.log('Fetching hourly data from S3 for initial data capture...');
+    const params = { Bucket: bucketName, Key: fileKey };
     try {
-        const today = moment().startOf('day').format('DD/MM/YYYY');
-        const bucketName = 'ems-ebhoom-bucket';
-        const fileKey = 'hourly_data/hourlyData.json';
-        let hourlyData = [];
-        
-        console.log('Fetching hourly data from S3 for initial data capture...');
-        const params = { Bucket: bucketName, Key: fileKey };
-        try {
-            const s3Object = await s3.getObject(params).promise();
-            hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
-        } catch (s3Error) {
-            console.error('Error fetching data from S3:', s3Error);
-        }
-        
-        // Filter hourly data for today
-        const filteredData = hourlyData.filter(entry => entry.date === today);
-        if (filteredData.length === 0) {
-            console.log('No hourly data found in S3 for today.');
-            return;
-        }
-
-        // Group data by userName and stackName to capture the earliest record as initial reading
-        const initialRecords = {};
-        filteredData.forEach(entry => {
-            entry.stacks.forEach(stack => {
-                const key = `${entry.userName}_${stack.stackName}`;
-                // If not set or this entry's timestamp is earlier, update the record
-                if (!initialRecords[key] || moment(entry.timestamp).isBefore(moment(initialRecords[key].timestampRaw))) {
-                    initialRecords[key] = {
-                        userName: entry.userName,
-                        stackName: stack.stackName,
-                        stationType: stack.stationType,
-                        initialEnergy: stack.energy || 0,
-                        initialCumulatingFlow: stack.cumulatingFlow || 0,
-                        date: today,
-                        interval: 'daily',
-                        intervalType: 'day',
-                        time: moment().format('HH:mm:ss'),
-                        // Store the raw timestamp for comparison
-                        timestampRaw: entry.timestamp,
-                        // Set current timestamp for record creation/update
-                        timestamp: new Date()
-                    };
-                }
-            });
-        });
-
-        // Upsert each initial record into DifferenceData (only if not already inserted)
-        for (const key in initialRecords) {
-            const record = initialRecords[key];
-            await DifferenceData.updateOne(
-                { userName: record.userName, stackName: record.stackName, date: record.date, interval: 'daily' },
-                { $setOnInsert: record },
-                { upsert: true }
-            );
-            console.log(`Initial data saved for ${record.userName} - ${record.stackName}`);
-        }
-    } catch (error) {
-        console.error('Error saving initial data:', error);
+      const s3Object = await s3.getObject(params).promise();
+      hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (s3Error) {
+      console.error('Error fetching data from S3:', s3Error);
     }
+    
+    // Filter hourly data for today
+    const filteredData = hourlyData.filter(entry => entry.date === today);
+    if (filteredData.length === 0) {
+      console.log('No hourly data found in S3 for today.');
+      return;
+    }
+    
+    // Group data by userName and stackName using a for...of loop for async operations
+    const initialRecords = {};
+    for (const entry of filteredData) {
+      for (const stack of entry.stacks) {
+        const key = `${entry.userName}_${stack.stackName}`;
+        let initialCumulatingFlow = stack.cumulatingFlow || 0;
+
+        // Query previous day's record to use its lastCumulatingFlow as today's initial flow
+        try {
+          const previousRecord = await DifferenceData.findOne({
+            userName: entry.userName,
+            stackName: stack.stackName,
+            interval: 'daily',
+            date: yesterday
+          }).sort({ timestamp: -1 }).lean();
+          if (previousRecord && previousRecord.lastCumulatingFlow !== undefined) {
+            initialCumulatingFlow = previousRecord.lastCumulatingFlow;
+          }
+        } catch (dbError) {
+          console.error('Error fetching previous day record:', dbError);
+        }
+
+        // Use the earliest record from today's data
+        if (
+          !initialRecords[key] ||
+          moment(entry.timestamp).isBefore(moment(initialRecords[key].timestampRaw))
+        ) {
+          initialRecords[key] = {
+            userName: entry.userName,
+            stackName: stack.stackName,
+            stationType: stack.stationType,
+            initialEnergy: stack.energy || 0,
+            initialCumulatingFlow: initialCumulatingFlow,
+            date: today,
+            interval: 'daily',
+            intervalType: 'day',
+            time: moment().format('HH:mm:ss'),
+            timestampRaw: entry.timestamp,
+            timestamp: new Date()
+          };
+        }
+      }
+    }
+    
+    // Upsert each initial record into the DifferenceData collection
+    for (const key in initialRecords) {
+      const record = initialRecords[key];
+      await DifferenceData.updateOne(
+        { userName: record.userName, stackName: record.stackName, date: record.date, interval: 'daily' },
+        { $setOnInsert: record },
+        { upsert: true }
+      );
+      console.log(`Initial data saved for ${record.userName} - ${record.stackName}`);
+    }
+  } catch (error) {
+    console.error('Error saving initial data:', error);
+  }
 };
+
 
 //
 // Function to calculate the daily differences from S3 data
@@ -176,7 +198,7 @@ const calculateDailyDifferenceFromS3 = async () => {
 //
 const scheduleDifferenceCalculation = () => {
     // Schedule initial data capture at 1:05 PM
-    cron.schedule('5 1 * * *', async () => {
+    cron.schedule('5 0 * * *', async () => {
         console.log('Running initial data capture cron job at 1:05 PM...');
         await saveInitialData();
     });
@@ -1142,6 +1164,69 @@ const getDifferenceDataForCurrentMonth = async (req, res) => {
       });
     }
   };
+// NEW Controller Function: getFirstDayMonthlyDifferenceData
+
+const getFirstDayMonthlyDifferenceData = async (req, res) => {
+  try {
+    const { userName, year } = req.query;
+    if (!userName) {
+      return res.status(400).json({ success: false, message: 'userName is required.' });
+    }
+    // Use provided year or default to the current year in Asia/Kolkata timezone
+    const selectedYear = year ? year.toString() : moment().tz('Asia/Kolkata').year().toString();
+    // Create a regex to match dates that start with "01/" and end with the selected year (format: DD/MM/YYYY)
+    const dateRegex = new RegExp(`^01/\\d{2}/${selectedYear}$`);
+
+    // Attempt to fetch records from MongoDB first
+    let records = await DifferenceData.find({
+      userName,
+      interval: 'daily',
+      date: { $regex: dateRegex }
+    }).sort({ timestamp: 1 }).lean();
+
+    // If no records found in MongoDB, fetch from S3 as fallback
+    if (!records.length) {
+      console.log(`No DB records found. Checking S3 for first day monthly difference data for ${userName} in ${selectedYear}...`);
+      const bucketName = 'ems-ebhoom-bucket';
+      const fileKey = 'difference_data/hourlyDifferenceData.json';
+      let s3Data = [];
+      try {
+        const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+        const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
+        // Filter S3 data with matching user, interval, and date format
+        s3Data = fileData.filter(entry => 
+          entry.userName === userName &&
+          entry.interval === 'daily' &&
+          dateRegex.test(entry.date)
+        );
+      } catch (s3Error) {
+        console.error('Error fetching data from S3:', s3Error);
+      }
+      records = s3Data;
+    }
+
+    if (!records.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No first day of month difference data found for ${userName} in ${selectedYear}.`
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `First day of month difference data for ${userName} in ${selectedYear} fetched successfully.`,
+      data: records
+    });
+  } catch (error) {
+    console.error('Error fetching first day of month difference data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
+  }
+};
+
 
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
@@ -1157,4 +1242,5 @@ module.exports = {
     getLastCumulativeFlowForUser,
     getLastCumulativeFlowByMonth,
     getDifferenceDataForCurrentMonth,
+    getFirstDayMonthlyDifferenceData,
 };

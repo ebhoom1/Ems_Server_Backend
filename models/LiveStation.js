@@ -4,9 +4,14 @@ const liveStationSchema = new mongoose.Schema({
   userName: {
     type: String,
     required: true,
+    // REMOVE any unique: true here
+  },
+  stationName: {
+    type: String,
+    required: true,
   },
   liveStationImage: {
-    type: String, // Path of the uploaded image
+    type: String, // URL/path of the uploaded image
   },
   nodes: {
     type: Array, // Store nodes configuration
@@ -16,5 +21,9 @@ const liveStationSchema = new mongoose.Schema({
     type: Array, // Store edges configuration
   },
 });
+
+// Remove the unique index if you want to allow multiple stations per user
+// Just keep the compound index for querying efficiency
+liveStationSchema.index({ userName: 1, stationName: 1 });
 
 module.exports = mongoose.model('LiveStation', liveStationSchema);

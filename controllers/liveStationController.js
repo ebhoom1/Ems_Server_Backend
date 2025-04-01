@@ -49,82 +49,86 @@ const deleteFromS3 = async (fileKey) => {
 };
 
 // Create a new LiveStation
+// ... (previous code remains the same)
+
 exports.createLiveStation = async (req, res) => {
   try {
-    const { userName, nodes, edges } = req.body;
+    const { userName, stationName, nodes, edges } = req.body;
 
-    // Check if userName already exists
-    const existingLiveStation = await LiveStation.findOne({ userName });
-    if (existingLiveStation) {
-      return res.status(400).json({ message: 'UserName already exists. Use edit to update.' });
+    // Basic validation
+    if (!stationName || !stationName.trim()) {
+      return res.status(400).json({
+        message: 'Station name cannot be empty',
+      });
     }
 
-    let liveStationImage = null;
+    const trimmedStationName = stationName.trim();
 
-    // If an image is uploaded, handle S3 upload
+    let liveStationImage = null;
     if (req.file) {
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const s3Response = await uploadToS3(req.file.buffer, fileName);
-      liveStationImage = s3Response.Location; // Set image URL from S3
+      liveStationImage = s3Response.Location;
     }
 
-    // Create new LiveStation
     const newLiveStation = new LiveStation({
       userName,
-      liveStationImage, // Save image URL or null
-      nodes: nodes, 
-      edges: edges, 
+      stationName: trimmedStationName,
+      liveStationImage,
+      nodes,
+      edges,
     });
 
     const savedLiveStation = await newLiveStation.save();
-    res.status(201).json({ message: 'Live Station created successfully', data: savedLiveStation });
+    res.status(201).json({ 
+      message: 'Live Station created successfully', 
+      data: savedLiveStation 
+    });
   } catch (error) {
     console.error('Error creating Live Station:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
   }
 };
 
-// Controller function to get data by userName
-// Get LiveStation by userName
+// ... (rest of the code remains the same)
+
+// Get LiveStation by userName and stationName
 exports.getLiveStationByUserName = async (req, res) => {
   try {
-    const { userName } = req.params;
-
-    const liveStation = await LiveStation.findOne({ userName });
+    const { userName, stationName } = req.params;
+    const liveStation = await LiveStation.findOne({ userName, stationName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
-
     res.status(200).json({ message: 'Live Station retrieved successfully', data: liveStation });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Controller function to edit the image by userName
+// Edit LiveStation
 exports.editLiveStation = async (req, res) => {
   try {
-    const { userName } = req.params;
-    const { nodes, edges } = req.body;
+    const { userName, stationName } = req.params; // stationName here is the original station name
+    const { nodes, edges, stationName: newStationName } = req.body;
 
-    // Find the live station by userName
-    const liveStation = await LiveStation.findOne({ userName });
+    const liveStation = await LiveStation.findOne({ userName, stationName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
     // Update image if provided
     if (req.file) {
-      // Delete the old image from S3 if it exists
       if (liveStation.liveStationImage) {
         const oldKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
         await deleteFromS3(oldKey);
       }
-
-      // Upload the new image to S3
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const s3Response = await uploadToS3(req.file.buffer, fileName);
-      liveStation.liveStationImage = s3Response.Location; // Update the image URL
+      liveStation.liveStationImage = s3Response.Location;
     }
 
     // Update nodes and edges if provided
@@ -135,7 +139,11 @@ exports.editLiveStation = async (req, res) => {
       liveStation.edges = typeof edges === 'string' ? JSON.parse(edges) : edges;
     }
 
-    // Save the updated LiveStation
+    // Update stationName if provided (allows editing the station name)
+    if (newStationName) {
+      liveStation.stationName = newStationName;
+    }
+
     const updatedLiveStation = await liveStation.save();
     res.status(200).json({ message: 'Live Station updated successfully', data: updatedLiveStation });
   } catch (error) {
@@ -144,22 +152,16 @@ exports.editLiveStation = async (req, res) => {
   }
 };
 
-
-// Controller function to delete a LiveStation by userName
-// Delete LiveStation
+// Delete LiveStation by userName and stationName
 exports.deleteLiveStationByUserName = async (req, res) => {
   try {
-    const { userName } = req.params;
-
-    // Find the live station by userName
-    const liveStation = await LiveStation.findOne({ userName });
+    const { userName, stationName } = req.params;
+    const liveStation = await LiveStation.findOne({ userName, stationName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
-    // Delete the live station from the database
-    await LiveStation.deleteOne({ userName });
-
+    await LiveStation.deleteOne({ userName, stationName });
     res.status(200).json({ message: 'Live Station deleted successfully' });
   } catch (error) {
     console.error('Error deleting Live Station:', error);
@@ -167,9 +169,7 @@ exports.deleteLiveStationByUserName = async (req, res) => {
   }
 };
 
-
-
-// Controller function to delete all images from S3
+// Delete all images from S3
 exports.deleteAllImages = async (req, res) => {
   try {
     const listParams = {
@@ -192,6 +192,20 @@ exports.deleteAllImages = async (req, res) => {
 
     res.status(200).json({ message: 'All images deleted successfully' });
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+// Get all LiveStations by userName
+exports.getLiveStationsByUserName = async (req, res) => {
+  try {
+    const { userName } = req.params;
+    const liveStations = await LiveStation.find({ userName });
+    if (!liveStations || liveStations.length === 0) {
+      return res.status(404).json({ message: 'No Live Stations found for the user.' });
+    }
+    res.status(200).json({ message: 'Live Stations retrieved successfully', data: liveStations });
+  } catch (error) {
+    console.error('Error retrieving Live Stations:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

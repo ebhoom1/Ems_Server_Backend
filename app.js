@@ -33,12 +33,16 @@ const avoidUsersRoutes = require('./routers/avoidUsers');
 const dailyConsumptionRoutes = require('./routers/dailyConsumptionRoutes');
 const wasteRoutes = require('./routers/wasteAndGeneratorRouter');
 const User = require('./models/user'); // Ensure you import the User model
+const inventoryRoutes = require('./routers/inventory')
+const requestInventory = require('./routers/requestInventory')
+const equipmentRoutes =require('./routers/equipmentRoutes')
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
 const socketIO = require('socket.io');
 const fuelRoutes = require('./routers/fuelRoutes');
 const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
+const faultRoutes = require('./routers/faultRoutes');
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -148,7 +152,10 @@ app.use('/api', avoidUsersRoutes);
 app.use('/api', wasteRoutes);
 app.use('/api', dailyConsumptionRoutes);
 app.use('/api', generatorVehicleRoutes);
-
+app.use('/api', inventoryRoutes);
+app.use('/api', requestInventory)
+app.use('/api', equipmentRoutes)
+app.use('/api', faultRoutes)
 
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
