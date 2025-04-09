@@ -35,6 +35,7 @@ const register = async (req, res) => {
       password, 
       cpassword, 
       subscriptionDate, 
+      subscriptionPlan,
       userType, 
       adminType,
       industryType, 
@@ -61,10 +62,12 @@ const register = async (req, res) => {
       }
   
       // Calculate endSubscriptionDate
-      const subscriptionDateObj = new Date(subscriptionDate);
-      const endSubscriptionDate = new Date(subscriptionDateObj);
-      endSubscriptionDate.setDate(subscriptionDateObj.getDate() + 30);
-      const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split("T")[0];
+    // Calculate endSubscriptionDate: one month after subscriptionDate
+const subscriptionDateObj = new Date(subscriptionDate);
+const endSubscriptionDate = new Date(subscriptionDateObj);
+endSubscriptionDate.setMonth(subscriptionDateObj.getMonth() + 1);
+const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split("T")[0];
+
   
       // Hash the password
       const hashedPassword = await bcrypt.hash(password, 12);
@@ -80,6 +83,7 @@ const register = async (req, res) => {
         password: hashedPassword,
         cpassword,
         subscriptionDate,
+        subscriptionPlan,
         endSubscriptionDate: formattedEndSubscriptionDate,
         userType,
         adminType,

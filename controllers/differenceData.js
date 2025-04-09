@@ -198,7 +198,7 @@ const calculateDailyDifferenceFromS3 = async () => {
 //
 const scheduleDifferenceCalculation = () => {
     // Schedule initial data capture at 1:05 PM
-    cron.schedule('5 0 * * *', async () => {
+    cron.schedule('5 2 * * *', async () => {
         console.log('Running initial data capture cron job at 1:05 PM...');
         await saveInitialData();
     });
@@ -1227,6 +1227,124 @@ const getFirstDayMonthlyDifferenceData = async (req, res) => {
   }
 };
 
+//total 
+/**
+ * Controller to get the total cumulatingFlowDifference for all stacks of a specific user.
+ * This function retrieves data from both MongoDB and an S3 bucket, then merges the results.
+ *
+ * Example Request: GET /api/total-flow/HH014
+ */
+/**
+
+ */
+const getTotalCumulatingFlowDifferenceByUser = async (req, res) => {
+  try {
+    const { userName } = req.query;
+    if (!userName) {
+      return res.status(400).json({ success: false, message: "userName is required." });
+    }
+
+    // 1. Fetch data from MongoDB for this user.
+    const dbData = await DifferenceData.find({ userName }).lean();
+
+    // 2. Fetch data from S3.
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'difference_data/hourlyDifferenceData.json';
+    let s3Data = [];
+    try {
+      const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+      const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
+      // Filter S3 data for the given user.
+      s3Data = fileData.filter(entry => entry.userName === userName);
+    } catch (s3Error) {
+      if (s3Error.code === 'NoSuchKey') {
+        console.warn(`No S3 data file found for key: ${fileKey}`);
+      } else {
+        console.error("Error fetching S3 data:", s3Error);
+      }
+    }
+
+    // 3. Combine both data arrays.
+    const allData = [...dbData, ...s3Data];
+
+    // 4. Group by stackName and sum up cumulatingFlowDifference.
+    const sumByStack = allData.reduce((acc, record) => {
+      const stack = record.stackName;
+      // Convert to number in case the field is a string and use 0 as a fallback.
+      const diff = Number(record.cumulatingFlowDifference) || 0;
+      acc[stack] = (acc[stack] || 0) + diff;
+      return acc;
+    }, {});
+
+    return res.status(200).json({
+      success: true,
+      message: "Total cumulating flow differences aggregated by stack.",
+      data: sumByStack
+    });
+  } catch (error) {
+    console.error("Error calculating total cumulating flow differences:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+
+// Aggregates the cumulatingFlowDifference for a specific stack for a given user.
+// It sums up all records (from MongoDB and S3) whose userName and stackName match.
+const getTotalCumulatingFlowDifferenceByUserAndStack = async (req, res) => {
+  try {
+    // Expecting both userName and stackName to be provided.
+    const { userName, stackName } = req.params;
+    if (!userName || !stackName) {
+      return res.status(400).json({ success: false, message: "userName and stackName are required." });
+    }
+
+    // 1. Fetch records for the specified user and stack from MongoDB.
+    const dbData = await DifferenceData.find({ userName, stackName }).lean();
+
+    // 2. Fetch records from S3.
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'difference_data/hourlyDifferenceData.json';
+    let s3Data = [];
+    try {
+      const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+      const fileData = JSON.parse(s3Object.Body.toString('utf-8'));
+      // Filter S3 data for both userName and stackName.
+      s3Data = fileData.filter(entry => entry.userName === userName && entry.stackName === stackName);
+    } catch (s3Error) {
+      if (s3Error.code === 'NoSuchKey') {
+        console.warn(`No S3 data file found for key: ${fileKey}`);
+      } else {
+        console.error("Error fetching S3 data:", s3Error);
+      }
+    }
+
+    // 3. Combine the two sources.
+    const allData = [...dbData, ...s3Data];
+
+    // 4. Sum up the cumulatingFlowDifference across all matching records.
+    const totalDifference = allData.reduce((total, record) => {
+      return total + (Number(record.cumulatingFlowDifference) || 0);
+    }, 0);
+
+    return res.status(200).json({
+      success: true,
+      message: `Total cumulating flow difference for stack "${stackName}" for user "${userName}" fetched successfully.`,
+      data: { stackName, totalCumulatingFlowDifference: totalDifference }
+    });
+  } catch (error) {
+    console.error("Error calculating cumulating flow difference for specific stack:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+// Add these to your module exports
+
 
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
@@ -1243,4 +1361,6 @@ module.exports = {
     getLastCumulativeFlowByMonth,
     getDifferenceDataForCurrentMonth,
     getFirstDayMonthlyDifferenceData,
+    getTotalCumulatingFlowDifferenceByUser,
+    getTotalCumulatingFlowDifferenceByUserAndStack,
 };

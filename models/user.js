@@ -77,6 +77,9 @@ const userSchema=new mongoose.Schema({
         type:String,
         
     },
+    subscriptionPlan:{
+        type: String,
+    },
     endSubscriptionDate:{
         type:String,
         
