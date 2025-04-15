@@ -104,92 +104,111 @@ const saveInitialData = async () => {
 // (This is taken from your first code snippet.)
 //
 const calculateDailyDifferenceFromS3 = async () => {
-    try {
-        const bucketName = 'ems-ebhoom-bucket';
-        const fileKey = 'hourly_data/hourlyData.json';
-        console.log('Fetching hourly data from S3 for daily difference calculation...');
-        const params = { Bucket: bucketName, Key: fileKey };
+  try {
+      const bucketName = 'ems-ebhoom-bucket';
+      const fileKey = 'hourly_data/hourlyData.json';
+      console.log('Fetching hourly data from S3 for daily difference calculation...');
+      const params = { Bucket: bucketName, Key: fileKey };
 
-        const s3Object = await s3.getObject(params).promise();
-        const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
+      const s3Object = await s3.getObject(params).promise();
+      const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
 
-        const today = moment().startOf('day').format('DD/MM/YYYY');
-        console.log('Calculating daily differences for date:', today);
+      const today = moment().startOf('day').format('DD/MM/YYYY');
+      console.log('Calculating daily differences for date:', today);
 
-        const filteredData = hourlyData.filter(entry => entry.date === today);
+      const filteredData = hourlyData.filter(entry => entry.date === today);
 
-        if (filteredData.length === 0) {
-            console.log('No hourly data found for today in S3.');
-            return;
-        }
+      if (filteredData.length === 0) {
+          console.log('No hourly data found for today in S3.');
+          return;
+      }
 
-        console.log(`Hourly data found for today: ${filteredData.length} records`);
-        const results = [];
+      console.log(`Hourly data found for today: ${filteredData.length} records`);
+      const results = [];
 
-        // Group data by user and stack
-        const groupedData = {};
-        for (const entry of filteredData) {
-            for (const stack of entry.stacks) {
-                const key = `${entry.userName}_${stack.stackName}`;
-                if (!groupedData[key]) {
-                    groupedData[key] = {
-                        userName: entry.userName,
-                        stackName: stack.stackName,
-                        stationType: stack.stationType,
-                        initial: null,
-                        last: null,
-                    };
-                }
+      // Group data by user and stack
+      const groupedData = {};
+      for (const entry of filteredData) {
+          for (const stack of entry.stacks) {
+              const key = `${entry.userName}_${stack.stackName}`;
+              if (!groupedData[key]) {
+                  groupedData[key] = {
+                      userName: entry.userName,
+                      stackName: stack.stackName,
+                      stationType: stack.stationType,
+                      initial: null,
+                      last: null,
+                  };
+              }
+              // Assign initial and last values based on the timestamp
+              if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
+                  groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
+              }
+              if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
+                  groupedData[key].last = { ...stack, timestamp: entry.timestamp };
+              }
+          }
+      }
 
-                // Assign initial and last values
-                if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
-                    groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
-                }
-                if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
-                    groupedData[key].last = { ...stack, timestamp: entry.timestamp };
-                }
-            }
-        }
+      // Calculate differences for each grouped record
+      for (const key in groupedData) {
+          const { userName, stackName, stationType, initial, last } = groupedData[key];
+          if (initial && last) {
+              console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
+              console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
 
-        // Calculate differences for each grouped record
-        for (const key in groupedData) {
-            const { userName, stackName, stationType, initial, last } = groupedData[key];
-            if (initial && last) {
-                console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
-                console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
+              // Process Energy values:
+              const initialEnergy = initial.energy || 0;
+              let finalEnergy = last.energy || 0;
+              // If the final energy is 0, use the initial energy value instead
+              if (finalEnergy === 0) {
+                  finalEnergy = initialEnergy;
+              }
+              const energyDifference = finalEnergy - initialEnergy;
 
-                const result = {
-                    userName,
-                    stackName,
-                    stationType,
-                    date: today,
-                    initialEnergy: initial.energy || 0,
-                    lastEnergy: last.energy || 0,
-                    energyDifference: (last.energy || 0) - (initial.energy || 0),
-                    initialCumulatingFlow: initial.cumulatingFlow || 0,
-                    lastCumulatingFlow: last.cumulatingFlow || 0,
-                    cumulatingFlowDifference: (last.cumulatingFlow || 0) - (initial.cumulatingFlow || 0),
-                    time: moment().format('HH:mm:ss'),
-                    intervalType: 'day',
-                    interval: 'daily'
-                };
+              // Process Cumulating Flow values:
+              const initialCumulatingFlow = initial.cumulatingFlow || 0;
+              let finalCumulatingFlow = last.cumulatingFlow || 0;
+              // If the final cumulatingFlow is 0, use the initial value as final
+              if (finalCumulatingFlow === 0) {
+                  finalCumulatingFlow = initialCumulatingFlow;
+              }
+              const cumulatingFlowDifference = finalCumulatingFlow - initialCumulatingFlow;
 
-                results.push(result);
-                console.log('✅ Calculated result:', result);
-            }
-        }
+              // Build the result object using the possibly adjusted values
+              const result = {
+                  userName,
+                  stackName,
+                  stationType,
+                  date: today,
+                  initialEnergy: initialEnergy,
+                  lastEnergy: finalEnergy,
+                  energyDifference: energyDifference,
+                  initialCumulatingFlow: initialCumulatingFlow,
+                  lastCumulatingFlow: finalCumulatingFlow,
+                  cumulatingFlowDifference: cumulatingFlowDifference,
+                  time: moment().format('HH:mm:ss'),
+                  intervalType: 'day',
+                  interval: 'daily'
+              };
 
-        // Save the calculated differences to the database
-        if (results.length > 0) {
-            await DifferenceData.insertMany(results);
-            console.log('📦 Daily differences saved successfully.');
-        } else {
-            console.log('⚠️ No results to save.');
-        }
-    } catch (error) {
-        console.error('❌ Error calculating daily differences from S3:', error);
-    }
+              results.push(result);
+              console.log('✅ Calculated result:', result);
+          }
+      }
+
+      // Save the calculated differences to the database
+      if (results.length > 0) {
+          await DifferenceData.insertMany(results);
+          console.log('📦 Daily differences saved successfully.');
+      } else {
+          console.log('⚠️ No results to save.');
+      }
+  } catch (error) {
+      console.error('❌ Error calculating daily differences from S3:', error);
+  }
 };
+
 
 //
 // Schedule the two cron jobs:

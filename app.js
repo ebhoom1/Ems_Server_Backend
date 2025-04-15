@@ -98,7 +98,7 @@ DB();
 
 // Middleware
 app.use(cors({
-    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555'  ],
+    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555','https://esg.ebhoom.com','https://api.esg.ebhoom.com'  ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
