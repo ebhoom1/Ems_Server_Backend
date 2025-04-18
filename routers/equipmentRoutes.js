@@ -11,5 +11,5 @@ router.get('/all-equipment', equipmentController.getAllEquipment);
 //get by userName
 router.get('/user/:userName', equipmentController.getEquipmentByUserName);
 router.get('/admin-type-equipment/:adminType', equipmentController.getEquipmentByAdminType);
-router.get('/:id', equipmentController.getEquipmentById);
+router.get('/equiment/:id', equipmentController.getEquipmentById);
 module.exports = router;
