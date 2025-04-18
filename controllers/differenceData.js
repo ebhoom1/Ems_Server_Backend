@@ -1,20 +1,13 @@
 const AWS = require('aws-sdk');
 const moment = require("moment-timezone");
 const cron = require('node-cron');
-const DifferenceData = require('../models/differeneceData'); // Keep only one reference
+const DifferenceData = require('../models/differeneceData');
 const { Parser } = require('json2csv');
-const PDFDocument = require('pdfkit'); 
+const PDFDocument = require('pdfkit');
 const HourlyData = require('../models/hourlyData');
 const s3 = new AWS.S3(); // make sure AWS is configured properly
 
-// Import your database model
-// Example: const DifferenceData = require('./models/DifferenceData');
-
-//
-// Function to save the initial data (works well as per your existing code)
-//
-// UPDATED saveInitialData Function
-
+// Function to save the initial data (unchanged)
 const saveInitialData = async () => {
   try {
     const today = moment().startOf('day').format('DD/MM/YYYY');
@@ -32,46 +25,44 @@ const saveInitialData = async () => {
       console.error('Error fetching data from S3:', s3Error);
     }
     
-    // Filter hourly data for today
     const filteredData = hourlyData.filter(entry => entry.date === today);
     if (filteredData.length === 0) {
       console.log('No hourly data found in S3 for today.');
       return;
     }
-    
-    // Group data by userName and stackName using a for...of loop for async operations
+
+    filteredData.sort((a, b) => moment(a.timestamp).diff(moment(b.timestamp)));
     const initialRecords = {};
+
     for (const entry of filteredData) {
       for (const stack of entry.stacks) {
         const key = `${entry.userName}_${stack.stackName}`;
-        let initialCumulatingFlow = stack.cumulatingFlow || 0;
+        let candidateFlow = stack.cumulatingFlow || 0;
 
-        // Query previous day's record to use its lastCumulatingFlow as today's initial flow
+        // check previous day lastCumulatingFlow
         try {
-          const previousRecord = await DifferenceData.findOne({
+          const prev = await DifferenceData.findOne({
             userName: entry.userName,
             stackName: stack.stackName,
             interval: 'daily',
             date: yesterday
-          }).sort({ timestamp: -1 }).lean();
-          if (previousRecord && previousRecord.lastCumulatingFlow !== undefined) {
-            initialCumulatingFlow = previousRecord.lastCumulatingFlow;
+          })
+          .sort({ timestamp: -1 })
+          .lean();
+          if (prev && prev.lastCumulatingFlow != null) {
+            candidateFlow = prev.lastCumulatingFlow;
           }
         } catch (dbError) {
           console.error('Error fetching previous day record:', dbError);
         }
 
-        // Use the earliest record from today's data
-        if (
-          !initialRecords[key] ||
-          moment(entry.timestamp).isBefore(moment(initialRecords[key].timestampRaw))
-        ) {
+        if (!initialRecords[key] || (initialRecords[key].initialCumulatingFlow === 0 && candidateFlow > 0)) {
           initialRecords[key] = {
             userName: entry.userName,
             stackName: stack.stackName,
             stationType: stack.stationType,
             initialEnergy: stack.energy || 0,
-            initialCumulatingFlow: initialCumulatingFlow,
+            initialCumulatingFlow: candidateFlow,
             date: today,
             interval: 'daily',
             intervalType: 'day',
@@ -83,7 +74,6 @@ const saveInitialData = async () => {
       }
     }
     
-    // Upsert each initial record into the DifferenceData collection
     for (const key in initialRecords) {
       const record = initialRecords[key];
       await DifferenceData.updateOne(
@@ -98,142 +88,115 @@ const saveInitialData = async () => {
   }
 };
 
-
-//
-// Function to calculate the daily differences from S3 data
-// (This is taken from your first code snippet.)
-//
+// Updated function: pick first non‑zero hourly value as initial if the very first is 0
 const calculateDailyDifferenceFromS3 = async () => {
   try {
-      const bucketName = 'ems-ebhoom-bucket';
-      const fileKey = 'hourly_data/hourlyData.json';
-      console.log('Fetching hourly data from S3 for daily difference calculation...');
-      const params = { Bucket: bucketName, Key: fileKey };
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'hourly_data/hourlyData.json';
+    console.log('Fetching hourly data from S3 for daily difference calculation...');
+    const params = { Bucket: bucketName, Key: fileKey };
 
-      const s3Object = await s3.getObject(params).promise();
-      const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
+    const s3Object = await s3.getObject(params).promise();
+    const hourlyData = JSON.parse(s3Object.Body.toString('utf-8'));
 
-      const today = moment().startOf('day').format('DD/MM/YYYY');
-      console.log('Calculating daily differences for date:', today);
+    const today = moment().startOf('day').format('DD/MM/YYYY');
+    console.log('Calculating daily differences for date:', today);
 
-      const filteredData = hourlyData.filter(entry => entry.date === today);
+    const filteredData = hourlyData.filter(entry => entry.date === today);
+    if (filteredData.length === 0) {
+      console.log('No hourly data found for today in S3.');
+      return;
+    }
+    console.log(`Hourly data found for today: ${filteredData.length} records`);
 
-      if (filteredData.length === 0) {
-          console.log('No hourly data found for today in S3.');
-          return;
+    // Group by userName + stackName
+    const grouped = {};
+    for (const entry of filteredData) {
+      for (const stack of entry.stacks) {
+        const key = `${entry.userName}_${stack.stackName}`;
+        if (!grouped[key]) {
+          grouped[key] = { userName: entry.userName, stackName: stack.stackName, stationType: stack.stationType, entries: [] };
+        }
+        grouped[key].entries.push({ ...stack, timestamp: entry.timestamp });
       }
+    }
 
-      console.log(`Hourly data found for today: ${filteredData.length} records`);
-      const results = [];
+    const results = [];
+    for (const key in grouped) {
+      const { userName, stackName, stationType, entries } = grouped[key];
 
-      // Group data by user and stack
-      const groupedData = {};
-      for (const entry of filteredData) {
-          for (const stack of entry.stacks) {
-              const key = `${entry.userName}_${stack.stackName}`;
-              if (!groupedData[key]) {
-                  groupedData[key] = {
-                      userName: entry.userName,
-                      stackName: stack.stackName,
-                      stationType: stack.stationType,
-                      initial: null,
-                      last: null,
-                  };
-              }
-              // Assign initial and last values based on the timestamp
-              if (!groupedData[key].initial || moment(entry.timestamp).isBefore(groupedData[key].initial.timestamp)) {
-                  groupedData[key].initial = { ...stack, timestamp: entry.timestamp };
-              }
-              if (!groupedData[key].last || moment(entry.timestamp).isAfter(groupedData[key].last.timestamp)) {
-                  groupedData[key].last = { ...stack, timestamp: entry.timestamp };
-              }
-          }
-      }
+      // sort ascending by timestamp
+      entries.sort((a, b) => moment(a.timestamp).diff(moment(b.timestamp)));
+      
+      // Determine initialEnergy: first non‑zero energy, else first entry
+      const firstWithEnergy = entries.find(e => e.energy > 0);
+      let initialEnergy = firstWithEnergy ? firstWithEnergy.energy : entries[0].energy || 0;
+      
+      // Determine initialCumulatingFlow: first non‑zero flow, else first entry
+      const firstWithFlow = entries.find(e => e.cumulatingFlow > 0);
+      let initialCumFlow = firstWithFlow ? firstWithFlow.cumulatingFlow : entries[0].cumulatingFlow || 0;
+      
+      // Determine finalEnergy: last non‑zero energy, else last entry
+      const lastWithEnergy = [...entries].reverse().find(e => e.energy > 0);
+      let finalEnergy = lastWithEnergy ? lastWithEnergy.energy : entries[entries.length - 1].energy || 0;
 
-      // Calculate differences for each grouped record
-      for (const key in groupedData) {
-          const { userName, stackName, stationType, initial, last } = groupedData[key];
-          if (initial && last) {
-              console.log(`\n💾 [${userName} - ${stackName}] Initial Data:`, initial);
-              console.log(`💾 [${userName} - ${stackName}] Last Data:`, last);
+      // Determine finalCumulatingFlow: last non‑zero flow, else last entry
+      const lastWithFlow = [...entries].reverse().find(e => e.cumulatingFlow > 0);
+      let finalCumFlow = lastWithFlow ? lastWithFlow.cumulatingFlow : entries[entries.length - 1].cumulatingFlow || 0;
 
-              // Process Energy values:
-              const initialEnergy = initial.energy || 0;
-              let finalEnergy = last.energy || 0;
-              // If the final energy is 0, use the initial energy value instead
-              if (finalEnergy === 0) {
-                  finalEnergy = initialEnergy;
-              }
-              const energyDifference = finalEnergy - initialEnergy;
+      const energyDifference = finalEnergy - initialEnergy;
+      const flowDifference = finalCumFlow - initialCumFlow;
 
-              // Process Cumulating Flow values:
-              const initialCumulatingFlow = initial.cumulatingFlow || 0;
-              let finalCumulatingFlow = last.cumulatingFlow || 0;
-              // If the final cumulatingFlow is 0, use the initial value as final
-              if (finalCumulatingFlow === 0) {
-                  finalCumulatingFlow = initialCumulatingFlow;
-              }
-              const cumulatingFlowDifference = finalCumulatingFlow - initialCumulatingFlow;
+      const result = {
+        userName,
+        stackName,
+        stationType,
+        date: today,
+        initialEnergy,
+        lastEnergy: finalEnergy,
+        energyDifference,
+        initialCumulatingFlow: initialCumFlow,
+        lastCumulatingFlow: finalCumFlow,
+        cumulatingFlowDifference: flowDifference,
+        time: moment().format('HH:mm:ss'),
+        intervalType: 'day',
+        interval: 'daily'
+      };
 
-              // Build the result object using the possibly adjusted values
-              const result = {
-                  userName,
-                  stackName,
-                  stationType,
-                  date: today,
-                  initialEnergy: initialEnergy,
-                  lastEnergy: finalEnergy,
-                  energyDifference: energyDifference,
-                  initialCumulatingFlow: initialCumulatingFlow,
-                  lastCumulatingFlow: finalCumulatingFlow,
-                  cumulatingFlowDifference: cumulatingFlowDifference,
-                  time: moment().format('HH:mm:ss'),
-                  intervalType: 'day',
-                  interval: 'daily'
-              };
+      results.push(result);
+      console.log('✅ Calculated result:', result);
+    }
 
-              results.push(result);
-              console.log('✅ Calculated result:', result);
-          }
-      }
-
-      // Save the calculated differences to the database
-      if (results.length > 0) {
-          await DifferenceData.insertMany(results);
-          console.log('📦 Daily differences saved successfully.');
-      } else {
-          console.log('⚠️ No results to save.');
-      }
+    if (results.length) {
+      await DifferenceData.insertMany(results);
+      console.log('📦 Daily differences saved successfully.');
+    } else {
+      console.log('⚠️ No results to save.');
+    }
   } catch (error) {
-      console.error('❌ Error calculating daily differences from S3:', error);
+    console.error('❌ Error calculating daily differences from S3:', error);
   }
 };
 
-
-//
-// Schedule the two cron jobs:
-// - Initial data capture at 1:05 PM (13:05)
-// - Daily difference calculation at 11:45 PM (23:45)
-//
+// Schedule the two cron jobs
 const scheduleDifferenceCalculation = () => {
-    // Schedule initial data capture at 1:05 PM
-    cron.schedule('5 2 * * *', async () => {
-        console.log('Running initial data capture cron job at 1:05 PM...');
-        await saveInitialData();
-    });
-    console.log('Initial data capture scheduled to run at 1:05 PM daily.');
-
-    // Schedule daily difference calculation at 11:45 PM
-    cron.schedule('45 23 * * *', async () => {
-        console.log('Running daily difference calculation cron job at 11:45 PM...');
-        await calculateDailyDifferenceFromS3();
-    });
-    console.log('Daily difference calculation scheduled to run at 11:45 PM daily.');
+  // Initial data capture at 1:05 PM
+  cron.schedule('5 2 * * *', async () => {
+    console.log('Running initial data capture cron job at 02:05...');
+    await saveInitialData();
+  });
+  console.log('Initial data capture scheduled to run at 02:05 daily.');
+  
+  // Daily difference calculation at 23:45
+  cron.schedule('45 23 * * *', async () => {
+    console.log('Running daily difference calculation cron job at 23:45...');
+    await calculateDailyDifferenceFromS3();
+  });
+  console.log('Daily difference calculation scheduled to run at 23:45 daily.');
 };
 
-// Start the scheduled jobs
+// Kick off scheduling
 scheduleDifferenceCalculation();
-
 
 
 // Controller to fetch difference data by userName and interval

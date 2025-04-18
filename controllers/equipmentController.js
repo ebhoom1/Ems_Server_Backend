@@ -100,3 +100,16 @@ exports.getEquipmentByAdminType = async (req, res) => {
       });
     }
   };
+
+  exports.getEquipmentById = async (req, res) => {
+    try {
+      const equip = await Equipment.findById(req.params.id);
+      if (!equip) {
+        return res.status(404).json({ message: 'Equipment not found' });
+      }
+      res.json({ equipment: equip });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  };
