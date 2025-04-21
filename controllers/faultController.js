@@ -1,6 +1,6 @@
 const Fault = require('../models/Fault');
 const User = require('../models/user'); // Import at top level
-
+const mongoose = require('mongoose');     
 // Helper function for error responses
 const handleError = (res, error, message = 'Server error') => {
   console.error(message, error);

@@ -36,6 +36,7 @@ const User = require('./models/user'); // Ensure you import the User model
 const inventoryRoutes = require('./routers/inventory')
 const requestInventory = require('./routers/requestInventory')
 const equipmentRoutes =require('./routers/equipmentRoutes')
+const electricalReportRoutes = require('./routers/electricalReportRoutes')
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -43,6 +44,7 @@ const socketIO = require('socket.io');
 const fuelRoutes = require('./routers/fuelRoutes');
 const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
 const faultRoutes = require('./routers/faultRoutes');
+const techRoutes = require('./routers/technicianRoutes');
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -156,7 +158,8 @@ app.use('/api', inventoryRoutes);
 app.use('/api', requestInventory)
 app.use('/api', equipmentRoutes)
 app.use('/api', faultRoutes)
-
+app.use('/api',electricalReportRoutes)
+app.use('/api', techRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
