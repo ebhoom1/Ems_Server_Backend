@@ -24,6 +24,13 @@ const TechnicianSchema = new Schema({
 }, { _id: false });
 
 const ElectricalReportSchema = new Schema({
+  // <-- add this field
+  equipmentId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Equipment',
+    required: true
+  },
+
   technician: { type: TechnicianSchema, required: true },
   equipment:  { type: EquipmentSchema, required: true },
   responses:  { type: Map, of: ResponseSchema, required: true },

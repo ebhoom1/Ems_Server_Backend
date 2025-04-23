@@ -37,6 +37,7 @@ const inventoryRoutes = require('./routers/inventory')
 const requestInventory = require('./routers/requestInventory')
 const equipmentRoutes =require('./routers/equipmentRoutes')
 const electricalReportRoutes = require('./routers/electricalReportRoutes')
+const mechRoutes = require('./routers/mechanicalReportRoutes');
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -160,6 +161,7 @@ app.use('/api', equipmentRoutes)
 app.use('/api', faultRoutes)
 app.use('/api',electricalReportRoutes)
 app.use('/api', techRoutes);
+app.use('/api', mechRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {

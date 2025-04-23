@@ -1,8 +1,19 @@
+// controllers/electricalReportController.js
+
 const ElectricalReport = require('../models/ElectricalReport');
 
 exports.createReport = async (req, res) => {
   try {
-    const { technician, equipment, responses } = req.body;
+    const { equipmentId, technician, equipment, responses } = req.body;
+
+    // validate presence of equipmentId
+    if (!equipmentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'equipmentId is required'
+      });
+    }
+
     // ensure technician is present
     if (!technician || !technician.name) {
       return res.status(400).json({
@@ -10,11 +21,14 @@ exports.createReport = async (req, res) => {
         message: 'Technician details are required'
       });
     }
+
     const report = new ElectricalReport({
+      equipmentId,
       technician,
       equipment,
       responses
     });
+
     await report.save();
     res.status(201).json({ success: true, report });
   } catch (err) {
@@ -33,13 +47,16 @@ exports.getAllReports = async (req, res) => {
   }
 };
 
-exports.getReportById = async (req, res) => {
+// Renamed to make clear we're fetching by equipmentId
+exports.getReportByEquipment = async (req, res) => {
   try {
-    const report = await ElectricalReport.findById(req.params.id);
+    const { equipmentId } = req.params;
+    const report = await ElectricalReport.findOne({ equipmentId });
+
     if (!report) {
       return res
         .status(404)
-        .json({ success: false, message: 'Report not found' });
+        .json({ success: false, message: 'Report not found for this equipment' });
     }
     res.json({ success: true, report });
   } catch (err) {
@@ -62,3 +79,19 @@ exports.deleteReport = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+exports.getReportById = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const report = await MechanicalReport.findById(id);
+      if (!report) {
+        return res
+          .status(404)
+          .json({ success: false, message: 'Report not found' });
+      }
+      res.json({ success: true, report });
+    } catch (err) {
+      console.error('Error fetching mechanical report by ID:', err);
+      res.status(500).json({ success: false, message: 'Server error' });
+    }
+  };
+  
