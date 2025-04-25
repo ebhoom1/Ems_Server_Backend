@@ -24,6 +24,11 @@ const transporter=nodemailer.createTransport({
 })
 
 
+// controllers/userController.js
+
+// … above imports …
+
+// ➤ Register (admin, user, operator, technician)
 const register = async (req, res) => {
     const {
       userName,
@@ -37,8 +42,8 @@ const register = async (req, res) => {
       cpassword,
       subscriptionDate,
       subscriptionPlan,
-      userType,
-      adminType,
+      userType,      // can now be "technician"
+      adminType,     // required
       industryType,
       industryPollutionCategory,
       dataInteval,
@@ -48,41 +53,25 @@ const register = async (req, res) => {
       latitude,
       longitude,
       productID,
-      operators = []    // <-- new
+      operators = [] // nested operators
     } = req.body;
   
+    // 1️⃣ Basic validation
+    if (!userName || !fname || !email || !password || !cpassword || !userType || !adminType) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (password !== cpassword) {
+      return res.status(422).json({ error: 'Passwords do not match' });
+    }
+  
     try {
-      // 1. Check for existing primary email
-      const existing = await userdb.findOne({ email });
-      if (existing) {
-        return res.status(422).json({ error: 'This Email Already Registered' });
+      // 2️⃣ Prevent duplicate emails
+      if (await userdb.findOne({ email })) {
+        return res.status(409).json({ error: 'Email already registered' });
       }
   
-      // 2. Password match
-      if (password !== cpassword) {
-        return res.status(422).json({ error: 'Password and Confirm Password do not match' });
-      }
-  
-      // 3. Calculate endSubscriptionDate (1 month later)
-      const subDate = new Date(subscriptionDate);
-      subDate.setMonth(subDate.getMonth() + 1);
-      const endSubscriptionDate = subDate.toISOString().split('T')[0];
-  
-      // 4. Hash main passwords
-      const hashedPassword = await bcrypt.hash(password, 12);
-  
-      // 5. Hash any operator passwords
-      const opsHashed = await Promise.all(
-        operators.map(async op => ({
-          name: op.name,
-          email: op.email,
-          password: await bcrypt.hash(op.password, 12),
-          userType: 'operator'
-        }))
-      );
-  
-      // 6. Build and save user
-      const newUser = new userdb({
+      // 3️⃣ Prepare user document
+      const user = new userdb({
         userName,
         companyName,
         modelName,
@@ -90,11 +79,15 @@ const register = async (req, res) => {
         email,
         additionalEmails,
         mobileNumber,
-        password,
-        cpassword,
+        password,      // will be hashed in pre('save')
+        cpassword,     // ditto
         subscriptionDate,
         subscriptionPlan,
-        endSubscriptionDate,
+        endSubscriptionDate: (() => {
+          const d = new Date(subscriptionDate);
+          d.setMonth(d.getMonth() + 1);
+          return d.toISOString().split('T')[0];
+        })(),
         iotLastEnterDate: subscriptionDate,
         userType,
         adminType,
@@ -107,16 +100,31 @@ const register = async (req, res) => {
         latitude,
         longitude,
         productID,
-        operators: opsHashed
+        operators       // operator passwords also hashed in pre('save')
       });
   
-      const saved = await newUser.save();
-      return res.status(201).json({ status: 201, user: saved });
+      // 4️⃣ Save + generate JWT
+      const saved = await user.save();
+      const token = await saved.generateAuthtoken();
+  
+      return res.status(201).json({
+        status: 201,
+        user: {
+          id: saved._id,
+          userName: saved.userName,
+          fname: saved.fname,
+          email: saved.email,
+          userType: saved.userType,
+          adminType: saved.adminType
+        },
+        token
+      });
     } catch (err) {
       console.error('Register error:', err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Server error' });
     }
   };
+  
   
   
   
@@ -187,100 +195,70 @@ const updateAdminType = async (req, res) => {
 
 
 // user login
+// controllers/userController.js
+
+// … above imports …
+
+// ➤ Login (admin, user, operator, technician)
 const login = async (req, res) => {
     const { email, password, userType } = req.body;
   
     if (!email || !password || !userType) {
-      return res.status(422).json({ error: "Fill all the details" });
+      return res.status(422).json({ error: 'Fill all the details' });
     }
   
     try {
-      // Operator login flow
+      // ——— Operator flow stays unchanged ———
       if (userType === 'operator') {
-        // 1️⃣ Find the parent user document containing this operator
-        const parentUser = await userdb.findOne({ 'operators.email': email });
-        if (!parentUser) {
-          return res.status(401).json({ status: 401, message: "Invalid details" });
+        const parent = await userdb.findOne({ 'operators.email': email });
+        if (!parent) {
+          return res.status(401).json({ message: 'Invalid credentials' });
         }
-  
-        // 2️⃣ Extract the matching operator sub-document
-        const operator = parentUser.operators.find(op => op.email === email);
-        if (!operator) {
-          return res.status(401).json({ status: 401, message: "Invalid details" });
+        const op = parent.operators.find(o => o.email === email);
+        if (!op || !(await bcrypt.compare(password, op.password))) {
+          return res.status(401).json({ message: 'Invalid credentials' });
         }
-  
-        // 3️⃣ Compare submitted password against the stored hash
-        const isMatch = await bcrypt.compare(password, operator.password);
-        if (!isMatch) {
-          return res.status(401).json({ status: 401, message: "Invalid details" });
-        }
-  
-        // 4️⃣ Generate a JWT (you can include operatorEmail or any operator-specific claims)
-        const token = jwt.sign(
-          { _id: parentUser._id, operatorEmail: operator.email },
-          keysecret,
-          { expiresIn: "30d" }
-        );
-  
-        // 5️⃣ Save token to parent user's tokens array (optional)
-        parentUser.tokens = [{ token }];
-        await parentUser.save();
-  
-        // 6️⃣ Respond with operator info and token
+        // Issue token on parent user, too
+        const token = await parent.generateAuthtoken();
         return res.status(200).json({
-          status: 200,
-          message: "Operator login successful",
-          operator: {
-            name: operator.name,
-            email: operator.email,
-            userType: operator.userType
-          },
+          message: 'Operator login successful',
+          operator: { name: op.name, email: op.email, userType: op.userType },
           token
         });
       }
   
-      // Normal user/admin login flow
-      const userValid = await userdb.findOne({
-        $or: [
-          { email },
-          { additionalEmails: email }
-        ]
+      // ——— Admin/User/Technician flow ———
+      const user = await userdb.findOne({
+        $or: [{ email }, { additionalEmails: email }]
       });
-  
-      if (!userValid) {
-        return res.status(401).json({ status: 401, message: "Invalid details" });
+      if (!user || user.userType !== userType) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      if (!(await user.comparePassword(password))) {
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
   
-      if (userValid.userType !== userType) {
-        return res.status(401).json({ error: "Invalid UserType" });
-      }
-  
-      const isMatch = await bcrypt.compare(password, userValid.password);
-      if (!isMatch) {
-        return res.status(422).json({ error: "Invalid User" });
-      }
-  
-      // Generate token and save
-      const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
-      userValid.tokens = [{ token }];
-      await userValid.save();
-  
-      res.cookie("usercookie", token, {
-        expires: new Date(Date.now() + 9000000),
-        httpOnly: true
-      });
+      // Issue a fresh token
+      const token = await user.generateAuthtoken();
   
       return res.status(200).json({
-        status: 200,
-        message: "Login Successful",
-        result: { user: userValid, token }
+        message: 'Login successful',
+        user: {
+          id: user._id,
+          userName: user.userName,
+          fname: user.fname,
+          email: user.email,
+          userType: user.userType,
+          adminType: user.adminType
+        },
+        token
       });
-  
-    } catch (error) {
-      console.error(`Login error: ${error}`);
-      return res.status(500).json({ error: "Internal Server Error" });
+    } catch (err) {
+      console.error('Login error:', err);
+      return res.status(500).json({ error: 'Server error' });
     }
   };
+  
 
  // user Valid 
  

@@ -6,7 +6,7 @@ const moment = require('moment');
 
 const keysecret = process.env.SECRET_KEY;
 
-// Sub-schema for operators
+// Sub‐schema for operators
 const OperatorSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -16,10 +16,7 @@ const OperatorSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    validate: [
-      validator.isEmail,
-      'Invalid operator email'
-    ]
+    validate: [ validator.isEmail, 'Invalid operator email' ]
   },
   password: {
     type: String,
@@ -27,6 +24,7 @@ const OperatorSchema = new mongoose.Schema({
   },
   userType: {
     type: String,
+    enum: ['operator'],    // operators are always operator
     default: 'operator'
   }
 });
@@ -38,23 +36,18 @@ const userSchema = new mongoose.Schema({
   },
   userName: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   stackName: {
-    type: [
-      {
-        name: String,
-        stationType: String
-      }
-    ],
+    type: [{
+      name:       { type: String },
+      stationType:{ type: String }
+    }],
     default: []
   },
-  modelName: {
-    type: String
-  },
-  companyName: {
-    type: String
-  },
+  modelName:          { type: String },
+  companyName:        { type: String },
   fname: {
     type: String,
     required: true
@@ -73,9 +66,8 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: [],
     validate: {
-      validator: function (emails) {
-        return Array.isArray(emails) &&
-          emails.every(email => validator.isEmail(email));
+      validator(emails) {
+        return emails.every(e => validator.isEmail(e));
       },
       message: 'One or more additional emails are invalid.'
     }
@@ -94,46 +86,30 @@ const userSchema = new mongoose.Schema({
     required: true,
     minlength: 8
   },
-  subscriptionDate: {
-    type: String
-  },
-  subscriptionPlan: {
-    type: String
-  },
-  endSubscriptionDate: {
-    type: String
-  },
-  iotLastEnterDate: {
-    type: String
-  },
+  subscriptionDate:    { type: String },
+  subscriptionPlan:    { type: String },
+  endSubscriptionDate: { type: String },
+  iotLastEnterDate:    { type: String },
   subscriptionActive: {
     type: Boolean,
     default: false
   },
   userType: {
-    type: String
+    type: String,
+    enum: ['admin','user','operator','technician'],
+    required: true,
+    default: 'user'
   },
   adminType: {
-    type: String
+    type: String,
+    required: true
   },
-  industryType: {
-    type: String
-  },
-  industryPollutionCategory: {
-    type: String
-  },
-  dataInteval: {
-    type: String
-  },
-  district: {
-    type: String
-  },
-  state: {
-    type: String
-  },
-  address: {
-    type: String
-  },
+  industryType:           { type: String },
+  industryPollutionCategory:{ type: String },
+  dataInteval:            { type: String },
+  district:               { type: String },
+  state:                  { type: String },
+  address:                { type: String },
   latitude: {
     type: Number,
     required: true
@@ -146,61 +122,55 @@ const userSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-
-  // Operators nested array
   operators: {
     type: [OperatorSchema],
     default: []
   },
-
-  tokens: [
-    {
-      token: {
-        type: String,
-        required: true
-      }
+  tokens: [{
+    token: {
+      type: String,
+      required: true
     }
-  ],
-  verifytoken: {
-    type: String
-  },
+  }],
+  verifytoken: { type: String },
   timestamp: {
     type: Date,
     default: () => moment().toDate()
   }
 });
 
-// Hash main password and cpassword + nested operator passwords
+// Hash main password + cpassword and any new operator passwords
 userSchema.pre("save", async function (next) {
-    if (this.isModified('password') && !this.password.startsWith('$2')) {
-        const hash = await bcrypt.hash(this.password, 12);
-        this.password = hash;
-        this.cpassword = hash;
-      }
-    if (this.isModified("operators")) {
-      for (let op of this.operators) {
-        if (!op.password.startsWith("$2")) {
-          op.password = await bcrypt.hash(op.password, 12);
-        }
+  if (this.isModified('password') && !this.password.startsWith('$2')) {
+    const hash = await bcrypt.hash(this.password, 12);
+    this.password  = hash;
+    this.cpassword = hash;
+  }
+  if (this.isModified("operators")) {
+    for (let op of this.operators) {
+      if (!op.password.startsWith("$2")) {
+        op.password = await bcrypt.hash(op.password, 12);
       }
     }
-  
-    next();
-  });
-  
-
-// JWT token generation
-userSchema.methods.generateAuthtoken = async function () {
-  try {
-    const token = jwt.sign({ _id: this._id }, keysecret, { expiresIn: '30d' });
-    this.tokens = this.tokens.concat({ token });
-    await this.save();
-    return token;
-  } catch (error) {
-    throw error;
   }
+  next();
+});
+
+// Compare candidate password to stored hash
+userSchema.methods.comparePassword = function(candidate) {
+  return bcrypt.compare(candidate, this.password);
 };
 
-// Export the model
-const userdb = mongoose.model('Users', userSchema);
-module.exports = userdb;
+// Generate & store a JWT
+userSchema.methods.generateAuthtoken = async function () {
+  const token = jwt.sign(
+    { _id: this._id, userType: this.userType, adminType: this.adminType },
+    keysecret,
+    { expiresIn: '30d' }
+  );
+  this.tokens.push({ token });
+  await this.save();
+  return token;
+};
+
+module.exports = mongoose.model('Users', userSchema);
