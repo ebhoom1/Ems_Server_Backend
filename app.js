@@ -38,6 +38,7 @@ const requestInventory = require('./routers/requestInventory')
 const equipmentRoutes =require('./routers/equipmentRoutes')
 const electricalReportRoutes = require('./routers/electricalReportRoutes')
 const mechRoutes = require('./routers/mechanicalReportRoutes');
+const dailyLogRoutes = require('./routers/dailyLogRoutes');
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -79,6 +80,7 @@ const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 
 
 const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
+const svgUploadRoutes = require('./routers/svgUpload');
 
 
 
@@ -162,6 +164,7 @@ app.use('/api', faultRoutes)
 app.use('/api',electricalReportRoutes)
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
+app.use('/api', dailyLogRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
