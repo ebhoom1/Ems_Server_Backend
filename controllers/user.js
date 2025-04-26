@@ -24,71 +24,67 @@ const transporter=nodemailer.createTransport({
 })
 
 
-// controllers/userController.js
-
-// … above imports …
-
-// ➤ Register (admin, user, operator, technician)
 const register = async (req, res) => {
     const {
-      userName,
-      companyName,
-      modelName,
-      fname,
-      email,
-      additionalEmails = [],
+      userName, 
+      companyName, 
+      modelName, 
+      fname, 
+      email, 
       mobileNumber,
-      password,
-      cpassword,
-      subscriptionDate,
+      password, 
+      cpassword, 
+      subscriptionDate, 
       subscriptionPlan,
-      userType,      // can now be "technician"
-      adminType,     // required
-      industryType,
-      industryPollutionCategory,
-      dataInteval,
+      userType, 
+      adminType,
+      industryType, 
+      industryPollutionCategory, 
+      dataInteval, 
       district,
-      state,
-      address,
-      latitude,
-      longitude,
+      state, 
+      address, 
+      latitude, 
+      longitude, 
       productID,
-      operators = [] // nested operators
+      additionalEmails // expect an array of additional emails
     } = req.body;
   
-    // 1️⃣ Basic validation
-    if (!userName || !fname || !email || !password || !cpassword || !userType || !adminType) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    if (password !== cpassword) {
-      return res.status(422).json({ error: 'Passwords do not match' });
-    }
-  
     try {
-      // 2️⃣ Prevent duplicate emails
-      if (await userdb.findOne({ email })) {
-        return res.status(409).json({ error: 'Email already registered' });
+      // Check if primary email is already used
+      const preuser = await userdb.findOne({ email });
+      if (preuser) {
+        return res.status(422).json({ error: "This Email Already Registered" });
       }
   
-      // 3️⃣ Prepare user document
-      const user = new userdb({
+      if (password !== cpassword) {
+        return res.status(422).json({ error: "Password and Confirm Password do not match" });
+      }
+  
+      // Calculate endSubscriptionDate
+    // Calculate endSubscriptionDate: one month after subscriptionDate
+const subscriptionDateObj = new Date(subscriptionDate);
+const endSubscriptionDate = new Date(subscriptionDateObj);
+endSubscriptionDate.setMonth(subscriptionDateObj.getMonth() + 1);
+const formattedEndSubscriptionDate = endSubscriptionDate.toISOString().split("T")[0];
+
+  
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 12);
+  
+      const finalUser = new userdb({
         userName,
         companyName,
         modelName,
         fname,
         email,
-        additionalEmails,
+        additionalEmails, // Save the array of additional emails
         mobileNumber,
-        password,      // will be hashed in pre('save')
-        cpassword,     // ditto
+        password: hashedPassword,
+        cpassword,
         subscriptionDate,
         subscriptionPlan,
-        endSubscriptionDate: (() => {
-          const d = new Date(subscriptionDate);
-          d.setMonth(d.getMonth() + 1);
-          return d.toISOString().split('T')[0];
-        })(),
-        iotLastEnterDate: subscriptionDate,
+        endSubscriptionDate: formattedEndSubscriptionDate,
         userType,
         adminType,
         industryType,
@@ -100,32 +96,16 @@ const register = async (req, res) => {
         latitude,
         longitude,
         productID,
-        operators       // operator passwords also hashed in pre('save')
+        iotLastEnterDate: subscriptionDate
       });
   
-      // 4️⃣ Save + generate JWT
-      const saved = await user.save();
-      const token = await saved.generateAuthtoken();
-  
-      return res.status(201).json({
-        status: 201,
-        user: {
-          id: saved._id,
-          userName: saved.userName,
-          fname: saved.fname,
-          email: saved.email,
-          userType: saved.userType,
-          adminType: saved.adminType
-        },
-        token
-      });
-    } catch (err) {
-      console.error('Register error:', err);
-      return res.status(500).json({ error: 'Server error' });
+      const storeData = await finalUser.save();
+      return res.status(201).json({ status: 201, storeData });
+    } catch (error) {
+      console.log(`Error : ${error}`);
+      return res.status(400).json(error);
     }
   };
-  
-  
   
   
 
@@ -195,67 +175,93 @@ const updateAdminType = async (req, res) => {
 
 
 // user login
-// controllers/userController.js
-
-// … above imports …
-
-// ➤ Login (admin, user, operator, technician)
 const login = async (req, res) => {
     const { email, password, userType } = req.body;
-  
     if (!email || !password || !userType) {
-      return res.status(422).json({ error: 'Fill all the details' });
+      return res.status(422).json({ error: "Fill all the details" });
     }
   
     try {
-      // ——— Operator flow stays unchanged ———
+      // ── Operator login ──
       if (userType === 'operator') {
         const parent = await userdb.findOne({ 'operators.email': email });
         if (!parent) {
-          return res.status(401).json({ message: 'Invalid credentials' });
+          return res.status(401).json({ status: 401, message: "Invalid details" });
         }
         const op = parent.operators.find(o => o.email === email);
-        if (!op || !(await bcrypt.compare(password, op.password))) {
-          return res.status(401).json({ message: 'Invalid credentials' });
+        if (!op) {
+          return res.status(401).json({ status: 401, message: "Invalid details" });
         }
-        // Issue token on parent user, too
-        const token = await parent.generateAuthtoken();
-        return res.status(200).json({
-          message: 'Operator login successful',
-          operator: { name: op.name, email: op.email, userType: op.userType },
-          token
+  
+        // **support both unhashed and hashed operator passwords**
+        let isMatch;
+        if (op.password.startsWith('$2')) {
+          // already hashed
+          isMatch = await bcrypt.compare(password, op.password);
+        } else {
+          // plain-text fallback
+          isMatch = password === op.password;
+          if (isMatch) {
+            // immediately hash & persist so next time it's hashed
+            op.password = await bcrypt.hash(op.password, 12);
+            await parent.save();
+          }
+        }
+  
+        if (!isMatch) {
+          return res.status(422).json({ error: "Invalid User" });
+        }
+  
+        // issue token on the parent document
+        const token = jwt.sign({ _id: parent._id }, keysecret, { expiresIn: "30d" });
+        parent.tokens = [{ token }];
+        await parent.save();
+  
+        res.cookie("usercookie", token, {
+          expires: new Date(Date.now() + 9000000),
+          httpOnly: true
         });
+  
+        return res
+          .status(200)
+          .json({
+            status: 200,
+            message: "Operator login successful",
+            result: { operator: { name: op.name, email: op.email }, token }
+          });
       }
   
-      // ——— Admin/User/Technician flow ———
-      const user = await userdb.findOne({
-        $or: [{ email }, { additionalEmails: email }]
+      // ── Admin/User login (unchanged) ──
+      const userValid = await userdb.findOne({
+        $or: [
+          { email: email },
+          { additionalEmails: email }
+        ]
       });
-      if (!user || user.userType !== userType) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+      if (!userValid) {
+        return res.status(401).json({ status: 401, message: "Invalid details" });
       }
-      if (!(await user.comparePassword(password))) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+      if (userValid.userType !== userType) {
+        return res.status(401).json({ error: "Invalid UserType" });
       }
-  
-      // Issue a fresh token
-      const token = await user.generateAuthtoken();
-  
-      return res.status(200).json({
-        message: 'Login successful',
-        user: {
-          id: user._id,
-          userName: user.userName,
-          fname: user.fname,
-          email: user.email,
-          userType: user.userType,
-          adminType: user.adminType
-        },
-        token
+      const isMatch = await bcrypt.compare(password, userValid.password);
+      if (!isMatch) {
+        return res.status(422).json({ error: "Invalid User" });
+      }
+      const token = jwt.sign({ _id: userValid._id }, keysecret, { expiresIn: "30d" });
+      userValid.tokens = [{ token }];
+      await userValid.save();
+      res.cookie("usercookie", token, {
+        expires: new Date(Date.now() + 9000000),
+        httpOnly: true
       });
-    } catch (err) {
-      console.error('Login error:', err);
-      return res.status(500).json({ error: 'Server error' });
+      return res
+        .status(200)
+        .json({ status: 200, message: "Login Successful", result: { user: userValid, token } });
+  
+    } catch (error) {
+      console.error(`Error: ${error}`);
+      return res.status(500).json({ error: "Internal Server Error" });
     }
   };
   
@@ -406,48 +412,29 @@ const getAllUsers = async (req, res) => {
 // edit user
 const editUser = async (req, res) => {
     try {
-      const { userId } = req.params;
-      const updateFields = { ...req.body };
-  
-      // If operators array is provided, hash any plain‐text passwords
-      if (Array.isArray(updateFields.operators)) {
-        updateFields.operators = await Promise.all(
-          updateFields.operators.map(async op => ({
-            name: op.name,
-            email: op.email,
-            // if password already looks hashed (starts with "$2"), keep it,
-            // otherwise hash it now
-            password: op.password.startsWith('$2')
-              ? op.password
-              : await bcrypt.hash(op.password, 12),
-            userType: 'operator'
-          }))
-        );
-      }
-  
-      const updatedUser = await userdb
-        .findByIdAndUpdate(userId, updateFields, { new: true, lean: true })
-        .exec();
-  
-      if (!updatedUser) {
-        return res
-          .status(404)
-          .json({ status: 404, message: 'User Not Found' });
-      }
-  
-      return res.status(200).json({
-        status: 200,
-        success: true,
-        message: 'User updated successfully',
-        user: updatedUser
-      });
+        const { userId } = req.params;
+        const updateFields = req.body;
+
+        // Use findByIdAndUpdate with lean for faster updates
+        const updatedUser = await userdb
+            .findByIdAndUpdate(userId, updateFields, { new: true, lean: true })
+            .exec();
+
+        if (!updatedUser) {
+            return res.status(404).json({ status: 404, message: "User Not Found" });
+        }
+
+        return res.status(200).json({
+            status: 200,
+            success: true,
+            message: "User updated successfully",
+            user: updatedUser,
+        });
     } catch (error) {
-      console.error('Error updating user:', error);
-      return res
-        .status(500)
-        .json({ status: 500, error: 'Internal Server Error' });
+        console.error(`Error updating user: ${error.message}`);
+        return res.status(500).json({ status: 500, error: "Internal Server Error" });
     }
-  };
+};
 
 // Delete User
 const deleteUser = async (req, res) => {

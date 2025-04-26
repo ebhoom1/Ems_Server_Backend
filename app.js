@@ -47,6 +47,7 @@ const fuelRoutes = require('./routers/fuelRoutes');
 const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
 const faultRoutes = require('./routers/faultRoutes');
 const techRoutes = require('./routers/technicianRoutes');
+
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -81,7 +82,7 @@ const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 
 const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
 const svgUploadRoutes = require('./routers/svgUpload');
-
+const attendanceRoutes = require("./routers/operatorAttendanceRoutes");
 
 
 const app = express();
@@ -165,6 +166,8 @@ app.use('/api',electricalReportRoutes)
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
 app.use('/api', dailyLogRoutes);
+app.use('/api', svgUploadRoutes);
+app.use("/api", attendanceRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
