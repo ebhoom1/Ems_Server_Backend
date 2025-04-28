@@ -51,4 +51,65 @@ const markCheckOut = async (req, res) => {
   }
 };
 
-module.exports = { markAttendance ,markCheckOut};
+// ✅ GET - All Attendances
+const getAllAttendances = async (req, res) => {
+  try {
+    const attendances = await Attendance.find().sort({ createdAt: -1 });
+    res.status(200).json({ message: "All attendances fetched successfully", data: attendances });
+  } catch (error) {
+    console.error("Error fetching all attendances:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ✅ GET - Attendances by UserName
+const getAttendanceByUserName = async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ message: "Username is required." });
+    }
+
+    const attendances = await Attendance.find({ username }).sort({ createdAt: -1 });
+
+    if (attendances.length === 0) {
+      return res.status(404).json({ message: "No attendance records found for this user." });
+    }
+
+    res.status(200).json({ message: "User attendance fetched successfully", data: attendances });
+  } catch (error) {
+    console.error("Error fetching user attendance:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ✅ GET - Attendances by AdminType
+const getAttendanceByAdminType = async (req, res) => {
+  try {
+    const { adminType } = req.params;
+
+    if (!adminType) {
+      return res.status(400).json({ message: "Admin type is required." });
+    }
+
+    const attendances = await Attendance.find({ adminType }).sort({ createdAt: -1 });
+
+    if (attendances.length === 0) {
+      return res.status(404).json({ message: "No attendance records found for this admin type." });
+    }
+
+    res.status(200).json({ message: "Admin type attendances fetched successfully", data: attendances });
+  } catch (error) {
+    console.error("Error fetching admin type attendance:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+module.exports = {
+  markAttendance,
+  markCheckOut,
+  getAllAttendances,
+  getAttendanceByUserName,
+  getAttendanceByAdminType
+};

@@ -52,6 +52,7 @@ router.get('/get-stacknames-by-userName/:userName',getStackNamesByUserName);
 // Route to update adminType for a user
 router.post('/update-admin-type', updateAdminType);
 router.get ('/get-users-by-adminType/:adminType', findUsersByAdminType)
+router.get('/get-users-by-admin/:adminType', findUsersByAdminType);
 
 
 module.exports=router;

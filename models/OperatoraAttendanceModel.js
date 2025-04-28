@@ -10,4 +10,4 @@ const attendanceSchema = new mongoose.Schema({
   checkInMethod: { type: String, required: true }
 });
 
-module.exports = mongoose.model("Attendance", attendanceSchema);
+module.exports = mongoose.model("Attendance", attendanceSchema); 

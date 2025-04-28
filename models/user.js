@@ -1,8 +1,8 @@
-const mongoose = require('mongoose');
-const validator = require('validator');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const moment = require('moment');
+const mongoose = require("mongoose");
+const validator = require("validator");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const moment = require("moment");
 
 const keysecret = process.env.SECRET_KEY;
 
@@ -10,23 +10,23 @@ const keysecret = process.env.SECRET_KEY;
 const OperatorSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true
+    required: true,
   },
   email: {
     type: String,
     required: true,
     unique: true,
-    validate: [validator.isEmail, 'Invalid operator email']
+    validate: [validator.isEmail, "Invalid operator email"],
   },
   password: {
     type: String,
-    required: true
+    required: true,
   },
   userType: {
     type: String,
-    enum: ['operator'],
-    default: 'operator'
-  }
+    enum: ["operator"],
+    default: "operator",
+  },
 });
 
 const userSchema = new mongoose.Schema({
@@ -36,10 +36,10 @@ const userSchema = new mongoose.Schema({
     type: [
       {
         name: String,
-        stationType: String
-      }
+        stationType: String,
+      },
     ],
-    default: []
+    default: [],
   },
   modelName: { type: String },
   companyName: { type: String },
@@ -50,21 +50,29 @@ const userSchema = new mongoose.Schema({
     unique: true,
     validate(value) {
       if (!validator.isEmail(value)) {
-        throw new Error('not a valid Email');
+        throw new Error("not a valid Email");
       }
-    }
+    },
   },
   additionalEmails: {
     type: [String],
     default: [],
     validate: {
-      validator: function(emails) {
-        return Array.isArray(emails) && emails.every(email => validator.isEmail(email));
+      validator: function (emails) {
+        return (
+          Array.isArray(emails) &&
+          emails.every((email) => validator.isEmail(email))
+        );
       },
-      message: 'One or more additional emails are invalid.'
-    }
+      message: "One or more additional emails are invalid.",
+    },
   },
-  mobileNumber: { type: String, required: true },
+  mobileNumber: {
+    type: String,
+    required: function () {
+      return this.userType !== "admin";
+    },
+  },
   password: { type: String, required: true, minlength: 8 },
   cpassword: { type: String, required: true, minlength: 8 },
   subscriptionDate: { type: String },
@@ -80,33 +88,69 @@ const userSchema = new mongoose.Schema({
   district: { type: String },
   state: { type: String },
   address: { type: String },
-  latitude: { type: Number, required: true },
-  longitude: { type: Number, required: true },
-  productID: { type: Number, required: true },
+  latitude: {
+    type: Number,
+    required: function () {
+      return this.userType !== "admin";
+    },
+  },
+  longitude: {
+    type: Number,
+    required: function () {
+      return this.userType !== "admin";
+    },
+  },
+  productID: {
+    type: Number,
+    required: function () {
+      return this.userType !== "admin";
+    },
+  },
   // New operators field
   operators: {
     type: [OperatorSchema],
-    default: []
+    default: [],
   },
   tokens: [
     {
-      token: { type: String, required: true }
-    }
+      token: { type: String, required: true },
+    },
   ],
   verifytoken: { type: String },
-  timestamp: { type: Date, default: () => moment().toDate() }
+  timestamp: { type: Date, default: () => moment().toDate() },
 });
 
-// Hash passwords
-userSchema.pre('save', async function(next) {
-  if (this.isModified('password')) {
-    this.password = await bcrypt.hash(this.password, 12);
-    this.cpassword = await bcrypt.hash(this.cpassword, 12);
+ // Hash passwords
+// userSchema.pre("save", async function (next) {
+//   if (this.isModified("password")) {
+//     this.password = await bcrypt.hash(this.password, 12);
+//     this.cpassword = await bcrypt.hash(this.cpassword, 12);
+//   }
+//   // Hash operator passwords
+//   if (this.isModified("operators")) {
+//     for (let op of this.operators) {
+//       if (!op.password.startsWith("$2")) {
+//         op.password = await bcrypt.hash(op.password, 12);
+//       }
+//     }
+//   }
+//   next();
+// });
+
+
+// only for testing technician password
+userSchema.pre("save", async function (next) {
+  if (this.isModified("password")) {
+    if (this.userType !== "admin") {   // ✅ Only hash for non-technicians
+      this.password = await bcrypt.hash(this.password, 12);
+      if (this.cpassword) {
+        this.cpassword = await bcrypt.hash(this.cpassword, 12);
+      }
+    }
   }
-  // Hash operator passwords
-  if (this.isModified('operators')) {
+  if (this.isModified("operators")) {
     for (let op of this.operators) {
-      if (!op.password.startsWith('$2')) {
+      if (!op.password.startsWith("$2")) {
         op.password = await bcrypt.hash(op.password, 12);
       }
     }
@@ -114,10 +158,11 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
+
 // Generate auth token
-userSchema.methods.generateAuthtoken = async function() {
+userSchema.methods.generateAuthtoken = async function () {
   try {
-    let token = jwt.sign({ _id: this._id }, keysecret, { expiresIn: '30d' });
+    let token = jwt.sign({ _id: this._id }, keysecret, { expiresIn: "30d" });
     this.tokens = this.tokens.concat({ token });
     await this.save();
     return token;
@@ -126,4 +171,4 @@ userSchema.methods.generateAuthtoken = async function() {
   }
 };
 
-module.exports = mongoose.model('Users', userSchema);
+module.exports = mongoose.model("Users", userSchema);
