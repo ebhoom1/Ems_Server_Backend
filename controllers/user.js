@@ -45,8 +45,10 @@ const register = async (req, res) => {
     longitude,
     productID,
     additionalEmails, // expect an array of additional emails
+    territorialManager,
+    isTerritorialManager,
+    isTechnician,
   } = req.body;
-
   try {
     // Check if primary email is already used
     const preuser = await userdb.findOne({ email });
@@ -81,6 +83,9 @@ const register = async (req, res) => {
       district,
       state,
       address,
+      territorialManager,
+      isTerritorialManager,
+      isTechnician,
     };
 
     // Set iotLastEnterDate always to today's date
@@ -265,9 +270,9 @@ const login = async (req, res) => {
         return res.status(401).json({ error: "Invalid UserType" });
       }
 
-      const isMatch = await bcrypt.compare(password, technician.password)
+      const isMatch = await bcrypt.compare(password, technician.password);
       // Since no hashing: direct string match
-    //   const isMatch = password === technician.password;
+      //   const isMatch = password === technician.password;
       if (!isMatch) {
         return res.status(422).json({ error: "Invalid User" });
       }
@@ -321,6 +326,81 @@ const login = async (req, res) => {
   } catch (error) {
     console.error(`Error: ${error}`);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// get all technicians
+const getAllTechnicians = async (req, res) => {
+  try {
+    const technicians = await userdb.find({ isTechnician: true });
+    res.status(200).json({ status: 200, users: technicians });
+  } catch (error) {
+    console.error(`Error: ${error}`);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// get all territory managers
+const getAllTerritoryManagers = async (req, res) => {
+  try {
+    const managers = await userdb.find({ isTerritorialManager: true });
+    res.status(200).json({ status: 200, users: managers });
+  } catch (error) {
+    console.error(`Error: ${error}`);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// delete  technician
+const deleteTechnician = async (req, res) => {
+  console.log(req.params.id);
+  try {
+    const user = await userdb.findOne({
+      _id: req.params.id,
+      isTechnician: true,
+    });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "Technician not found" });
+    }
+
+    await userdb.findByIdAndDelete(req.params.id);
+    res
+      .status(200)
+      .json({ status: 200, message: "Technician deleted successfully" });
+  } catch (error) {
+    console.error(`Error deleting technician: ${error.message}`);
+    return res
+      .status(500)
+      .json({ status: 500, error: "Internal Server Error" });
+  }
+};
+
+const deleteTerritoryManager = async (req, res) => {
+  try {
+    const user = await userdb.findOne({
+      _id: req.params.id,
+      isTerritorialManager: true,
+    });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "Territorial Manager not found" });
+    }
+
+    await userdb.findByIdAndDelete(req.params.id);
+    res
+      .status(200)
+      .json({
+        status: 200,
+        message: "Territorial Manager deleted successfully",
+      });
+  } catch (error) {
+    console.error(`Error deleting territory Manager: ${error.message}`);
+    return res
+      .status(500)
+      .json({ status: 500, error: "Internal Server Error" });
   }
 };
 
@@ -605,6 +685,25 @@ const getAUserByCompanyName = async (req, res) => {
   }
 };
 
+// Get all territory managers
+const getTerritorialManagers = async (req, res) => {
+  try {
+    const territorialManagers = await userdb
+      .find({
+        userType: "admin",
+        isTerritorialManager: true, // Only those admins who are territorial managers
+      })
+      .select("userName email fname");
+
+    res.status(200).json({ admins: territorialManagers });
+  } catch (error) {
+    console.error(`Error fetching territorial managers:`, error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
 const getStackNamesByCompanyName = async (req, res) => {
   try {
     const { companyName } = req.params;
@@ -650,21 +749,29 @@ const getStackNamesByUserName = async (req, res) => {
 
 const findUsersByAdminType = async (req, res) => {
   const { adminType } = req.params;
+  const { territorialManagerId, isTerritorialManager } = req.query;
 
   if (!adminType) {
     return res.status(400).json({ error: "Please provide an adminType" });
   }
 
   try {
-    let query = {};
+    let query = { userType: "user" };
 
     if (adminType === "EBHOOM") {
-      // Fetch all users (no filter on adminType or userType)
-      query = {};
+      // EBHOOM sees all users
+      query = { userType: "user" };
+    } else if (isTerritorialManager === "true" && territorialManagerId) {
+      // If user is a Territorial Manager, show only users assigned to them
+      query.territorialManager = new mongoose.Types.ObjectId(
+        territorialManagerId
+      );
     } else {
-      // Filter by adminType and include only users with userType === 'user'
-      query = { adminType, userType: "user" };
+      // Fallback: Regular admin sees users by adminType
+      query.adminType = adminType;
     }
+
+    console.log("MongoDB Query:", query);
 
     // Find users based on the constructed query
     const users = await userdb
@@ -804,4 +911,9 @@ module.exports = {
   getStackNamesByUserName,
   updateAdminType,
   findUsersByAdminType,
+  getTerritorialManagers,
+  getAllTechnicians,
+  getAllTerritoryManagers,
+  deleteTechnician,
+  deleteTerritoryManager,
 };

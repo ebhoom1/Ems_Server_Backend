@@ -82,7 +82,7 @@ const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 
 const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
 const svgUploadRoutes = require('./routers/svgUpload');
-const attendanceRoutes = require("./routers/operatorAttendanceRoutes");
+const attendanceRoutes = require('./routers/attendanceRoutes');
 
 
 const app = express();
@@ -167,7 +167,7 @@ app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
 app.use('/api', dailyLogRoutes);
 app.use('/api', svgUploadRoutes);
-app.use("/api", attendanceRoutes);
+app.use('/api', attendanceRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {

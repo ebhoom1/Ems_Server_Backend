@@ -21,5 +21,8 @@ router.delete(
   '/delete-electricalreport/:id',
   ctrl.deleteReport
 );
-
+router.get(
+  '/electricalreports/month/:year/:month',
+  ctrl.getReportsByMonth
+);
 module.exports = router;

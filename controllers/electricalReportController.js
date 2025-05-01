@@ -94,4 +94,34 @@ exports.getReportById = async (req, res) => {
       res.status(500).json({ success: false, message: 'Server error' });
     }
   };
+  exports.getReportsByMonth = async (req, res) => {
+    try {
+      const year  = parseInt(req.params.year, 10);
+      const month = parseInt(req.params.month, 10);  // 1 = January, 12 = December
   
+      if (
+        isNaN(year)  || year  < 1970 ||
+        isNaN(month) || month < 1 || month > 12
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Invalid year or month' });
+      }
+  
+      // build date range: [ startOfMonth, startOfNextMonth )
+      const startOfMonth    = new Date(year, month - 1, 1);
+      const startOfNextMonth = new Date(year, month, 1);
+  
+      const reports = await ElectricalReport.find({
+        // use `timestamp` if you store it, otherwise `createdAt`
+        createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
+      }).sort({ createdAt: -1 });
+  
+      res.json({ success: true, reports });
+    } catch (err) {
+      console.error('Error fetching reports by month:', err);
+      res
+        .status(500)
+        .json({ success: false, message: 'Server error', error: err.message });
+    }
+  };

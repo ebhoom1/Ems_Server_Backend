@@ -1,5 +1,7 @@
 const Equipment = require('../models/equipment');
 const User = require('../models/user')
+const MechanicalReport  = require('../models/MechanicalReport');
+const ElectricalReport  = require('../models/ElectricalReport');
 // Add new equipment
 exports.addEquipment = async (req, res) => {
     try {
@@ -113,3 +115,42 @@ exports.getEquipmentByAdminType = async (req, res) => {
       res.status(500).json({ message: 'Server error' });
     }
   };
+  exports.getMaintenanceStatus = async (req, res) => {
+    const equipmentId = req.params.id;
+  
+    try {
+      const now        = new Date();
+      const thisMonth  = now.getMonth();
+      const thisYear   = now.getFullYear();
+  
+      // Fetch the latest mechanical report
+      const [lastMech] = await MechanicalReport
+        .find({ equipmentId })
+        .sort({ timestamp: -1 })
+        .limit(1);
+  
+      // Fetch the latest electrical report
+      const [lastElec] = await ElectricalReport
+        .find({ equipmentId })
+        .sort({ timestamp: -1 })
+        .limit(1);
+  
+      // Determine availability
+      const canMechanical = !lastMech ||
+        !(new Date(lastMech.timestamp).getMonth() === thisMonth &&
+          new Date(lastMech.timestamp).getFullYear() === thisYear);
+  
+      const canElectrical = !lastElec ||
+        !(new Date(lastElec.timestamp).getMonth() === thisMonth &&
+          new Date(lastElec.timestamp).getFullYear() === thisYear);
+  
+      return res.status(200).json({ canMechanical, canElectrical });
+    } catch (error) {
+      console.error('Error in getMaintenanceStatus:', error);
+      return res.status(500).json({
+        message: 'Error checking maintenance status',
+        error: error.message
+      });
+    }
+  };
+  

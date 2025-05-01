@@ -59,3 +59,35 @@ exports.getReportsByEquipment = async (req, res) => {
       res.status(500).json({ success: false, message: 'Server error' });
     }
   };
+  exports.getReportsByMonth = async (req, res) => {
+    try {
+      const year  = parseInt(req.params.year, 10);
+      const month = parseInt(req.params.month, 10); // 1–12
+  
+      if (
+        isNaN(year) ||
+        isNaN(month) ||
+        month < 1 || month > 12
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Invalid year or month' });
+      }
+  
+      // build date range [startOfMonth, startOfNextMonth)
+      const startOfMonth     = new Date(year, month - 1, 1);
+      const startOfNextMonth = new Date(year, month, 1);
+  
+      const reports = await MechanicalReport.find({
+        // use `timestamp` (as you stored) or `createdAt` if you prefer
+        timestamp: { $gte: startOfMonth, $lt: startOfNextMonth }
+      }).sort({ timestamp: -1 });
+  
+      res.json({ success: true, reports });
+    } catch (err) {
+      console.error('Error fetching mechanical reports by month:', err);
+      res
+        .status(500)
+        .json({ success: false, message: 'Server error', error: err.message });
+    }
+  };

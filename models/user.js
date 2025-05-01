@@ -111,6 +111,14 @@ const userSchema = new mongoose.Schema({
     type: [OperatorSchema],
     default: [],
   },
+  // reference field for adding territorialManager
+  territorialManager: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
+  isTerritorialManager: { type: Boolean, default: false },
+  isTechnician: { type: Boolean, default: false },
   tokens: [
     {
       token: { type: String, required: true },
@@ -120,7 +128,7 @@ const userSchema = new mongoose.Schema({
   timestamp: { type: Date, default: () => moment().toDate() },
 });
 
- // Hash passwords
+// Hash passwords
 // userSchema.pre("save", async function (next) {
 //   if (this.isModified("password")) {
 //     this.password = await bcrypt.hash(this.password, 12);
@@ -137,11 +145,11 @@ const userSchema = new mongoose.Schema({
 //   next();
 // });
 
-
 // only for testing technician password
 userSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
-    if (this.userType !== "admin") {   // ✅ Only hash for non-technicians
+    if (this.userType !== "admin") {
+      // Only hash for non-technicians
       this.password = await bcrypt.hash(this.password, 12);
       if (this.cpassword) {
         this.cpassword = await bcrypt.hash(this.cpassword, 12);
@@ -157,7 +165,6 @@ userSchema.pre("save", async function (next) {
   }
   next();
 });
-
 
 // Generate auth token
 userSchema.methods.generateAuthtoken = async function () {
