@@ -47,6 +47,7 @@ const fuelRoutes = require('./routers/fuelRoutes');
 const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
 const faultRoutes = require('./routers/faultRoutes');
 const techRoutes = require('./routers/technicianRoutes');
+const pumpStateRoutes = require('./routers/pumpStateRoutes');
 
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
@@ -168,6 +169,7 @@ app.use('/api', mechRoutes);
 app.use('/api', dailyLogRoutes);
 app.use('/api', svgUploadRoutes);
 app.use('/api', attendanceRoutes);
+app.use('/api', pumpStateRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {

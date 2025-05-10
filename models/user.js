@@ -146,25 +146,25 @@ const userSchema = new mongoose.Schema({
 // });
 
 // only for testing technician password
-userSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
-    if (this.userType !== "admin") {
-      // Only hash for non-technicians
-      this.password = await bcrypt.hash(this.password, 12);
-      if (this.cpassword) {
-        this.cpassword = await bcrypt.hash(this.cpassword, 12);
-      }
-    }
-  }
-  if (this.isModified("operators")) {
-    for (let op of this.operators) {
-      if (!op.password.startsWith("$2")) {
-        op.password = await bcrypt.hash(op.password, 12);
-      }
-    }
-  }
-  next();
-});
+// userSchema.pre("save", async function (next) {
+//   if (this.isModified("password")) {
+//     if (this.userType !== "admin") {
+//       // Only hash for non-technicians
+//       this.password = await bcrypt.hash(this.password, 12);
+//       if (this.cpassword) {
+//         this.cpassword = await bcrypt.hash(this.cpassword, 12);
+//       }
+//     }
+//   }
+//   if (this.isModified("operators")) {
+//     for (let op of this.operators) {
+//       if (!op.password.startsWith("$2")) {
+//         op.password = await bcrypt.hash(op.password, 12);
+//       }
+//     }
+//   }
+//   next();
+// });
 
 // Generate auth token
 userSchema.methods.generateAuthtoken = async function () {
