@@ -50,25 +50,26 @@ const deleteFromS3 = async (fileKey) => {
 
 // Create a new LiveStation
 // ... (previous code remains the same)
-
 exports.createLiveStation = async (req, res) => {
   try {
-    const { userName, stationName, nodes, edges } = req.body;
+    let { userName, stationName, nodes, edges, viewport } = req.body;
 
-    // Basic validation
+    // parse JSON if multipart/form-data
+    if (typeof nodes === 'string')    nodes    = JSON.parse(nodes);
+    if (typeof edges === 'string')    edges    = JSON.parse(edges);
+    if (typeof viewport === 'string') viewport = JSON.parse(viewport);
+
     if (!stationName || !stationName.trim()) {
-      return res.status(400).json({
-        message: 'Station name cannot be empty',
-      });
+      return res.status(400).json({ message: 'Station name cannot be empty' });
     }
-
     const trimmedStationName = stationName.trim();
 
+    // handle optional image
     let liveStationImage = null;
     if (req.file) {
       const fileName = `${Date.now()}-${req.file.originalname}`;
-      const s3Response = await uploadToS3(req.file.buffer, fileName);
-      liveStationImage = s3Response.Location;
+      const s3Resp = await uploadToS3(req.file.buffer, fileName);
+      liveStationImage = s3Resp.Location;
     }
 
     const newLiveStation = new LiveStation({
@@ -77,22 +78,19 @@ exports.createLiveStation = async (req, res) => {
       liveStationImage,
       nodes,
       edges,
+      viewport,                   // ← now saved too
     });
 
-    const savedLiveStation = await newLiveStation.save();
-    res.status(201).json({ 
-      message: 'Live Station created successfully', 
-      data: savedLiveStation 
+    const saved = await newLiveStation.save();
+    res.status(201).json({
+      message: 'Live Station created successfully',
+      data: saved,
     });
   } catch (error) {
     console.error('Error creating Live Station:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
 // ... (rest of the code remains the same)
 
 // Get LiveStation by userName and stationName
@@ -112,40 +110,45 @@ exports.getLiveStationByUserName = async (req, res) => {
 // Edit LiveStation
 exports.editLiveStation = async (req, res) => {
   try {
-    const { userName, stationName } = req.params; // stationName here is the original station name
-    const { nodes, edges, stationName: newStationName } = req.body;
+    const { userName, stationName } = req.params;
+    let { nodes, edges, viewport, stationName: newStationName } = req.body;
+
+    // parse JSON strings
+    if (typeof nodes === 'string')    nodes    = JSON.parse(nodes);
+    if (typeof edges === 'string')    edges    = JSON.parse(edges);
+    if (typeof viewport === 'string') viewport = JSON.parse(viewport);
 
     const liveStation = await LiveStation.findOne({ userName, stationName });
     if (!liveStation) {
       return res.status(404).json({ message: 'Live Station not found' });
     }
 
-    // Update image if provided
+    // replace image if new file
     if (req.file) {
       if (liveStation.liveStationImage) {
         const oldKey = liveStation.liveStationImage.split('.amazonaws.com/')[1];
         await deleteFromS3(oldKey);
       }
       const fileName = `${Date.now()}-${req.file.originalname}`;
-      const s3Response = await uploadToS3(req.file.buffer, fileName);
-      liveStation.liveStationImage = s3Response.Location;
+      const s3Resp = await uploadToS3(req.file.buffer, fileName);
+      liveStation.liveStationImage = s3Resp.Location;
     }
 
-    // Update nodes and edges if provided
-    if (nodes) {
-      liveStation.nodes = typeof nodes === 'string' ? JSON.parse(nodes) : nodes;
-    }
-    if (edges) {
-      liveStation.edges = typeof edges === 'string' ? JSON.parse(edges) : edges;
+    // update nodes/edges/viewport
+    if (nodes)    liveStation.nodes    = nodes;
+    if (edges)    liveStation.edges    = edges;
+    if (viewport) liveStation.viewport = viewport;
+
+    // rename station
+    if (newStationName && newStationName.trim()) {
+      liveStation.stationName = newStationName.trim();
     }
 
-    // Update stationName if provided (allows editing the station name)
-    if (newStationName) {
-      liveStation.stationName = newStationName;
-    }
-
-    const updatedLiveStation = await liveStation.save();
-    res.status(200).json({ message: 'Live Station updated successfully', data: updatedLiveStation });
+    const updated = await liveStation.save();
+    res.status(200).json({
+      message: 'Live Station updated successfully',
+      data: updated,
+    });
   } catch (error) {
     console.error('Error editing Live Station:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
