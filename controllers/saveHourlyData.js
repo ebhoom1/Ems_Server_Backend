@@ -261,7 +261,68 @@ const fetchDataFromS3 = async (key) => {
         return null;
     }
 };
+const getLastEffluentHourlyByUserName = async (req, res) => {
+  const { userName } = req.query;
+  if (!userName) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'Missing userName query param' });
+  }
 
+  try {
+    // 1) Pull the full hourly dump from S3
+    const s3Data = await fetchDataFromS3('hourly_data/hourlyData.json');
+    if (!Array.isArray(s3Data) || s3Data.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'No hourly data in S3.' });
+    }
 
+    // 2) Filter down to this user’s records
+    const userRecords = s3Data.filter(entry => entry.userName === userName);
+    if (userRecords.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: `No data for user ${userName}` });
+    }
 
-module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy };
+    // 3) Sort descending by date & hour
+    userRecords.sort((a, b) => {
+      const da = moment(a.date, 'DD/MM/YYYY');
+      const db = moment(b.date, 'DD/MM/YYYY');
+      if (da.isBefore(db)) return 1;
+      if (da.isAfter(db))  return -1;
+      // same date → compare hour numerically
+      return parseInt(b.hour, 10) - parseInt(a.hour, 10);
+    });
+
+    // 4) Take the top (latest) entry
+    const latest = userRecords[0];
+
+    // 5) Pull _all_ effluent_flow stacks out of that one entry
+    const effluentStacks = (latest.stacks || [])
+      .filter(s => s.stationType === 'effluent_flow')
+      .map(s => ({
+        stackName: s.stackName,
+        stationType: s.stationType,
+        cumulatingFlow: s.cumulatingFlow
+      }));
+
+    return res.json({
+      success: true,
+      data: {
+        userName: latest.userName,
+        date:     latest.date,
+        hour:     latest.hour,
+        stacks:   effluentStacks
+      }
+    });
+  } catch (err) {
+    console.error('Error in getLastEffluentHourlyByUserName:', err);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy ,getLastEffluentHourlyByUserName};

@@ -69,9 +69,9 @@ const userSchema = new mongoose.Schema({
   },
   mobileNumber: {
     type: String,
-    required: function () {
+   /*  required: function () {
       return this.userType !== "admin";
-    },
+    }, */
   },
   password: { type: String, required: true, minlength: 8 },
   cpassword: { type: String, required: true, minlength: 8 },

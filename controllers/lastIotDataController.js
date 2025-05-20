@@ -60,36 +60,41 @@ const saveOrUpdateLastEntryByUserName = async (data) => {
 
 
 const getLatestDataByUserName = async (req, res) => {
-    const { userName } = req.params;
+  const { userName } = req.params;
+  console.log(`🔍 GET /api/latest/${userName} hit`);
 
-    try {
-        console.log(`🔍 Fetching latest IoT data for ${userName}...`);
-        
-        // Fetch latest data based on timestamp
-        const data = await LastIotData.findOne({ userName }).sort({ timestamp: -1 });
+  try {
+    // Use findOne’s built-in sort option (no need to chain .sort())
+    const data = await LastIotData.findOne(
+      { userName },
+      null,                           // projection → all fields
+      { sort: { timestamp: -1 } }    // options → newest first
+    )
+    .lean(); // returns a plain JS object, slightly faster
 
-        if (!data) {
-            console.log(`🚫 No latest IoT data found for ${userName}`);
-            return res.status(404).json({
-                success: false,
-                message: `No latest IoT data found for ${userName}`,
-            });
-        }
-
-        console.log(`✅ Latest IoT data fetched successfully for ${userName}.`);
-        res.status(200).json({
-            success: true,
-            message: `Latest IoT data for ${userName} fetched successfully`,
-            data,
-        });
-    } catch (error) {
-        console.error('❌ Error fetching latest IoT data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching latest IoT data',
-            error: error.message,
-        });
+    if (!data) {
+      console.log(`🚫 No latest IoT data found for ${userName}`);
+      return res.status(404).json({
+        success: false,
+        message: `No latest IoT data found for ${userName}`,
+      });
     }
+
+    console.log(`✅ Latest IoT data fetched for ${userName}:`, data);
+    return res.status(200).json({
+      success: true,
+      message: `Latest IoT data for ${userName} fetched successfully`,
+      data,
+    });
+  } catch (err) {
+    console.error('❌ Error in getLatestDataByUserName:', err.stack);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching latest IoT data',
+      error: err.message,
+    });
+  }
 };
+
 
 module.exports = { saveOrUpdateLastEntryByUserName, getLatestDataByUserName };
