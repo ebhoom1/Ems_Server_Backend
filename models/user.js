@@ -69,9 +69,10 @@ const userSchema = new mongoose.Schema({
   },
   mobileNumber: {
     type: String,
-   /*  required: function () {
-      return this.userType !== "admin";
-    }, */
+    default: "",
+    // required: function () {
+    //   return this.userType !== "admin";
+    // },
   },
   password: { type: String, required: true, minlength: 8 },
   cpassword: { type: String, required: true, minlength: 8 },
@@ -102,9 +103,10 @@ const userSchema = new mongoose.Schema({
   },
   productID: {
     type: Number,
-    required: function () {
-      return this.userType !== "admin";
-    },
+    default: null,
+    // required: function () {
+    //   return this.userType !== "admin";
+    // },
   },
   // New operators field
   operators: {
