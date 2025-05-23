@@ -311,6 +311,9 @@ const handleSaveMessage = async (req, res) => {
   
       const newEntry = new IotData(newEntryData);
       await newEntry.save();
+      /* newline */
+      await saveOrUpdateLastEntryByUserName(newEntryData);
+
   
       await updateMaxMinValues(newEntryData);
       handleExceedValues();

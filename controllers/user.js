@@ -48,6 +48,7 @@ const register = async (req, res) => {
     territorialManager,
     isTerritorialManager,
     isTechnician,
+    operators // ✅ ADD THIS
   } = req.body;
   try {
     // Check if primary email is already used
@@ -86,6 +87,7 @@ const register = async (req, res) => {
       territorialManager,
       isTerritorialManager,
       isTechnician,
+      operators: operators || [] // ✅ new
     };
 
     // Set iotLastEnterDate always to today's date

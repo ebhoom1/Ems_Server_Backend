@@ -57,7 +57,7 @@ const userSchema = new mongoose.Schema({
   additionalEmails: {
     type: [String],
     default: [],
-    validate: {
+   /*  validate: {
       validator: function (emails) {
         return (
           Array.isArray(emails) &&
@@ -65,7 +65,7 @@ const userSchema = new mongoose.Schema({
         );
       },
       message: "One or more additional emails are invalid.",
-    },
+    }, */
   },
   mobileNumber: {
     type: String,
@@ -89,18 +89,19 @@ const userSchema = new mongoose.Schema({
   district: { type: String },
   state: { type: String },
   address: { type: String },
-  latitude: {
-    type: Number,
-    required: function () {
-      return this.userType !== "admin";
-    },
-  },
-  longitude: {
-    type: Number,
-    required: function () {
-      return this.userType !== "admin";
-    },
-  },
+latitude: {
+  type: Number,
+  /* required: function() {
+    return this.userType === "user";
+  } */
+},
+longitude: {
+  type: Number,
+  /* required: function() {
+    return this.userType === "user";
+  } */
+},
+
   productID: {
     type: Number,
     default: null,
@@ -109,10 +110,11 @@ const userSchema = new mongoose.Schema({
     // },
   },
   // New operators field
-  operators: {
-    type: [OperatorSchema],
-    default: [],
-  },
+operators: [{
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Users",
+}],
+
   // reference field for adding territorialManager
   territorialManager: {
     type: mongoose.Schema.Types.ObjectId,

@@ -325,4 +325,79 @@ const getLastEffluentHourlyByUserName = async (req, res) => {
   }
 };
 
-module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy ,getLastEffluentHourlyByUserName};
+
+const getLastEnergyHourlyByUserName = async (req, res) => {
+  const { userName } = req.query;
+  if (!userName) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'Missing userName query param' });
+  }
+
+  try {
+    // 1) Pull the full hourly dump from S3
+    const s3Data = await fetchDataFromS3('hourly_data/hourlyData.json');
+    if (!Array.isArray(s3Data) || !s3Data.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'No hourly data in S3.' });
+    }
+
+    // 2) Filter down to this user’s records
+    const userRecords = s3Data
+      .filter(entry => entry.userName === userName)
+      // 3) Sort descending by date & hour
+      .sort((a, b) => {
+        const da = moment(a.date, 'DD/MM/YYYY');
+        const db = moment(b.date, 'DD/MM/YYYY');
+        if (da.isBefore(db)) return 1;
+        if (da.isAfter(db))  return -1;
+        return parseInt(b.hour, 10) - parseInt(a.hour, 10);
+      });
+
+    if (!userRecords.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: `No data for user ${userName}` });
+    }
+
+    // 4) Find the first record (i.e. most recent) that has at least one energy stack
+    let found = null;
+    for (const rec of userRecords) {
+      const energyStacks = (rec.stacks || []).filter(s => s.stationType === 'energy');
+      if (energyStacks.length) {
+        found = { rec, energyStacks };
+        break;
+      }
+    }
+
+    if (!found) {
+      return res
+        .status(404)
+        .json({ success: false, message: `No energy data found for user ${userName}` });
+    }
+
+    // 5) Return that record’s date/hour plus all energy stacks
+    return res.json({
+      success: true,
+      data: {
+        userName: found.rec.userName,
+        date:     found.rec.date,
+        hour:     found.rec.hour,
+        stacks:   found.energyStacks.map(s => ({
+          stackName:   s.stackName,
+          stationType: s.stationType,
+          energy:      s.energy
+        }))
+      }
+    });
+  } catch (err) {
+    console.error('Error in getLastEnergyHourlyByUserName:', err);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+
+module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy ,getLastEffluentHourlyByUserName,getLastEnergyHourlyByUserName};

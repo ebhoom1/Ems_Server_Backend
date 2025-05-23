@@ -3,76 +3,120 @@ const moment = require('moment');
 
 const saveOrUpdateLastEntryByUserName = async (data) => {
     console.log(`🔄 saveOrUpdateLastEntryByUserName FUNCTION CALLED`);
+
     try {
-        const { _id, userName, timestamp, date, ...updateData } = data; // Exclude _id
+        const {
+            _id,
+            userName,
+            timestamp,
+            date,
+            time,
+            stacks = [],
+            ...otherFields
+        } = data;
+
+        if (stacks.length === 0) {
+            console.warn(`⚠️ No 'stacks' data provided for ${userName}, skipping.`);
+            return null;
+        }
+
+        const primaryStationType = stacks[0].stationType;
+        if (!primaryStationType) {
+            console.warn(`⚠️ No 'stationType' found in the first stack for ${userName}, skipping.`);
+            console.log(`Incoming data.stacks[0]:`, JSON.stringify(stacks[0], null, 2)); // Add this
+            return null;
+        }
+
+        // Add this log to confirm the extracted stationType
+        console.log(`🔎 Extracted primaryStationType: ${primaryStationType}`);
+
         const newTimestamp = new Date(timestamp);
-        const newDate = moment(date, "DD/MM/YYYY").toDate(); // Convert string date to a Date object
+        const formattedDate = moment(date, "DD/MM/YYYY").format("DD/MM/YYYY");
 
-        console.log(`🔄 Received IoT data for ${userName} at ${newTimestamp.toISOString()} on ${date}`);
+        console.log(
+            `🔄 Received data for ${userName} / ${primaryStationType} ` +
+            `at ${newTimestamp.toISOString()} (date ${formattedDate})`
+        );
 
-        // Fetch the latest entry from LastIotData
-        const existingEntry = await LastIotData.findOne({ userName });
+        const filter = { userName, stationType: primaryStationType };
 
+        // Add this log to confirm the filter being used
+        console.log(`🔍 MongoDB findOneAndUpdate filter:`, filter);
+
+        const update = {
+            $set: {
+                userName: userName,
+                stationType: primaryStationType, // THIS IS CRUCIAL
+                product_id: otherFields.product_id,
+                stackData: stacks,
+                date: formattedDate,
+                time: time,
+                companyName: otherFields.companyName,
+                industryType: otherFields.industryType,
+                mobileNumber: otherFields.mobileNumber,
+                email: otherFields.email,
+                timestamp: newTimestamp,
+                validationMessage: otherFields.validationMessage,
+                validationStatus: otherFields.validationStatus,
+            }
+        };
+
+        // Add this log to confirm the update payload
+        console.log(`📝 MongoDB findOneAndUpdate update ($set part):`, JSON.stringify(update.$set, null, 2));
+
+
+        const opts = { upsert: true, new: true };
+
+        const existingEntry = await LastIotData.findOne(filter);
         if (existingEntry) {
+            console.log(`👀 Existing entry found for filter:`, JSON.stringify(existingEntry, null, 2));
             const existingTimestamp = new Date(existingEntry.timestamp);
-            const existingDate = moment(existingEntry.date, "DD/MM/YYYY").toDate();
 
-            // Debugging Logs
-            console.log(`🛠 Debugging Update Process`);
+            console.log(`🛠 Debugging Update Process for ${userName}/${primaryStationType}`);
             console.log(`New Timestamp: ${newTimestamp.toISOString()}`);
             console.log(`Existing Timestamp: ${existingTimestamp.toISOString()}`);
             console.log(`Time Difference (ms): ${newTimestamp - existingTimestamp}`);
-            console.log(`New Date: ${moment(newDate).format("DD/MM/YYYY")}`);
-            console.log(`Existing Date: ${moment(existingDate).format("DD/MM/YYYY")}`);
-            console.log(`Date Comparison Result: ${moment(newDate).isSameOrBefore(existingDate)}`);
 
-            if (newTimestamp <= existingTimestamp && moment(newDate).isSameOrBefore(existingDate)) {
-                console.log(`⏳ New data is older or same as existing. Not updating.`);
+            if (newTimestamp <= existingTimestamp) {
+                console.log(`⏳ New data for ${userName}/${primaryStationType} is older or same as existing. Not updating.`);
                 return existingEntry;
             }
         } else {
-            console.log(`🆕 No existing entry found for ${userName}. Creating new entry.`);
+            console.log(`🆕 No existing entry found for ${userName}/${primaryStationType}. Creating new entry.`);
         }
 
-        // Ensure timestamp and date are stored correctly
-        const updatedEntry = await LastIotData.findOneAndUpdate(
-            { userName },
-            {
-                $set: {
-                    ...updateData,
-                    timestamp: newTimestamp,
-                    date: moment(newDate).format("DD/MM/YYYY"),
-                }
-            },
-            { upsert: true, new: true }
-        );
+        const updatedEntry = await LastIotData.findOneAndUpdate(filter, update, opts);
 
-        console.log(`✅ Latest IoT data for ${userName} saved/updated successfully.`);
-        console.log(`🆕 Updated Data: ${JSON.stringify(updatedEntry, null, 2)}`);
+        console.log(`✅ Latest IoT data for ${userName}/${primaryStationType} saved/updated successfully.`);
+        console.log(`🆕 Updated Data (from DB): ${JSON.stringify(updatedEntry, null, 2)}`);
 
         return updatedEntry;
+
     } catch (error) {
         console.error('❌ Error saving/updating latest IoT data:', error);
+        console.error('Data that caused error:', JSON.stringify(data, null, 2)); // Log the problematic data
         throw error;
     }
 };
 
-
+// ... (getLatestDataByUserName remains the same)
 
 const getLatestDataByUserName = async (req, res) => {
   const { userName } = req.params;
   console.log(`🔍 GET /api/latest/${userName} hit`);
 
   try {
-    // Use findOne’s built-in sort option (no need to chain .sort())
-    const data = await LastIotData.findOne(
+    // Use .find() to retrieve all documents matching the userName,
+    // as there will now be multiple documents (one per stationType).
+    // Sorting by timestamp will order the array by the latest update across all stationTypes.
+    const data = await LastIotData.find(
       { userName },
       null,                           // projection → all fields
-      { sort: { timestamp: -1 } }    // options → newest first
+      { sort: { timestamp: -1 } }    // options → newest overall update first
     )
     .lean(); // returns a plain JS object, slightly faster
 
-    if (!data) {
+    if (!data || data.length === 0) {
       console.log(`🚫 No latest IoT data found for ${userName}`);
       return res.status(404).json({
         success: false,
@@ -81,9 +125,10 @@ const getLatestDataByUserName = async (req, res) => {
     }
 
     console.log(`✅ Latest IoT data fetched for ${userName}:`, data);
+    // 'data' will be an array of documents, each representing the last update for a specific stationType
     return res.status(200).json({
       success: true,
-      message: `Latest IoT data for ${userName} fetched successfully`,
+      message: `Latest IoT data for ${userName} fetched successfully (all stationTypes)`,
       data,
     });
   } catch (err) {
@@ -95,6 +140,5 @@ const getLatestDataByUserName = async (req, res) => {
     });
   }
 };
-
 
 module.exports = { saveOrUpdateLastEntryByUserName, getLatestDataByUserName };
