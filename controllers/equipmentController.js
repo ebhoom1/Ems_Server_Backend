@@ -103,18 +103,19 @@ exports.getEquipmentByAdminType = async (req, res) => {
     }
   };
 
-  exports.getEquipmentById = async (req, res) => {
-    try {
-      const equip = await Equipment.findById(req.params.id);
-      if (!equip) {
-        return res.status(404).json({ message: 'Equipment not found' });
-      }
-      res.json({ equipment: equip });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
+ exports.getEquipmentById = async (req, res) => {
+  try {
+    const equip = await Equipment.findById(req.params.id);
+    if (!equip) {
+      return res.status(404).json({ message: 'Equipment not found' });
     }
-  };
+    res.json({ equipment: equip }); // ✅ Must return `equipment: ...`
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
   exports.getMaintenanceStatus = async (req, res) => {
     const equipmentId = req.params.id;
   
@@ -154,3 +155,43 @@ exports.getEquipmentByAdminType = async (req, res) => {
     }
   };
   
+  // Update equipment by ID
+exports.updateEquipment = async (req, res) => {
+  try {
+    const equipmentId = req.params.id;
+    const updatedEquipment = await Equipment.findByIdAndUpdate(
+      equipmentId,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedEquipment) {
+      return res.status(404).json({ message: "Equipment not found" });
+    }
+
+    res.status(200).json({
+      message: "Equipment updated successfully",
+      equipment: updatedEquipment,
+    });
+  } catch (error) {
+    console.error("Error updating equipment:", error);
+    res.status(500).json({ message: "Error updating equipment", error });
+  }
+};
+
+// Delete equipment by ID
+exports.deleteEquipment = async (req, res) => {
+  try {
+    const equipmentId = req.params.id;
+    const deletedEquipment = await Equipment.findByIdAndDelete(equipmentId);
+
+    if (!deletedEquipment) {
+      return res.status(404).json({ message: "Equipment not found" });
+    }
+
+    res.status(200).json({ message: "Equipment deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting equipment:", error);
+    res.status(500).json({ message: "Error deleting equipment", error });
+  }
+};
