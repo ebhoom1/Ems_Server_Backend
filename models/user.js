@@ -123,10 +123,11 @@ operators: [{
   },
   isTerritorialManager: { type: Boolean, default: false },
   isTechnician: { type: Boolean, default: false },
+  isOperator:{ type: Boolean, default: false },
   tokens: [
     {
       token: { type: String, required: true },
-    },
+    }, 
   ],
   verifytoken: { type: String },
   timestamp: { type: Date, default: () => moment().toDate() },

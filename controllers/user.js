@@ -48,6 +48,7 @@ const register = async (req, res) => {
     territorialManager,
     isTerritorialManager,
     isTechnician,
+    isOperator,
     operators // ✅ ADD THIS
   } = req.body;
   try {
@@ -87,6 +88,7 @@ const register = async (req, res) => {
       territorialManager,
       isTerritorialManager,
       isTechnician,
+      isOperator: userType === 'operator' ? true : isOperator,
       operators: operators || [] // ✅ new
     };
 
@@ -204,57 +206,36 @@ const login = async (req, res) => {
 
   try {
     // ── Operator login ──
-    if (userType === "operator") {
-      const parent = await userdb.findOne({ "operators.email": email });
-      if (!parent) {
-        return res
-          .status(401)
-          .json({ status: 401, message: "Invalid details" });
-      }
-      const op = parent.operators.find((o) => o.email === email);
-      if (!op) {
-        return res
-          .status(401)
-          .json({ status: 401, message: "Invalid details" });
-      }
+  if (userType === "operator") {
+  const operator = await userdb.findOne({ email });
 
-      // **support both unhashed and hashed operator passwords**
-      let isMatch;
-      if (op.password.startsWith("$2")) {
-        // already hashed
-        isMatch = await bcrypt.compare(password, op.password);
-      } else {
-        // plain-text fallback
-        isMatch = password === op.password;
-        if (isMatch) {
-          // immediately hash & persist so next time it's hashed
-          op.password = await bcrypt.hash(op.password, 12);
-          await parent.save();
-        }
-      }
+  if (!operator || operator.userType !== "operator") {
+    return res.status(401).json({ status: 401, message: "Invalid details" });
+  }
 
-      if (!isMatch) {
-        return res.status(422).json({ error: "Invalid User" });
-      }
+  const isMatch = await bcrypt.compare(password, operator.password);
+  if (!isMatch) {
+    return res.status(422).json({ error: "Invalid User" });
+  }
 
-      // issue token on the parent document
-      const token = jwt.sign({ _id: parent._id }, keysecret, {
-        expiresIn: "30d",
-      });
-      parent.tokens = [{ token }];
-      await parent.save();
+  const token = jwt.sign({ _id: operator._id }, keysecret, {
+    expiresIn: "30d",
+  });
+  operator.tokens = [{ token }];
+  await operator.save();
 
-      res.cookie("usercookie", token, {
-        expires: new Date(Date.now() + 9000000),
-        httpOnly: true,
-      });
+  res.cookie("usercookie", token, {
+    expires: new Date(Date.now() + 9000000),
+    httpOnly: true,
+  });
 
-      return res.status(200).json({
-        status: 200,
-        message: "Operator login successful",
-        result: { operator: { name: op.name, email: op.email }, token },
-      });
-    }
+  return res.status(200).json({
+    status: 200,
+    message: "Operator login successful",
+    result: { user: operator, token },
+  });
+}
+
 
     // ── Technician login ──
     if (userType === "admin") {
