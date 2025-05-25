@@ -25,6 +25,10 @@ const {
   getAllTerritoryManagers,
   deleteTechnician,
   deleteTerritoryManager,
+  deleteOperator,
+  getSitesForUser,
+  getAllUsersByCreator,
+  getAllOperators
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
 
@@ -57,12 +61,17 @@ router.get("/get-users-by-admin/:adminType", findUsersByAdminType);
 // Route to get all admins
 router.get("/get-territory-mangers", getTerritorialManagers);
 
-// Route to get technicians and territory managers
+// Route to get technicians and territory managers and operator
 router.get("/getAll-technicians", getAllTechnicians);
 router.get("/getAll-territory-managers", getAllTerritoryManagers);
+router.get("/get-operators", getAllOperators);
+
 
 // Route to delete technicians and territory managers
 router.delete("/deleteTechnician/:id", deleteTechnician);
 router.delete("/deleteTerritoryManager/:id", deleteTerritoryManager);
+router.delete("/delete-operator/:id",deleteOperator);
 
+router.get("/get-sites-for-user/:userId/:role", getSitesForUser);
+router.get("/get-users-by-creator/:creatorId", getAllUsersByCreator);
 module.exports = router;

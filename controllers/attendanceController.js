@@ -73,6 +73,23 @@ const markCheckOut = async (req, res) => {
   };
   
 
+  const getCheckInStatus = async (req, res) => {
+    const { username, userRole } = req.params;
+  
+    try {
+      const active = await Attendance.findOne({
+        username,
+        userRole,
+        checkOutTime: { $exists: false }
+      });
+  
+      res.status(200).json({ isCheckedIn: !!active });
+    } catch (err) {
+      console.error("Status check error:", err);
+      res.status(500).json({ message: "Error fetching check-in status" });
+    }
+  };
+
 const getAllAttendances = async (req, res) => {
   try {
     const attendances = await Attendance.find().sort({ createdAt: -1 });
@@ -105,6 +122,7 @@ const getAttendanceByAdminType = async (req, res) => {
 module.exports = {
   markAttendance,
   markCheckOut,
+  getCheckInStatus,
   getAllAttendances,
   getAttendanceByUserName,
   getAttendanceByAdminType

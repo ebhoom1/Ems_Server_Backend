@@ -15,7 +15,6 @@ const OperatorSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true,
     validate: [validator.isEmail, "Invalid operator email"],
   },
   password: {
@@ -47,7 +46,7 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true,
+    /* unique: true, */
     validate(value) {
       if (!validator.isEmail(value)) {
         throw new Error("not a valid Email");
@@ -57,7 +56,7 @@ const userSchema = new mongoose.Schema({
   additionalEmails: {
     type: [String],
     default: [],
-   /*  validate: {
+    /*  validate: {
       validator: function (emails) {
         return (
           Array.isArray(emails) &&
@@ -89,18 +88,18 @@ const userSchema = new mongoose.Schema({
   district: { type: String },
   state: { type: String },
   address: { type: String },
-latitude: {
-  type: Number,
-  /* required: function() {
+  latitude: {
+    type: Number,
+    /* required: function() {
     return this.userType === "user";
   } */
-},
-longitude: {
-  type: Number,
-  /* required: function() {
+  },
+  longitude: {
+    type: Number,
+    /* required: function() {
     return this.userType === "user";
   } */
-},
+  },
 
   productID: {
     type: Number,
@@ -110,10 +109,12 @@ longitude: {
     // },
   },
   // New operators field
-operators: [{
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Users",
-}],
+  operators: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Users",
+    },
+  ],
 
   // reference field for adding territorialManager
   territorialManager: {
@@ -123,6 +124,7 @@ operators: [{
   },
   isTerritorialManager: { type: Boolean, default: false },
   isTechnician: { type: Boolean, default: false },
+  isOperator: { type: Boolean, default: false },
   tokens: [
     {
       token: { type: String, required: true },
@@ -130,6 +132,11 @@ operators: [{
   ],
   verifytoken: { type: String },
   timestamp: { type: Date, default: () => moment().toDate() },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
 });
 
 // Hash passwords

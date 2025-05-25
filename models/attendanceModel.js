@@ -14,7 +14,9 @@ const attendanceSchema = new mongoose.Schema({
     type: String,
     enum: ["operator", "technician", "territorialManager"],
     required: true,
-  }
+  },
+  isCheckedIn: { type: Boolean, default: true } // ✅ Add this line
+
 });
 
 module.exports = mongoose.model("Attendance", attendanceSchema);

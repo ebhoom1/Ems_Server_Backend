@@ -22,6 +22,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const register = async (req, res) => {
+  console.log("rquest body:", req.body);
   const {
     userName,
     companyName,
@@ -48,8 +49,11 @@ const register = async (req, res) => {
     territorialManager,
     isTerritorialManager,
     isTechnician,
-    operators // ✅ ADD THIS
+    isOperator,
+    createdBy,
+    operators, // ✅ ADD THIS
   } = req.body;
+
   try {
     // Check if primary email is already used
     const preuser = await userdb.findOne({ email });
@@ -87,7 +91,9 @@ const register = async (req, res) => {
       territorialManager,
       isTerritorialManager,
       isTechnician,
-      operators: operators || [] // ✅ new
+      isOperator: userType === "operator" ? true : isOperator,
+      operators: operators || [], // ✅ new
+      createdBy:  createdBy, // Set the creator's userId
     };
 
     // Set iotLastEnterDate always to today's date
@@ -115,7 +121,6 @@ const register = async (req, res) => {
         .split("T")[0];
       userObject.subscriptionActive = true;
     }
-
     const finalUser = new userdb(userObject);
     const storeData = await finalUser.save();
     return res.status(201).json({ status: 201, storeData });
@@ -124,6 +129,7 @@ const register = async (req, res) => {
     return res.status(400).json(error);
   }
 };
+
 
 // Add or Update Stack Names for a user
 const updateStackName = async (req, res) => {
@@ -204,57 +210,36 @@ const login = async (req, res) => {
 
   try {
     // ── Operator login ──
-    if (userType === "operator") {
-      const parent = await userdb.findOne({ "operators.email": email });
-      if (!parent) {
-        return res
-          .status(401)
-          .json({ status: 401, message: "Invalid details" });
-      }
-      const op = parent.operators.find((o) => o.email === email);
-      if (!op) {
-        return res
-          .status(401)
-          .json({ status: 401, message: "Invalid details" });
-      }
+  if (userType === "operator") {
+  const operator = await userdb.findOne({ email });
 
-      // **support both unhashed and hashed operator passwords**
-      let isMatch;
-      if (op.password.startsWith("$2")) {
-        // already hashed
-        isMatch = await bcrypt.compare(password, op.password);
-      } else {
-        // plain-text fallback
-        isMatch = password === op.password;
-        if (isMatch) {
-          // immediately hash & persist so next time it's hashed
-          op.password = await bcrypt.hash(op.password, 12);
-          await parent.save();
-        }
-      }
+  if (!operator || operator.userType !== "operator") {
+    return res.status(401).json({ status: 401, message: "Invalid details" });
+  }
 
-      if (!isMatch) {
-        return res.status(422).json({ error: "Invalid User" });
-      }
+  const isMatch = await bcrypt.compare(password, operator.password);
+  if (!isMatch) {
+    return res.status(422).json({ error: "Invalid User" });
+  }
 
-      // issue token on the parent document
-      const token = jwt.sign({ _id: parent._id }, keysecret, {
-        expiresIn: "30d",
-      });
-      parent.tokens = [{ token }];
-      await parent.save();
+  const token = jwt.sign({ _id: operator._id }, keysecret, {
+    expiresIn: "30d",
+  });
+  operator.tokens = [{ token }];
+  await operator.save();
 
-      res.cookie("usercookie", token, {
-        expires: new Date(Date.now() + 9000000),
-        httpOnly: true,
-      });
+  res.cookie("usercookie", token, {
+    expires: new Date(Date.now() + 9000000),
+    httpOnly: true,
+  });
 
-      return res.status(200).json({
-        status: 200,
-        message: "Operator login successful",
-        result: { operator: { name: op.name, email: op.email }, token },
-      });
-    }
+  return res.status(200).json({
+    status: 200,
+    message: "Operator login successful",
+    result: { user: operator, token },
+  });
+}
+
 
     // ── Technician login ──
     if (userType === "admin") {
@@ -890,6 +875,94 @@ const getAllDeviceCredentials = async (req, res) => {
       .json({ status: 500, error: "Internal Server Error" });
   }
 };
+// delete operator
+const deleteOperator = async (req, res) => {
+  try {
+    const user = await userdb.findOne({
+      _id: req.params.id,
+      isOperator: true,
+    });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "Operator not found" });
+    }
+
+    await userdb.findByIdAndDelete(req.params.id);
+    res.status(200).json({
+      status: 200,
+      message: "Operator deleted successfully",
+    });
+  } catch (error) {
+    console.error(`Error deleting operator: ${error.message}`);
+    return res
+      .status(500)
+      .json({ status: 500, error: "Internal Server Error" });
+  }
+};
+const getSitesForUser = async (req, res) => {
+  try {
+    const { userId, role } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+
+    let query = {};
+
+    if (role === "operator") {
+      query = { operators: new mongoose.Types.ObjectId(userId) };
+    } else if (role === "territorialManager") {
+      query = { territorialManager: new mongoose.Types.ObjectId(userId) };
+    } else if (role === "technician") {
+      query = { technician: new mongoose.Types.ObjectId(userId) }; // if technician field is added later
+    } else {
+      return res.status(400).json({ message: "Unsupported role" });
+    }
+
+    const matchedSites = await userdb.find({
+      ...query,
+      latitude: { $exists: true },
+      longitude: { $exists: true },
+    }).select("latitude longitude companyName");
+
+    if (matchedSites.length === 0) {
+      return res.status(404).json({ message: "No sites found for this user" });
+    }
+
+    return res.json(matchedSites);
+  } catch (error) {
+    console.error("❌ Site fetch error:", error);
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
+const getAllUsersByCreator = async (req,res) => {
+  try {
+    const users = await userdb.find({ createdBy: req.params.creatorId });
+    res.status(200).json({ users });
+  } catch (err) {
+     console.error(`Error fetching user by createdBy: ${error.message}`);
+    return res
+      .status(500)
+      .json({ status: 500, error: "Internal Server Error" });
+  }
+}
+//get all operator
+
+const getAllOperators = async (req, res) => {
+  try {
+    const operators = await userdb.find({ isOperator: true }).select("-password -cpassword -tokens").lean();
+    if (!operators || operators.length === 0) {
+      return res.status(404).json({ status: 404, message: "No operators found" });
+    }
+    return res.status(200).json({ status: 200, users: operators });
+  } catch (error) {
+    console.error(`Error fetching operators: ${error.message}`);
+    return res.status(500).json({ status: 500, error: "Internal Server Error" });
+  }
+};
 
 module.exports = {
   register,
@@ -918,4 +991,8 @@ module.exports = {
   getAllTerritoryManagers,
   deleteTechnician,
   deleteTerritoryManager,
+  deleteOperator,
+  getSitesForUser,
+  getAllUsersByCreator,
+  getAllOperators
 };
