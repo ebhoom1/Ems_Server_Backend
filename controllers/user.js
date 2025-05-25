@@ -53,7 +53,7 @@ const register = async (req, res) => {
     createdBy,
     operators, // ✅ ADD THIS
   } = req.body;
-
+//try block
   try {
     // Check if primary email is already used
     const preuser = await userdb.findOne({ email });
