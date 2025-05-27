@@ -24,10 +24,13 @@ const EntrySchema = new mongoose.Schema({
 const MechanicalReportSchema = new mongoose.Schema({
   equipmentId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Equipment', required: true },
   equipmentName: { type: String, required: true },
-  columns:       [{ type: String, required: true }],    // ← new
+  userName:      { type: String, required: true },       // ✅ New field
+  capacity:      { type: String },         // ✅ New field
+  columns:       [{ type: String, required: true }],
   technician:    { type: TechnicianSchema, required: true },
   entries:       [EntrySchema],
   timestamp:     { type: Date, default: Date.now }
 });
+
 
 module.exports = mongoose.model('MechanicalReport', MechanicalReportSchema);
