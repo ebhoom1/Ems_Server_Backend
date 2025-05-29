@@ -47,6 +47,7 @@ const register = async (req, res) => {
     productID,
     additionalEmails, // expect an array of additional emails
     territorialManager,
+    technicians,
     isTerritorialManager,
     isTechnician,
     isOperator,
@@ -89,6 +90,7 @@ const register = async (req, res) => {
       state,
       address,
       territorialManager,
+      technician: technicians,
       isTerritorialManager,
       isTechnician,
       isOperator: userType === "operator" ? true : isOperator,
@@ -680,7 +682,7 @@ const getTerritorialManagers = async (req, res) => {
         userType: "admin",
         isTerritorialManager: true, // Only those admins who are territorial managers
       })
-      .select("userName email fname");
+      .select("userName email fname adminType");
 
     res.status(200).json({ admins: territorialManagers });
   } catch (error) {

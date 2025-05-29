@@ -4,7 +4,9 @@ const { Schema } = mongoose;
 // ON/OFF status per equipment
 const onOffStatusSchema = new Schema({
   equipment: { type: String, required: true },
-  status: { type: String, enum: ['on','off'], required: true }
+  status: { type: String, enum: ['on','off'], required: true },
+    onTime:  { type: String, default: null },
+    offTime: { type: String, default: null }
 }, { _id: false });
 
 // A time‐slot entry with all pump statuses
@@ -44,7 +46,7 @@ const dailyLogSchema = new Schema({
   date:             { type: Date,   required: true },
   username:         { type: String, required: true },
   companyName:      { type: String, required: true },
-
+   capacity:         { type: String, required: false },
   timeEntries:           [ timeEntrySchema ],      // ON/OFF grid
   treatedWater:          [ kvEntrySchema ],        // Quality, Color…
   remarks:               { type: String },         // Bulk remarks textarea

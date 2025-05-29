@@ -1,28 +1,41 @@
+// controllers/mechanicalReportController.js
 const MechanicalReport = require('../models/MechanicalReport');
 
 exports.addMechanicalReport = async (req, res) => {
+   console.log('--- multer files:', req.files);
+  console.log('--- form fields:', req.body);
   try {
     const {
       equipmentId,
       equipmentName,
-      userName,     // ✅ from frontend
-      capacity,     // ✅ from frontend
-      columns,
-      technician,
-      entries,
-      timestamp
+      userName,
+      capacity,
+      isWorking,
+      comments,
+      timestamp,
     } = req.body;
 
-    const transformedEntries = entries.map(entry => ({
-      id:          entry.id,
-      category:    entry.category,
-      description: entry.description,
-      checks:      entry.checks.map((val, idx) => ({
-                      column: columns[idx] || columns[0],
-                      value:  val
-                    })),
-      remarks:     entry.remarks
-    }));
+    const technician = JSON.parse(req.body.technician);
+    const columns    = req.body.columns  ? JSON.parse(req.body.columns)  : [];
+    const entries    = req.body.entries  ? JSON.parse(req.body.entries)  : [];
+
+    // Pull the public S3 URLs from multer-s3
+    const photoUrls = (req.files || []).map(file => file.location);
+
+    // Build your entries array exactly as before
+    let transformedEntries = [];
+    if (isWorking === "yes" && entries.length) {
+      transformedEntries = entries.map(entry => ({
+        id:          entry.id,
+        category:    entry.category,
+        description: entry.description,
+        checks:      entry.checks.map((val, idx) => ({
+          column: columns[idx] || columns[0] || '',
+          value:  val
+        })),
+        remarks:     entry.remarks
+      }));
+    }
 
     const report = new MechanicalReport({
       equipmentId,
@@ -31,13 +44,30 @@ exports.addMechanicalReport = async (req, res) => {
       capacity,
       columns,
       technician,
-      entries: transformedEntries,
-      timestamp
+      entries:   transformedEntries,
+      timestamp,
+      isWorking,
+      comments,
+      photos:    photoUrls    // <-- store URLs, not buffers
     });
 
     await report.save();
     res.json({ success: true, report });
+  } catch (err) {
+    console.error("Error in addMechanicalReport:", err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
 
+exports.getReportsByEquipment = async (req, res) => {
+  try {
+    const { equipmentId } = req.params;
+    const reports = await MechanicalReport.find({ equipmentId });
+    if (!reports.length) {
+      return res.json({ success: false, message: 'No report found.' });
+    }
+    // Since we already stored URLs, there’s no Buffer conversion here
+    res.json({ success: true, reports });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -46,52 +76,29 @@ exports.addMechanicalReport = async (req, res) => {
 
 exports.getMechanicalReports = async (req, res) => {
   try {
-    const reports = await MechanicalReport.find().sort({ timestamp: -1 });
+    const reports = await MechanicalReport.find({});
     res.json({ success: true, reports });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
-exports.getReportsByEquipment = async (req, res) => {
-    try {
-      const { equipmentId } = req.params;
-      const reports = await MechanicalReport.find({ equipmentId }).sort({ timestamp: -1 });
-      res.json({ success: true, reports });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: 'Server error' });
+
+exports.getReportsByMonth = async (req, res) => {
+  try {
+    const year  = parseInt(req.params.year,  10);
+    const month = parseInt(req.params.month, 10);
+    if (isNaN(year)|| isNaN(month) || month<1||month>12) {
+      return res.status(400).json({ success:false, message:'Invalid year/month' });
     }
-  };
-  exports.getReportsByMonth = async (req, res) => {
-    try {
-      const year  = parseInt(req.params.year, 10);
-      const month = parseInt(req.params.month, 10); // 1–12
-  
-      if (
-        isNaN(year) ||
-        isNaN(month) ||
-        month < 1 || month > 12
-      ) {
-        return res
-          .status(400)
-          .json({ success: false, message: 'Invalid year or month' });
-      }
-  
-      // build date range [startOfMonth, startOfNextMonth)
-      const startOfMonth     = new Date(year, month - 1, 1);
-      const startOfNextMonth = new Date(year, month, 1);
-  
-      const reports = await MechanicalReport.find({
-        // use `timestamp` (as you stored) or `createdAt` if you prefer
-        timestamp: { $gte: startOfMonth, $lt: startOfNextMonth }
-      }).sort({ timestamp: -1 });
-  
-      res.json({ success: true, reports });
-    } catch (err) {
-      console.error('Error fetching mechanical reports by month:', err);
-      res
-        .status(500)
-        .json({ success: false, message: 'Server error', error: err.message });
-    }
-  };
+    const start = new Date(year, month-1, 1);
+    const end   = new Date(year, month,   1);
+    const reports = await MechanicalReport
+      .find({ timestamp:{ $gte:start, $lt:end } })
+      .sort({ timestamp:-1 });
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

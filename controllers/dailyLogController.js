@@ -13,7 +13,8 @@ exports.createDailyLog = async (req, res) => {
       chemicalConsumption,
       backwashTimings,
       runningHoursReading,
-      signOff
+      signOff,
+      capacity
     } = req.body;
 
     // ensure only one per day/per user
@@ -32,7 +33,8 @@ exports.createDailyLog = async (req, res) => {
       chemicalConsumption,
       backwashTimings,
       runningHoursReading,
-      signOff
+      signOff,
+      capacity
     });
 
     await log.save();
