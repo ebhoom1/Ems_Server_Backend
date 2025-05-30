@@ -11,7 +11,8 @@ const {
   addMechanicalReport,
   getMechanicalReports,
   getReportsByEquipment,
-  getReportsByMonth
+  getReportsByMonth,
+  getReportsByUserAndMonth
 } = require('../controllers/mechanicalReportController');
 
 
@@ -72,6 +73,12 @@ router.get(
 router.get(
   '/mechanicalreports/month/:year/:month',
   getReportsByMonth
+);
+// 3.5 Get reports by userName, year & month
+//    e.g. GET /api/mechanicalreports/user/john.doe/month/2025/5
+router.get(
+  '/mechanicalreports/user/:userName/month/:year/:month',
+  getReportsByUserAndMonth
 );
 
 module.exports = router;

@@ -102,3 +102,35 @@ exports.getReportsByMonth = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+exports.getReportsByUserAndMonth = async (req, res) => {
+  try {
+    const year     = parseInt(req.params.year,  10);
+    const month    = parseInt(req.params.month, 10);
+    const { userName } = req.params;
+
+    if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid year or month' });
+    }
+
+    // build start/end of month
+    const start = new Date(year, month - 1, 1);
+    const end   = new Date(year, month,     1);
+
+    // query by userName and timestamp range
+    const reports = await MechanicalReport.find({
+      userName,
+      timestamp: { $gte: start, $lt: end }
+    }).sort({ timestamp: -1 });
+
+    if (!reports.length) {
+      return res.json({ success: false, message: 'No reports found.' });
+    }
+
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error('Error in getReportsByUserAndMonth:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

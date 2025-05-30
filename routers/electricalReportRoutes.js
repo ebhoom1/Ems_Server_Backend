@@ -26,3 +26,7 @@ router.get(
   ctrl.getReportsByMonth
 );
 module.exports = router;
+router.get(
+  '/electricalreports/user/:userName/:year/:month',
+  ctrl.getReportsByUserMonth
+);

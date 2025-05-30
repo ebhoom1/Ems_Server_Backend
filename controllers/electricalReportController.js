@@ -125,3 +125,24 @@ exports.getReportById = async (req, res) => {
         .json({ success: false, message: 'Server error', error: err.message });
     }
   };
+
+  exports.getReportsByUserMonth = async (req, res) => {
+  try {
+    const { userName, year, month } = req.params;
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (isNaN(y) || isNaN(m) || m < 1 || m > 12) {
+      return res.status(400).json({ success: false, message: 'Invalid year or month' });
+    }
+    const start = new Date(y, m - 1, 1);
+    const end   = new Date(y, m, 1);
+    const reports = await ElectricalReport.find({
+      userName,
+      createdAt: { $gte: start, $lt: end }
+    }).sort({ createdAt: -1 });
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error('Error fetching reports by user/month:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
