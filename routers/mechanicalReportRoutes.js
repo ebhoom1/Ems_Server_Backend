@@ -71,14 +71,15 @@ router.get(
 
 // 3.4 Get reports by year/month
 router.get(
-  '/mechanicalreports/month/:year/:month',
-  getReportsByMonth
-);
-// 3.5 Get reports by userName, year & month
-//    e.g. GET /api/mechanicalreports/user/john.doe/month/2025/5
-router.get(
   '/mechanicalreports/user/:userName/month/:year/:month',
   getReportsByUserAndMonth
 );
+
+// 3.4 Get reports by year/month - LESS SPECIFIC, GOES AFTER THE USER ONE
+router.get(
+  '/mechanicalreports/month/:year/:month',
+  getReportsByMonth
+);
+
 
 module.exports = router;
