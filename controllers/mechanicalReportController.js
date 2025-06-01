@@ -84,7 +84,7 @@ exports.getMechanicalReports = async (req, res) => {
   }
 };
 
-exports.getReportsByMonth = async (req, res) => {
+/* exports.getReportsByMonth = async (req, res) => {
   try {
     const year  = parseInt(req.params.year,  10);
     const month = parseInt(req.params.month, 10);
@@ -101,8 +101,14 @@ exports.getReportsByMonth = async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
-};
+}; */
 exports.getReportsByUserAndMonth = async (req, res) => {
+  console.log(
+    '>>> HIT getReportsByUserAndMonth →',
+    'userName=', req.params.userName,
+    'year=', req.params.year,
+    'month=', req.params.month
+  );
   try {
     const year     = parseInt(req.params.year,  10);
     const month    = parseInt(req.params.month, 10);
