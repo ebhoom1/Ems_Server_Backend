@@ -1,12 +1,11 @@
 // controllers/electricalReportController.js
-
 const ElectricalReport = require('../models/ElectricalReport');
 
 exports.createReport = async (req, res) => {
   try {
     const { equipmentId, technician, equipment, responses } = req.body;
 
-    // validate presence of equipmentId
+    // 1) equipmentId is required
     if (!equipmentId) {
       return res.status(400).json({
         success: false,
@@ -14,7 +13,7 @@ exports.createReport = async (req, res) => {
       });
     }
 
-    // ensure technician is present
+    // 2) technician must be present (name at minimum)
     if (!technician || !technician.name) {
       return res.status(400).json({
         success: false,
@@ -22,6 +21,23 @@ exports.createReport = async (req, res) => {
       });
     }
 
+    // 3) `equipment` object is also required (to embed fields like name, model, etc.)
+    if (!equipment || !equipment.name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Equipment details are required'
+      });
+    }
+
+    // 4) `responses` must be a Map (or object) containing keys "1" through "8"
+    if (!responses || typeof responses !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Responses are required'
+      });
+    }
+
+    // Now build & save
     const report = new ElectricalReport({
       equipmentId,
       technician,
@@ -47,7 +63,6 @@ exports.getAllReports = async (req, res) => {
   }
 };
 
-// Renamed to make clear we're fetching by equipmentId
 exports.getReportByEquipment = async (req, res) => {
   try {
     const { equipmentId } = req.params;
@@ -79,67 +94,81 @@ exports.deleteReport = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
-exports.getReportById = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const report = await MechanicalReport.findById(id);
-      if (!report) {
-        return res
-          .status(404)
-          .json({ success: false, message: 'Report not found' });
-      }
-      res.json({ success: true, report });
-    } catch (err) {
-      console.error('Error fetching mechanical report by ID:', err);
-      res.status(500).json({ success: false, message: 'Server error' });
-    }
-  };
-  exports.getReportsByMonth = async (req, res) => {
-    try {
-      const year  = parseInt(req.params.year, 10);
-      const month = parseInt(req.params.month, 10);  // 1 = January, 12 = December
-  
-      if (
-        isNaN(year)  || year  < 1970 ||
-        isNaN(month) || month < 1 || month > 12
-      ) {
-        return res
-          .status(400)
-          .json({ success: false, message: 'Invalid year or month' });
-      }
-  
-      // build date range: [ startOfMonth, startOfNextMonth )
-      const startOfMonth    = new Date(year, month - 1, 1);
-      const startOfNextMonth = new Date(year, month, 1);
-  
-      const reports = await ElectricalReport.find({
-        // use `timestamp` if you store it, otherwise `createdAt`
-        createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
-      }).sort({ createdAt: -1 });
-  
-      res.json({ success: true, reports });
-    } catch (err) {
-      console.error('Error fetching reports by month:', err);
-      res
-        .status(500)
-        .json({ success: false, message: 'Server error', error: err.message });
-    }
-  };
 
-  exports.getReportsByUserMonth = async (req, res) => {
+exports.getReportById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const report = await ElectricalReport.findById(id);
+    if (!report) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Report not found' });
+    }
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('Error fetching report by ID:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.getReportsByMonth = async (req, res) => {
+  try {
+    const year = parseInt(req.params.year, 10);
+    const month = parseInt(req.params.month, 10); // 1 = January, 12 = December
+
+    if (
+      isNaN(year) || year < 1970 ||
+      isNaN(month) || month < 1 || month > 12
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid year or month'
+      });
+    }
+
+    const startOfMonth = new Date(year, month - 1, 1);
+    const startOfNextMonth = new Date(year, month, 1);
+
+    const reports = await ElectricalReport.find({
+      createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
+    }).sort({ createdAt: -1 });
+
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error('Error fetching reports by month:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: err.message
+    });
+  }
+};
+
+exports.getReportsByUserMonth = async (req, res) => {
   try {
     const { userName, year, month } = req.params;
     const y = parseInt(year, 10);
     const m = parseInt(month, 10);
     if (isNaN(y) || isNaN(m) || m < 1 || m > 12) {
-      return res.status(400).json({ success: false, message: 'Invalid year or month' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid year or month' });
     }
+
     const start = new Date(y, m - 1, 1);
-    const end   = new Date(y, m, 1);
+    const end = new Date(y, m, 1);
+
     const reports = await ElectricalReport.find({
-      userName,
+      "equipment.name": { $exists: true }, // if you want to filter by equipment.owner or a userName field
       createdAt: { $gte: start, $lt: end }
     }).sort({ createdAt: -1 });
+
+    // If you truly have a `userName` field on ElectricalReport, replace above line with:
+    // const reports = await ElectricalReport.find({
+    //   userName,
+    //   createdAt: { $gte: start, $lt: end }
+    // }).sort({ createdAt: -1 });
+
     res.json({ success: true, reports });
   } catch (err) {
     console.error('Error fetching reports by user/month:', err);

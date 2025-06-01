@@ -1,32 +1,27 @@
+// routes/electricalReportRoutes.js
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/electricalReportController');
 
-router.post(
-  '/add-electricalreport',
-  ctrl.createReport
-);
+// 1) Create a new electrical report
+router.post('/add-electricalreport', ctrl.createReport);
 
-router.get(
-  '/get-electricalreport/:equipmentId',
-  ctrl.getReportByEquipment
-);
+// 2) Get one report (by equipmentId)
+router.get('/get-electricalreport/:equipmentId', ctrl.getReportByEquipment);
 
-router.get(
-  '/all-electricalreports',
-  ctrl.getAllReports
-);
+// 3) Get all reports
+router.get('/all-electricalreports', ctrl.getAllReports);
 
-router.delete(
-  '/delete-electricalreport/:id',
-  ctrl.deleteReport
-);
-router.get(
-  '/electricalreports/month/:year/:month',
-  ctrl.getReportsByMonth
-);
-module.exports = router;
+// 4) Delete a report by ID
+router.delete('/delete-electricalreport/:id', ctrl.deleteReport);
+
+// 5) Get reports by month (YYYY/MM)
+router.get('/electricalreports/month/:year/:month', ctrl.getReportsByMonth);
+
+// 6) (Optional) Get reports by “userName” + month (if you store userName in Equipment or elsewhere)
 router.get(
   '/electricalreports/user/:userName/:year/:month',
   ctrl.getReportsByUserMonth
 );
+
+module.exports = router;
