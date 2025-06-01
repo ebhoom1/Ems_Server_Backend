@@ -16,9 +16,6 @@ const {
 } = require('../controllers/mechanicalReportController');
 
 
-
-
-
 // CHANGE 2: Initialize S3Client from AWS SDK v3
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -28,10 +25,6 @@ const s3 = new S3Client({
   },
 });
 const BUCKET_NAME = 'ems-ebhoom-bucket';
-
-
-
-
 
 const photoUpload = multer({
   storage: multerS3({
@@ -71,7 +64,7 @@ router.get(
 
 // 3.4 Get reports by year/month
 router.get(
-  '/mechanicalreports/user/:userName/month/:year/:month',
+  '/mech/mechanicalreports/user/:userName/month/:year/:month',
   getReportsByUserAndMonth
 );
 

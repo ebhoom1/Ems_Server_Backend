@@ -180,7 +180,7 @@ app.use('/api', inventoryRoutes);
 app.use('/api', requestInventory)
 app.use('/api', equipmentRoutes)
 app.use('/api', faultRoutes)
-app.use('/api',electricalReportRoutes)
+app.use('/api', electricalReportRoutes)
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
 app.use('/api', dailyLogRoutes);
