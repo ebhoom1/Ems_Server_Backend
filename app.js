@@ -105,30 +105,15 @@ DB();
 
 // Middleware
 // CORS configuration (must come before any routes)
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://localhost:5555',
-    'https://ems.ebhoom.com',
-    'https://api.ocems.ebhoom.com',
-    'https://esg.ebhoom.com',
-    'https://api.esg.ebhoom.com'
-  ],
-  credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
-};
-
-app.use(cors(corsOptions));
-
-// Explicitly handle CORS preflight requests
-app.options('*', cors(corsOptions));
-
+app.use(cors({
+    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555','https://esg.ebhoom.com','https://api.esg.ebhoom.com'  ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));  // replaces bodyParser.urlencoded
+app.use(bodyParser.urlencoded({ extended: true })); // replaces bodyParser.urlencoded
 
 
 // Serve static files from the React app's build directory

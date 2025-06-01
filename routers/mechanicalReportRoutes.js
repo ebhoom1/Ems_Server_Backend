@@ -64,7 +64,7 @@ router.get(
 
 // 3.4 Get reports by year/month
 router.get(
-  '/mech/mechanicalreports/user/:userName/month/:year/:month',
+  '/mechanicalreports/user/:userName/month/:year/:month',
   getReportsByUserAndMonth
 );
 
