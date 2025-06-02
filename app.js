@@ -87,31 +87,6 @@ const attendanceRoutes = require('./routers/attendanceRoutes');
 
 
 const app = express();
-app.use(cors({
-    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555','https://esg.ebhoom.com','https://api.esg.ebhoom.com'  ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', "X-Requested-With"]
-}));
-app.options("/*", (req, res) => {
-  // These exactly mirror what cors(...) above is allowing,
-  // ensuring the preflight never gets blocked.
-  res.set({
-    "Access-Control-Allow-Origin": "https://ems.ebhoom.com",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
-  });
-  return res.sendStatus(200);
-});
-
-//addded
-app.use(cookieParser());
-app.use(express.json());
-app.use(bodyParser.urlencoded({ extended: true })); // replaces bodyParser.urlencoded
-
-
-// Serve static files from the React app's build directory
-app.use(express.static(path.join(__dirname, '../Ems_client_frontend/build')));
 const port = process.env.PORT || 5555;
 const server = http.createServer(app);
 
@@ -129,8 +104,18 @@ module.exports = { io, server };
 DB();
 
 // Middleware
-// CORS configuration (must come before any routes)
+app.use(cors({
+    origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555','https://esg.ebhoom.com','https://api.esg.ebhoom.com'  ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(cookieParser());
+app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
+// Serve static files from the React app's build directory
+app.use(express.static(path.join(__dirname, '../Ems_client_frontend/build')));
 
 // Serve static files from the 'uploads' folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -178,7 +163,7 @@ app.use('/api', inventoryRoutes);
 app.use('/api', requestInventory)
 app.use('/api', equipmentRoutes)
 app.use('/api', faultRoutes)
-app.use('/api', electricalReportRoutes)
+app.use('/api',electricalReportRoutes)
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
 app.use('/api', dailyLogRoutes);
