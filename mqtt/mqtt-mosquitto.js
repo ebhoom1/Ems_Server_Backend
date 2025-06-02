@@ -188,14 +188,14 @@ const setupMqttClient = (io) => {
                 timestamp: new Date(),
               };
 
-              console.log("Sending sensor payload:", sensorPayload);
+            console.log("Sending sensor payload:", sensorPayload);
               try {
                 await axios.post(
                   "https://api.ocems.ebhoom.com/api/handleSaveMessage",
                   sensorPayload
                 );
                 io.to(product_id.toString()).emit("data", sensorPayload);
-                console.log("Sensor data successfully sent:", sensorPayload);
+               /*  console.log("Sensor data successfully sent:", sensorPayload); */
               } catch (error) {
                 console.error(
                   "Error sending sensor data:",
