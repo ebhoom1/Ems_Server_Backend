@@ -91,8 +91,19 @@ app.use(cors({
     origin: ['http://localhost:3000',  'http://localhost:3001','https://ems.ebhoom.com','https://api.ocems.ebhoom.com','http://localhost:3001','http://localhost:5555','https://esg.ebhoom.com','https://api.esg.ebhoom.com'  ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT','PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', "X-Requested-With"]
 }));
+app.options("/*", (req, res) => {
+  // These exactly mirror what cors(...) above is allowing,
+  // ensuring the preflight never gets blocked.
+  res.set({
+    "Access-Control-Allow-Origin": "https://ems.ebhoom.com",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With"
+  });
+  return res.sendStatus(200);
+});
+
 //addded
 app.use(cookieParser());
 app.use(express.json());
