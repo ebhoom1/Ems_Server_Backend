@@ -2,62 +2,70 @@
 const MechanicalReport = require('../models/MechanicalReport');
 
 exports.addMechanicalReport = async (req, res) => {
-   console.log('--- multer files:', req.files);
+  console.log('--- multer files:', req.files);
   console.log('--- form fields:', req.body);
+
   try {
-    const {
-      equipmentId,
-      equipmentName,
-      userName,
-      capacity,
-      isWorking,
-      comments,
-      timestamp,
-    } = req.body;
+    // parse technician safely
+    let technician = null;
+    if (req.body.technician) {
+      try {
+        technician = JSON.parse(req.body.technician);
+      } catch (jsonErr) {
+        console.error('❌ Technician JSON parse failed:', req.body.technician, jsonErr);
+        return res.status(400).json({ success: false, message: 'Invalid technician JSON' });
+      }
+    }
 
-    const technician = JSON.parse(req.body.technician);
-    const columns    = req.body.columns  ? JSON.parse(req.body.columns)  : [];
-    const entries    = req.body.entries  ? JSON.parse(req.body.entries)  : [];
+    // parse columns/entries safely
+    const columns = req.body.columns ? JSON.parse(req.body.columns) : [];
+    const entries = req.body.entries ? JSON.parse(req.body.entries) : [];
 
-    // Pull the public S3 URLs from multer-s3
+    // build photo URLs
     const photoUrls = (req.files || []).map(file => file.location);
 
-    // Build your entries array exactly as before
+    // transform entries
     let transformedEntries = [];
-    if (isWorking === "yes" && entries.length) {
+    if (req.body.isWorking === 'yes' && entries.length) {
       transformedEntries = entries.map(entry => ({
-        id:          entry.id,
-        category:    entry.category,
+        id: entry.id,
+        category: entry.category,
         description: entry.description,
-        checks:      entry.checks.map((val, idx) => ({
-          column: columns[idx] || columns[0] || '',
-          value:  val
-        })),
-        remarks:     entry.remarks
+        checks: Array.isArray(entry.checks)
+          ? entry.checks.map((val, idx) => ({
+              column: columns[idx] || columns[0] || '',
+              value: val
+            }))
+          : [],
+        remarks: entry.remarks || ''
       }));
     }
 
+    // create and save the report
     const report = new MechanicalReport({
-      equipmentId,
-      equipmentName,
-      userName,
-      capacity,
+      equipmentId: req.body.equipmentId,
+      equipmentName: req.body.equipmentName,
+      userName: req.body.userName,
+      capacity: req.body.capacity,
       columns,
       technician,
-      entries:   transformedEntries,
-      timestamp,
-      isWorking,
-      comments,
-      photos:    photoUrls    // <-- store URLs, not buffers
+      entries: transformedEntries,
+      timestamp: req.body.timestamp,
+      isWorking: req.body.isWorking,
+      comments: req.body.comments,
+      photos: photoUrls
     });
 
     await report.save();
-    res.json({ success: true, report });
+    return res.json({ success: true, report });
+
   } catch (err) {
-    console.error("Error in addMechanicalReport:", err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    // Print the full error stack so you know exactly what failed:
+    console.error('🔴 Error in addMechanicalReport:', err.stack || err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
 
 exports.getReportsByEquipment = async (req, res) => {
   try {

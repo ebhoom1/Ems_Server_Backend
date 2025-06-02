@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 // Sub-schema for technician details
 const TechnicianSchema = new mongoose.Schema({
-  name:        { type: String, required: true },
-  designation: { type: String, required: true },
-  email:       { type: String, required: true }
+  name:        { type: String, },
+  designation: { type: String,  },
+  email:       { type: String,  }
 });
 
 // Sub-schema for individual checklist checks
