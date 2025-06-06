@@ -11,7 +11,8 @@ const markAttendance = async (req, res) => {
         checkInMethod,
         latitude,
         longitude,
-        userRole
+        userRole,
+        isCheckedIn
       } = req.body;
   
       // only validate the truly required fields
@@ -32,7 +33,8 @@ const markAttendance = async (req, res) => {
         latitude,
         longitude,
         date,
-        userRole
+        userRole,
+        isCheckedIn
       });
   
       await newAttendance.save();

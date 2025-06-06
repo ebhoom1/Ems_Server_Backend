@@ -1,12 +1,14 @@
+// mqttClient.js
+
 const mqtt = require("mqtt");
 const axios = require("axios");
 const moment = require("moment-timezone");
-const userdb = require("../models/user");
-const PumpState = require("../models/PumpState");
+const userdb = require("../models/user");          // adjust path if necessary
+const IotData = require("../models/iotData");       // our updated IoT model
 const pumpStateController = require("../controllers/pumpStateController");
 const RETRY_DELAY = 5000; // 5 seconds
 
-// MQTT Connection Options
+// MQTT connection options
 const options = {
   host: "3.110.40.48",
   port: 1883,
@@ -20,29 +22,23 @@ const options = {
 };
 
 let client;
-const lastProcessedTime = {};
+const lastProcessedTime = {}; // { "<product_id>_<userName>": Date }
 
 const setupMqttClient = (io) => {
   client = mqtt.connect(options);
 
-  // Connection event handlers
   client.on("connect", () => {
     console.log("Connected to MQTT broker");
 
+    // Subscribe to topics with QoS=1
     client.subscribe("ebhoomPub", { qos: 1 }, (err) => {
-      if (err) {
-        console.error("Subscription error (ebhoomPub):", err);
-      } else {
-        console.log("Subscribed to topic: ebhoomPub (QoS 1)");
-      }
+      if (err) console.error("Subscription error (ebhoomPub):", err);
+      else console.log("Subscribed to ebhoomPub (QoS 1)");
     });
 
     client.subscribe("ebhoomSub", { qos: 1 }, (err) => {
-      if (err) {
-        console.error("Subscription error (ebhoomSub):", err);
-      } else {
-        console.log("Subscribed to topic: ebhoomSub (QoS 1)");
-      }
+      if (err) console.error("Subscription error (ebhoomSub):", err);
+      else console.log("Subscribed to ebhoomSub (QoS 1)");
     });
   });
 
@@ -58,7 +54,6 @@ const setupMqttClient = (io) => {
     console.log("Attempting to reconnect to MQTT broker");
   });
 
-  // Main message handler
   client.on("message", async (topic, message) => {
     try {
       const messageString = message.toString();
@@ -68,19 +63,18 @@ const setupMqttClient = (io) => {
       try {
         data = JSON.parse(messageString);
         data = Array.isArray(data) ? data : [data];
-      } catch (parseError) {
-        console.log("Message is not JSON, treating as plain string.");
+      } catch (_) {
+        console.log("Message not JSON; treating as plain string.");
         data = [{ message: messageString }];
       }
 
-      // Handle ebhoomPub messages (acknowledgments and other data)
+      // -------- Handle ebhoomPub (sensor/tank & pump ACK) --------
       if (topic === "ebhoomPub") {
         for (const item of data) {
-          // PUMP ACKNOWLEDGMENT HANDLING
+          // 1) Pump acknowledgment (device → backend)
           if (item.product_id && Array.isArray(item.pumps)) {
             console.log("Processing pump acknowledgment:", item);
 
-            // Update state in database for each pump
             for (const pump of item.pumps) {
               try {
                 await pumpStateController.updatePumpState(
@@ -88,87 +82,76 @@ const setupMqttClient = (io) => {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
-              } catch (error) {
-                console.error("Error saving pump state:", error);
+              } catch (err) {
+                console.error("Error saving pump state:", err);
               }
             }
 
-            // Format the acknowledgment for frontend
             const ackData = {
               product_id: item.product_id,
               pumps: item.pumps,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
             };
-
-            // Send to frontend via Socket.IO
             io.to(item.product_id.toString()).emit("pumpAck", ackData);
-            // Also broadcast state update to all devices
-            io.to(item.product_id.toString()).emit("pumpStateUpdate", ackData);
-
+            io.to(item.product_id.toString()).emit(
+              "pumpStateUpdate",
+              ackData
+            );
             console.log("Pump acknowledgment forwarded:", ackData);
             continue;
           }
 
-          // SENSOR AND TANK DATA HANDLING
-          if (item.product_id && item.userName && Array.isArray(item.stacks)) {
+          // 2) Sensor / Tank data (device → backend)
+          if (
+            item.product_id &&
+            item.userName &&
+            Array.isArray(item.stacks) &&
+            item.stacks.length > 0
+          ) {
             const { product_id, userName, stacks } = item;
-
-            if (
-              !product_id ||
-              !userName ||
-              !Array.isArray(stacks) ||
-              stacks.length === 0
-            ) {
-              console.error(
-                "Invalid data: Missing product_id, userName, or stack data."
-              );
-              continue;
-            }
-
             const currentTime = moment().tz("Asia/Kolkata").toDate();
             const timeKey = `${product_id}_${userName}`;
 
-            // Deduplication check
+            // Deduplication: ignore if same user sends < 1 second apart
             if (lastProcessedTime[timeKey]) {
               const lastTime = lastProcessedTime[timeKey];
-              const timeDifference = currentTime - lastTime;
-              const timeThreshold = 1000; // 1 second threshold
-              if (timeDifference < timeThreshold) {
+              if (currentTime - lastTime < 1000) {
                 console.log("Ignoring duplicate message:", item);
                 continue;
               }
             }
             lastProcessedTime[timeKey] = currentTime;
 
+            // Find user details by productID + userName
             const userDetails = await userdb.findOne({
               productID: product_id,
               userName,
-              stackName: {
-                $elemMatch: {
-                  name: { $in: stacks.map((stack) => stack.stackName) },
-                },
-              },
             });
-
             if (!userDetails) {
               console.error(
-                `No matching user found for product_id: ${product_id}, userName: ${userName}`
+                `No matching user for product_id: ${product_id}, userName: ${userName}`
               );
               continue;
             }
 
-            // Partition stacks into sensor data and tank data
-            const sensorStacks = stacks.filter(
-              (stack) => !stack.hasOwnProperty("TankName")
-            );
-            const tankStacks = stacks.filter((stack) =>
-              stack.hasOwnProperty("TankName")
-            );
+            // Split stacks into sensor vs. tank by “level”/“percentage” presence
+            const sensorStacks = [];
+            const tankStacks = [];
+            for (const s of stacks) {
+              if (
+                Object.prototype.hasOwnProperty.call(s, "level") ||
+                Object.prototype.hasOwnProperty.call(s, "percentage")
+              ) {
+                tankStacks.push(s);
+              } else {
+                sensorStacks.push(s);
+              }
+            }
 
-            // Process sensor data
+            // --- Handle SENSOR data (ph, COD, BOD, etc.) ---
             if (sensorStacks.length > 0) {
-              let sensorPayload = {
+              const sensorPayload = {
                 product_id,
                 userName: userDetails.userName,
                 email: userDetails.email,
@@ -179,34 +162,44 @@ const setupMqttClient = (io) => {
                   stackName: stack.stackName,
                   ...Object.fromEntries(
                     Object.entries(stack).filter(
-                      ([key, value]) => key !== "stackName" && value !== "N/A"
+                      ([k, v]) => k !== "stackName" && v !== "N/A"
                     )
                   ),
                 })),
-                date: moment().format("DD/MM/YYYY"),
-                time: moment().format("HH:mm"),
+                date: moment(currentTime).format("DD/MM/YYYY"),
+                time: moment(currentTime).format("HH:mm"),
                 timestamp: new Date(),
               };
 
-            console.log("Sending sensor payload:", sensorPayload);
+              console.log("Sending sensor payload:", sensorPayload);
               try {
+                // Save sensor data to backend
                 await axios.post(
                   "https://api.ocems.ebhoom.com/api/handleSaveMessage",
                   sensorPayload
                 );
+                // Emit to any client in the product_id room
                 io.to(product_id.toString()).emit("data", sensorPayload);
-               /*  console.log("Sensor data successfully sent:", sensorPayload); */
-              } catch (error) {
+              } catch (err) {
                 console.error(
                   "Error sending sensor data:",
-                  error.response ? error.response.data : error.message
+                  err.response ? err.response.data : err.message
                 );
               }
             }
 
-            // Process tank data
-
+            // --- Handle TANK data (level & percentage) ---
             if (tankStacks.length > 0) {
+              // Build stackData in the exact shape of StackSchema
+              const stackDataArray = tankStacks.map((t) => ({
+                stackName: t.stackName,        // required
+                stationType: t.stationType,
+                usdsid: t.usdsid,
+                TankName: t.TankName,
+                level: t.level,
+                percentage: t.percentage,
+              }));
+
               const tankPayload = {
                 product_id,
                 userName: userDetails.userName,
@@ -214,96 +207,71 @@ const setupMqttClient = (io) => {
                 mobileNumber: userDetails.mobileNumber,
                 companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                stacks: [{ stackName: "dummy", value: 0 }],
-                tankData: tankStacks.map((tank) => ({
-                  stackName: tank.stackName,
-                  dwlrid: tank.dwlrid,
-                  tankName: tank.TankName,
-                  depth: tank.depth,
-                })),
-                date: moment().format("DD/MM/YYYY"),
-                time: moment().format("HH:mm"),
+                stackData: stackDataArray,
+
+                date: moment(currentTime).format("DD/MM/YYYY"),
+                time: moment(currentTime).format("HH:mm"),
                 timestamp: new Date(),
               };
 
               console.log("🚀 Sending tank payload:", tankPayload);
-
               try {
-                // Save to DB
+                // Save tank data to backend
                 await axios.post(
                   "https://api.ocems.ebhoom.com/api/handleSaveMessage",
                   tankPayload
                 );
-
-                // Emit to the correct room (joinRoom must be called in frontend)
-                const roomName = userDetails.userName;
-                console.log(`🟢 Emitting to room ${roomName}:`, tankPayload);
-
-                io.to(roomName).emit("data", tankPayload);
-
+                // Emit to room named by userName (so only interested clients see it)
+                io.to(userDetails.userName).emit("data", tankPayload);
                 console.log("✅ Tank data emitted successfully.");
-              } catch (error) {
+              } catch (err) {
                 console.error(
                   "❌ Error sending tank data:",
-                  error.response ? error.response.data : error.message
+                  err.response ? err.response.data : err.message
                 );
               }
             }
+
             continue;
           }
 
-          console.log("Unrecognized message format on ebhoomPub:", item);
+          console.log("Unrecognized ebhoomPub format:", item);
         }
-        return;
+
+        return; // done with ebhoomPub batch
       }
 
-      // Handle ebhoomSub messages (pump commands and feedback)
+      // -------- Handle ebhoomSub (pump control & feedback) --------
       if (topic === "ebhoomSub") {
         for (const feedback of data) {
-          // PUMP CONTROL FEEDBACK HANDLING
+          // 1) Pump‐control feedback from device
           if (
             feedback.product_id &&
             feedback.userName &&
             Array.isArray(feedback.pumps)
           ) {
             const { product_id, userName, pumps } = feedback;
-
-            if (
-              !product_id ||
-              !userName ||
-              !Array.isArray(pumps) ||
-              pumps.length === 0
-            ) {
-              console.error(
-                "Invalid pump feedback data: Missing product_id, userName, or pumps."
-              );
-              continue;
-            }
+            console.log("Processing pump feedback:", feedback);
 
             const userDetails = await userdb.findOne({
               productID: product_id,
               userName,
               pumpDetails: {
-                $elemMatch: {
-                  pumpId: { $in: pumps.map((pump) => pump.pumpId) },
-                },
+                $elemMatch: { pumpId: { $in: pumps.map((p) => p.pumpId) } },
               },
             });
-
             if (!userDetails) {
               console.error(
-                `No matching user found for product_id: ${product_id}, userName: ${userName}`
+                `No matching user for pump feedback (product_id: ${product_id}, userName: ${userName})`
               );
               continue;
             }
 
             const currentTime = moment().tz("Asia/Kolkata").toDate();
-
             for (const pump of pumps) {
               const { pumpId, pumpName, status } = pump;
-
               if (!pumpId || !pumpName || typeof status === "undefined") {
-                console.error("Invalid pump data:", pump);
+                console.error("Invalid pump feedback:", pump);
                 continue;
               }
 
@@ -314,11 +282,7 @@ const setupMqttClient = (io) => {
                 mobileNumber: userDetails.mobileNumber,
                 companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                pumpData: {
-                  pumpId,
-                  pumpName,
-                  status,
-                },
+                pumpData: { pumpId, pumpName, status },
                 date: moment(currentTime).format("DD/MM/YYYY"),
                 time: moment(currentTime).format("HH:mm"),
                 timestamp: currentTime,
@@ -330,72 +294,64 @@ const setupMqttClient = (io) => {
                   payload
                 );
                 io.to(product_id.toString()).emit("pumpFeedback", payload);
-                console.log(
-                  "Pump feedback data successfully sent and saved:",
-                  payload
-                );
-              } catch (error) {
+                console.log("Pump feedback saved & emitted:", payload);
+              } catch (err) {
                 console.error(
                   "Error sending pump feedback data:",
-                  error.response ? error.response.data : error.message
+                  err.response ? err.response.data : err.message
                 );
               }
             }
+
             continue;
           }
 
-          // PUMP CONTROL COMMAND HANDLING (from frontend)
+          // 2) Pump‐control command from frontend → forward to device
           if (feedback.product_id && Array.isArray(feedback.pumps)) {
-            console.log("Pump control command received:", feedback);
+            console.log(
+              "Pump control command received (forwarding):",
+              feedback
+            );
+            sendPumpControlMessage(feedback.product_id, feedback.pumps);
             continue;
           }
 
-          console.log("Unrecognized message format on ebhoomSub:", feedback);
+          console.log("Unrecognized ebhoomSub format:", feedback);
         }
+
         return;
       }
-    } catch (error) {
-      console.error("Error handling MQTT message:", error);
+    } catch (err) {
+      console.error("Error handling MQTT message:", err);
     }
   });
 
-  // Socket.IO event handlers
+  // -------- Socket.IO handlers --------
   io.on("connection", (socket) => {
-    console.log("New client connected");
-    console.log("Socket connected");
+    console.log("New client connected:", socket.id);
 
-    // 🆕 JOIN ROOM FOR TANK DATA
-    socket.on("joinRoom", (roomName) => {
-      socket.join(roomName);
-      console.log(`🚪 Client joined room: ${roomName}`);
-    });
-
+    // Clients must join a “room” to receive tank updates
     socket.on("joinRoom", (payload) => {
-      // allow either socket.emit('joinRoom', '27') or socket.emit('joinRoom', { product_id: '27' })
       const product_id =
         typeof payload === "string" ? payload : payload && payload.product_id;
-
       if (!product_id) {
         console.error("Invalid joinRoom payload:", payload);
         return;
       }
-
-      const room = product_id.toString();
-      socket.join(room);
-      console.log(`Socket ${socket.id} joined room ${room}`);
+      socket.join(product_id.toString());
+      console.log(`Socket ${socket.id} joined room ${product_id}`);
     });
 
+    // Frontend can request to control pumps:
     socket.on("controlPump", ({ product_id, pumps }) => {
       console.log(
-        `Control Pump Request Received for product ${product_id}:`,
+        `Control Pump Request for product ${product_id}:`,
         pumps
       );
-
       if (!product_id || !Array.isArray(pumps) || pumps.length === 0) {
         console.error("Invalid pump control request");
         return;
       }
-
       sendPumpControlMessage(product_id, pumps);
     });
   });
@@ -411,7 +367,7 @@ const sendPumpControlMessage = (product_id, pumps) => {
       status: pump.status === "ON" ? 1 : 0,
     })),
     timestamp: new Date().toISOString(),
-    messageId, // Add unique ID for tracking
+    messageId,
   };
 
   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
@@ -427,8 +383,8 @@ const initializeMqttClients = async (io) => {
   try {
     setupMqttClient(io);
     console.log("All MQTT clients initialized.");
-  } catch (error) {
-    console.error("Error initializing MQTT clients:", error);
+  } catch (err) {
+    console.error("Error initializing MQTT clients:", err);
   }
 };
 

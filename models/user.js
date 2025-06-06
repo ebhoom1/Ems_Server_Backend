@@ -122,11 +122,11 @@ const userSchema = new mongoose.Schema({
     ref: "Users",
     default: null,
   },
-  technician: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Users",
-    default: null,
-  },
+ technicians: [{
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Users",
+  default: [],
+}],
   isTerritorialManager: { type: Boolean, default: false },
   isTechnician: { type: Boolean, default: false },
   isOperator: { type: Boolean, default: false },

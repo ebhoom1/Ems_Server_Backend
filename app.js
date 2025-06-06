@@ -166,7 +166,7 @@ app.use('/api', faultRoutes)
 app.use('/api',electricalReportRoutes)
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
-app.use('/api', dailyLogRoutes);
+app.use('/api/dailyLog', dailyLogRoutes);
 app.use('/api', svgUploadRoutes);
 app.use('/api', attendanceRoutes);
 app.use('/api', pumpStateRoutes);

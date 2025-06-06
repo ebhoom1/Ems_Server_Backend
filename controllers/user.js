@@ -90,7 +90,7 @@ const register = async (req, res) => {
       state,
       address,
       territorialManager,
-      technician: technicians,
+     technicians: technicians || [],
       isTerritorialManager,
       isTechnician,
       isOperator: userType === "operator" ? true : isOperator,
@@ -553,14 +553,19 @@ const getAllUsers = async (req, res) => {
 };
 
 // edit user
+// edit user
 const editUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const updateFields = req.body;
+    const updateFields = { ...req.body };
 
-    // Use findByIdAndUpdate with lean for faster updates
+    // Use $set so that the incoming `technicians: [...]` array replaces the existing array
     const updatedUser = await userdb
-      .findByIdAndUpdate(userId, updateFields, { new: true, lean: true })
+      .findByIdAndUpdate(
+        userId,
+        { $set: updateFields },
+        { new: true, lean: true }
+      )
       .exec();
 
     if (!updatedUser) {
@@ -575,9 +580,7 @@ const editUser = async (req, res) => {
     });
   } catch (error) {
     console.error(`Error updating user: ${error.message}`);
-    return res
-      .status(500)
-      .json({ status: 500, error: "Internal Server Error" });
+    return res.status(500).json({ status: 500, error: "Internal Server Error" });
   }
 };
 
