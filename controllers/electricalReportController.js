@@ -1,4 +1,3 @@
-// controllers/electricalReportController.js
 const ElectricalReport = require('../models/ElectricalReport');
 
 exports.createReport = async (req, res) => {
@@ -7,51 +6,46 @@ exports.createReport = async (req, res) => {
 
     // 1) equipmentId is required
     if (!equipmentId) {
-      return res.status(400).json({
-        success: false,
-        message: 'equipmentId is required'
-      });
+      return res.status(400).json({ success: false, message: 'equipmentId is required' });
     }
 
-    // 2) technician must be present (name at minimum)
-    if (!technician || !technician.name) {
-      return res.status(400).json({
-        success: false,
-        message: 'Technician details are required'
-      });
+    // 2) technician must be present (name + email at minimum)
+    if (!technician || !technician.name || !technician.email) {
+      return res.status(400).json({ success: false, message: 'Technician name & email are required' });
     }
 
-    // 3) `equipment` object is also required (to embed fields like name, model, etc.)
+    // 3) equipment object is required
     if (!equipment || !equipment.name) {
-      return res.status(400).json({
-        success: false,
-        message: 'Equipment details are required'
-      });
+      return res.status(400).json({ success: false, message: 'Equipment details are required' });
     }
 
-    // 4) `responses` must be a Map (or object) containing keys "1" through "8"
+    // 4) responses must be an object with keys "1"–"8"
     if (!responses || typeof responses !== 'object') {
-      return res.status(400).json({
-        success: false,
-        message: 'Responses are required'
-      });
+      return res.status(400).json({ success: false, message: 'Responses are required' });
     }
 
-    // Now build & save
+    // 5) Convert plain object into a Map so Mongoose can cast to Map<ResponseSchema>
+    const responsesMap = new Map(
+      Object.entries(responses).map(([key, value]) => [key, value])
+    );
+
+    // 6) Build & save the report
     const report = new ElectricalReport({
       equipmentId,
       technician,
       equipment,
-      responses
+      responses: responsesMap
     });
 
     await report.save();
-    res.status(201).json({ success: true, report });
+    return res.status(201).json({ success: true, report });
+
   } catch (err) {
-    console.error('Error creating report:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('🔴 Error creating ElectricalReport:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
 
 exports.getAllReports = async (req, res) => {
   try {

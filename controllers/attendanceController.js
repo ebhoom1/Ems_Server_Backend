@@ -45,7 +45,7 @@ const markAttendance = async (req, res) => {
     }
   };
 
-const markCheckOut = async (req, res) => {
+  const markCheckOut = async (req, res) => {
     try {
       const { username, checkOutTime, userRole } = req.body;
   
@@ -53,7 +53,6 @@ const markCheckOut = async (req, res) => {
         return res.status(400).json({ message: "Missing required fields: username, userRole, or checkOutTime" });
       }
   
-      // Ensure the latest un-checked-out record is for the correct role
       const latestAttendance = await Attendance.findOne({
         username,
         userRole,
@@ -65,6 +64,12 @@ const markCheckOut = async (req, res) => {
       }
   
       latestAttendance.checkOutTime = checkOutTime;
+      latestAttendance.isCheckedIn = false; // ✅ This line ensures it's marked as not checked in
+      console.log("Updating attendance:", {
+        checkOutTime,
+        isCheckedIn: latestAttendance.isCheckedIn
+      });
+      
       await latestAttendance.save();
   
       res.status(200).json({ message: "Check-out successful", data: latestAttendance });
@@ -74,23 +79,27 @@ const markCheckOut = async (req, res) => {
     }
   };
   
+  
 
   const getCheckInStatus = async (req, res) => {
     const { username, userRole } = req.params;
   
     try {
-      const active = await Attendance.findOne({
+      // Find the latest attendance entry for the user and role
+      const latest = await Attendance.findOne({
         username,
         userRole,
-        checkOutTime: { $exists: false }
-      });
+      }).sort({ checkInTime: -1 });
   
-      res.status(200).json({ isCheckedIn: !!active });
+      const isCheckedIn = latest?.isCheckedIn ?? false;
+  
+      res.status(200).json({ isCheckedIn });
     } catch (err) {
       console.error("Status check error:", err);
       res.status(500).json({ message: "Error fetching check-in status" });
     }
   };
+  
 
 const getAllAttendances = async (req, res) => {
   try {

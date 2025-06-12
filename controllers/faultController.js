@@ -111,36 +111,38 @@ exports.getFaultsByUsername = async (req, res) => {
 exports.getFaultsByAdminType = async (req, res) => {
   try {
     const { adminType } = req.params;
-    
+
     if (!adminType) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Please provide an adminType" 
+        message: "Please provide an adminType"
       });
     }
-    
+
     let query = {};
-    
+
     if (adminType !== 'EBHOOM') {
-      const users = await User.find(
-        { adminType, userType: 'user' },
+      // Find all users AND operators belonging to this adminType
+      const relevantUsers = await User.find(
+        { adminType, userType: { $in: ['user', 'operator'] } }, // <-- MODIFIED THIS LINE
         { userName: 1, _id: 0 }
       ).lean();
 
-      if (!users || users.length === 0) {
+      if (!relevantUsers || relevantUsers.length === 0) {
         return res.status(200).json({
           success: true,
-          message: "No users found for this adminType",
+          message: "No relevant users or operators found for this adminType",
           faults: []
         });
       }
 
-      query.userName = { $in: users.map(u => u.userName) };
+      // Use the userNames of both users and operators to query for faults
+      query.userName = { $in: relevantUsers.map(u => u.userName) };
     }
-    
+
     const faults = await Fault.find(query)
       .sort({ reportedDate: -1 });
-    
+
     res.status(200).json({
       success: true,
       message: `Faults fetched for adminType: ${adminType}`,
@@ -148,6 +150,7 @@ exports.getFaultsByAdminType = async (req, res) => {
       faults
     });
   } catch (error) {
+    // Assuming you have a handleError function defined elsewhere
     handleError(res, error, 'Error fetching faults by adminType');
   }
 };

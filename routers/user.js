@@ -31,6 +31,7 @@ const {
   getAllOperators
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
+const User = require("../models/user");
 
 const router = express.Router();
 
@@ -74,4 +75,20 @@ router.delete("/delete-operator/:id",deleteOperator);
 
 router.get("/get-sites-for-user/:userId/:role", getSitesForUser);
 router.get("/get-users-by-creator/:creatorId", getAllUsersByCreator);
+
+router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
+  try {
+    const companies = await User.find({ operators: req.params.operatorId });
+
+    if (companies.length === 0) {
+      return res.status(404).json({ message: "No companies found for this operator ID." });
+    }
+
+    res.json({ companies });
+  } catch (err) {
+    console.error("Error in /api/get-companies-by-operator:", err); // Log the actual error
+    res.status(500).json({ message: "Server error: " + err.message });
+  }
+});
+
 module.exports = router;

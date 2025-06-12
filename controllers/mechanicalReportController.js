@@ -1,4 +1,3 @@
-// controllers/mechanicalReportController.js
 const MechanicalReport = require('../models/MechanicalReport');
 
 exports.addMechanicalReport = async (req, res) => {
@@ -6,25 +5,27 @@ exports.addMechanicalReport = async (req, res) => {
   console.log('--- form fields:', req.body);
 
   try {
-    // parse technician safely
-    let technician = null;
-    if (req.body.technician) {
+    // parse territorialManager safely
+    let territorialManager = null;
+    if (req.body.territorialManager) {
       try {
-        technician = JSON.parse(req.body.technician);
+        territorialManager = JSON.parse(req.body.territorialManager);
       } catch (jsonErr) {
-        console.error('❌ Technician JSON parse failed:', req.body.technician, jsonErr);
-        return res.status(400).json({ success: false, message: 'Invalid technician JSON' });
+        console.error('❌ Manager JSON parse failed:', req.body.territorialManager, jsonErr);
+        return res.status(400).json({ success: false, message: 'Invalid territorialManager JSON' });
       }
+    } else {
+      return res.status(400).json({ success: false, message: 'territorialManager is required' });
     }
 
-    // parse columns/entries safely
+    // parse columns/entries
     const columns = req.body.columns ? JSON.parse(req.body.columns) : [];
     const entries = req.body.entries ? JSON.parse(req.body.entries) : [];
 
     // build photo URLs
     const photoUrls = (req.files || []).map(file => file.location);
 
-    // transform entries
+    // transform entries only if working
     let transformedEntries = [];
     if (req.body.isWorking === 'yes' && entries.length) {
       transformedEntries = entries.map(entry => ({
@@ -33,7 +34,7 @@ exports.addMechanicalReport = async (req, res) => {
         description: entry.description,
         checks: Array.isArray(entry.checks)
           ? entry.checks.map((val, idx) => ({
-              column: columns[idx] || columns[0] || '',
+              column: columns[idx] || '',
               value: val
             }))
           : [],
@@ -43,24 +44,23 @@ exports.addMechanicalReport = async (req, res) => {
 
     // create and save the report
     const report = new MechanicalReport({
-      equipmentId: req.body.equipmentId,
-      equipmentName: req.body.equipmentName,
-      userName: req.body.userName,
-      capacity: req.body.capacity,
+      equipmentId:        req.body.equipmentId,
+      equipmentName:      req.body.equipmentName,
+      userName:           req.body.userName,
+      capacity:           req.body.capacity,
       columns,
-      technician,
-      entries: transformedEntries,
-      timestamp: req.body.timestamp,
-      isWorking: req.body.isWorking,
-      comments: req.body.comments,
-      photos: photoUrls
+      territorialManager,
+      entries:            transformedEntries,
+      timestamp:          req.body.timestamp,
+      isWorking:          req.body.isWorking,
+      comments:           req.body.comments,
+      photos:             photoUrls
     });
 
     await report.save();
     return res.json({ success: true, report });
 
   } catch (err) {
-    // Print the full error stack so you know exactly what failed:
     console.error('🔴 Error in addMechanicalReport:', err.stack || err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
