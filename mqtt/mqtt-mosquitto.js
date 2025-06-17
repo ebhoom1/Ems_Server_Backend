@@ -1,14 +1,13 @@
-// mqttClient.js
-
 const mqtt = require("mqtt");
 const axios = require("axios");
 const moment = require("moment-timezone");
-const userdb = require("../models/user");          // adjust path if necessary
-const IotData = require("../models/iotData");       // our updated IoT model
+const userdb = require("../models/user");
+const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
+
 const RETRY_DELAY = 5000; // 5 seconds
 
-// MQTT connection options
+// MQTT Connection Options
 const options = {
   host: "3.110.40.48",
   port: 1883,
@@ -22,15 +21,22 @@ const options = {
 };
 
 let client;
-const lastProcessedTime = {}; // { "<product_id>_<userName>": Date }
+
+// Track every command we send so we can drop its echo
+const sentCommandIds = new Set();
+const lastProcessedTime = {};
+
+function debugLog(...args) {
+  console.log("🛠️ DEBUG:", ...args);
+}
 
 const setupMqttClient = (io) => {
   client = mqtt.connect(options);
 
   client.on("connect", () => {
+    debugLog("Connected event fired");
     console.log("Connected to MQTT broker");
 
-    // Subscribe to topics with QoS=1
     client.subscribe("ebhoomPub", { qos: 1 }, (err) => {
       if (err) console.error("Subscription error (ebhoomPub):", err);
       else console.log("Subscribed to ebhoomPub (QoS 1)");
@@ -54,27 +60,61 @@ const setupMqttClient = (io) => {
     console.log("Attempting to reconnect to MQTT broker");
   });
 
-  client.on("message", async (topic, message) => {
+  client.on("message", async (topic, messageBuffer) => {
     try {
-      const messageString = message.toString();
-      console.log(`\nReceived message on ${topic}:`, messageString);
+      const messageString = messageBuffer.toString();
+      console.log(`\n--- Received on ${topic}:`, messageString);
 
+      // Parse JSON into an array
       let data;
       try {
         data = JSON.parse(messageString);
         data = Array.isArray(data) ? data : [data];
-      } catch (_) {
-        console.log("Message not JSON; treating as plain string.");
-        data = [{ message: messageString }];
+      } catch (e) {
+        console.log("Message not JSON, wrapping as plain string");
+        data = [{ raw: messageString }];
       }
 
-      // -------- Handle ebhoomPub (sensor/tank & pump ACK) --------
+      // DEBUG: show incoming messageIds
+      if (topic === "ebhoomSub") {
+        debugLog("Incoming messageIds:", data.map(d => d.messageId));
+        debugLog("Current sentCommandIds:", Array.from(sentCommandIds));
+      }
+
+      // === ECHO FILTER ===
+      if (topic === "ebhoomSub") {
+        data = data.filter(item => {
+          if (item.messageId && sentCommandIds.has(item.messageId)) {
+            debugLog("Dropping our own echo:", item.messageId);
+            sentCommandIds.delete(item.messageId);
+            return false;
+          }
+          return true;
+        });
+        debugLog("After echo-filter, messageIds:", data.map(d => d.messageId));
+        if (data.length === 0) {
+          debugLog("No items left after echo-filter; returning");
+          return;
+        }
+
+        // === GENUINE FEEDBACK FILTER ===
+        data = data.filter(item =>
+          typeof item.userName === "string" && Array.isArray(item.pumps)
+        );
+        debugLog("After feedback-filter, messageIds:", data.map(d => d.messageId));
+        if (data.length === 0) {
+          debugLog("No feedback items left; returning");
+          return;
+        }
+      }
+
+      // === ebhoomPub HANDLING ===
       if (topic === "ebhoomPub") {
         for (const item of data) {
-          // 1) Pump acknowledgment (device → backend)
+          debugLog("ebhoomPub item:", item);
+          // Pump acknowledgments
           if (item.product_id && Array.isArray(item.pumps)) {
             console.log("Processing pump acknowledgment:", item);
-
             for (const pump of item.pumps) {
               try {
                 await pumpStateController.updatePumpState(
@@ -86,7 +126,6 @@ const setupMqttClient = (io) => {
                 console.error("Error saving pump state:", err);
               }
             }
-
             const ackData = {
               product_id: item.product_id,
               pumps: item.pumps,
@@ -94,265 +133,174 @@ const setupMqttClient = (io) => {
               timestamp: item.timestamp || new Date().toISOString(),
             };
             io.to(item.product_id.toString()).emit("pumpAck", ackData);
-            io.to(item.product_id.toString()).emit(
-              "pumpStateUpdate",
-              ackData
-            );
+            io.to(item.product_id.toString()).emit("pumpStateUpdate", ackData);
             console.log("Pump acknowledgment forwarded:", ackData);
             continue;
           }
 
-          // 2) Sensor / Tank data (device → backend)
-          if (
-            item.product_id &&
-            item.userName &&
-            Array.isArray(item.stacks) &&
-            item.stacks.length > 0
-          ) {
-            const { product_id, userName, stacks } = item;
-            const currentTime = moment().tz("Asia/Kolkata").toDate();
-            const timeKey = `${product_id}_${userName}`;
-
-            // Deduplication: ignore if same user sends < 1 second apart
-            if (lastProcessedTime[timeKey]) {
-              const lastTime = lastProcessedTime[timeKey];
-              if (currentTime - lastTime < 1000) {
-                console.log("Ignoring duplicate message:", item);
-                continue;
-              }
+          // Sensor & Tank data
+          if (item.product_id && item.userName && Array.isArray(item.stacks)) {
+            console.log("Processing sensor/tank data:", item);
+            const now = moment().tz("Asia/Kolkata").toDate();
+            const key = `${item.product_id}_${item.userName}`;
+            if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
+              console.log("Throttling duplicate sensor/tank message:", item);
+              continue;
             }
-            lastProcessedTime[timeKey] = currentTime;
+            lastProcessedTime[key] = now;
 
-            // Find user details by productID + userName
             const userDetails = await userdb.findOne({
-              productID: product_id,
-              userName,
+              productID: item.product_id,
+              userName: item.userName,
+              stackName: { $elemMatch: { name: { $in: item.stacks.map(s => s.stackName) } } },
             });
             if (!userDetails) {
-              console.error(
-                `No matching user for product_id: ${product_id}, userName: ${userName}`
-              );
+              console.error("No user for sensor/tank:", item.product_id, item.userName);
               continue;
             }
 
-            // Split stacks into sensor vs. tank by “level”/“percentage” presence
-            const sensorStacks = [];
-            const tankStacks = [];
-            for (const s of stacks) {
-              if (
-                Object.prototype.hasOwnProperty.call(s, "level") ||
-                Object.prototype.hasOwnProperty.call(s, "percentage")
-              ) {
-                tankStacks.push(s);
-              } else {
-                sensorStacks.push(s);
-              }
-            }
+            // Partition...
+            const sensorStacks = item.stacks.filter(s => !s.TankName);
+            const tankStacks = item.stacks.filter(s => !!s.TankName);
 
-            // --- Handle SENSOR data (ph, COD, BOD, etc.) ---
-            if (sensorStacks.length > 0) {
-              const sensorPayload = {
-                product_id,
+            if (sensorStacks.length) {
+              const payload = {
+                product_id: item.product_id,
                 userName: userDetails.userName,
                 email: userDetails.email,
                 mobileNumber: userDetails.mobileNumber,
                 companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                stacks: sensorStacks.map((stack) => ({
-                  stackName: stack.stackName,
+                stacks: sensorStacks.map(s => ({
+                  stackName: s.stackName,
                   ...Object.fromEntries(
-                    Object.entries(stack).filter(
-                      ([k, v]) => k !== "stackName" && v !== "N/A"
-                    )
-                  ),
+                    Object.entries(s).filter(([k, v]) => k !== "stackName" && v !== "N/A")
+                  )
                 })),
-                date: moment(currentTime).format("DD/MM/YYYY"),
-                time: moment(currentTime).format("HH:mm"),
-                timestamp: new Date(),
+                date: moment().format("DD/MM/YYYY"),
+                time: moment().format("HH:mm"),
+                timestamp: now,
               };
-
-              console.log("Sending sensor payload:", sensorPayload);
+              console.log("Sending sensor payload:", payload);
               try {
-                // Save sensor data to backend
-                await axios.post(
-                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                  sensorPayload
-                );
-                // Emit to any client in the product_id room
-                io.to(product_id.toString()).emit("data", sensorPayload);
+                await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
+                io.to(item.product_id.toString()).emit("data", payload);
               } catch (err) {
-                console.error(
-                  "Error sending sensor data:",
-                  err.response ? err.response.data : err.message
-                );
+                console.error("Error sending sensor payload:", err.response?.data||err.message);
               }
             }
 
-            // --- Handle TANK data (level & percentage) ---
-            if (tankStacks.length > 0) {
-              // Build stackData in the exact shape of StackSchema
-              const stackDataArray = tankStacks.map((t) => ({
-                stackName: t.stackName,        // required
-                stationType: t.stationType,
-                usdsid: t.usdsid,
-                TankName: t.TankName,
-                level: t.level,
-                percentage: t.percentage,
-              }));
-
-              const tankPayload = {
-                product_id,
+            if (tankStacks.length) {
+              const payload = {
+                product_id: item.product_id,
                 userName: userDetails.userName,
                 email: userDetails.email,
                 mobileNumber: userDetails.mobileNumber,
                 companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                stackData: stackDataArray,
-
-                date: moment(currentTime).format("DD/MM/YYYY"),
-                time: moment(currentTime).format("HH:mm"),
-                timestamp: new Date(),
+                stacks: [{ stackName: "dummy", value: 0 }],
+                tankData: tankStacks.map(t => ({
+                  stackName: t.stackName,
+                  dwlrid: t.dwlrid,
+                  tankName: t.TankName,
+                  depth: t.depth,
+                })),
+                date: moment().format("DD/MM/YYYY"),
+                time: moment().format("HH:mm"),
+                timestamp: now,
               };
-
-              console.log("🚀 Sending tank payload:", tankPayload);
+              console.log("Sending tank payload:", payload);
               try {
-                // Save tank data to backend
-                await axios.post(
-                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                  tankPayload
-                );
-                // Emit to room named by userName (so only interested clients see it)
-                io.to(userDetails.userName).emit("data", tankPayload);
-                console.log("✅ Tank data emitted successfully.");
+                await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
+                io.to(userDetails.userName).emit("data", payload);
+                console.log("Tank data emitted");
               } catch (err) {
-                console.error(
-                  "❌ Error sending tank data:",
-                  err.response ? err.response.data : err.message
-                );
+                console.error("Error sending tank payload:", err.response?.data||err.message);
               }
             }
-
             continue;
           }
 
           console.log("Unrecognized ebhoomPub format:", item);
         }
-
-        return; // done with ebhoomPub batch
+        return;
       }
 
-      // -------- Handle ebhoomSub (pump control & feedback) --------
+      // === ebhoomSub HANDLING ===
       if (topic === "ebhoomSub") {
         for (const feedback of data) {
-          // 1) Pump‐control feedback from device
+          debugLog("ebhoomSub feedback item:", feedback);
+
+          // Pump feedback
           if (
             feedback.product_id &&
             feedback.userName &&
             Array.isArray(feedback.pumps)
           ) {
-            const { product_id, userName, pumps } = feedback;
             console.log("Processing pump feedback:", feedback);
-
             const userDetails = await userdb.findOne({
-              productID: product_id,
-              userName,
-              pumpDetails: {
-                $elemMatch: { pumpId: { $in: pumps.map((p) => p.pumpId) } },
-              },
+              productID: feedback.product_id,
+              userName: feedback.userName,
+              pumpDetails: { $elemMatch: { pumpId: { $in: feedback.pumps.map(p => p.pumpId) } } }
             });
             if (!userDetails) {
-              console.error(
-                `No matching user for pump feedback (product_id: ${product_id}, userName: ${userName})`
-              );
+              console.error("No user for pump feedback:", feedback.product_id, feedback.userName);
               continue;
             }
 
-            const currentTime = moment().tz("Asia/Kolkata").toDate();
-            for (const pump of pumps) {
-              const { pumpId, pumpName, status } = pump;
+            const now = moment().tz("Asia/Kolkata").toDate();
+            for (const { pumpId, pumpName, status } of feedback.pumps) {
               if (!pumpId || !pumpName || typeof status === "undefined") {
-                console.error("Invalid pump feedback:", pump);
+                console.error("Invalid pump entry:", { pumpId, pumpName, status });
                 continue;
               }
-
               const payload = {
-                product_id,
+                product_id: feedback.product_id,
                 userName: userDetails.userName,
                 email: userDetails.email,
                 mobileNumber: userDetails.mobileNumber,
                 companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
                 pumpData: { pumpId, pumpName, status },
-                date: moment(currentTime).format("DD/MM/YYYY"),
-                time: moment(currentTime).format("HH:mm"),
-                timestamp: currentTime,
+                date: moment(now).format("DD/MM/YYYY"),
+                time: moment(now).format("HH:mm"),
+                timestamp: now,
               };
-
+              console.log("Forwarding pump feedback payload:", payload);
               try {
-                await axios.post(
-                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                  payload
-                );
-                io.to(product_id.toString()).emit("pumpFeedback", payload);
-                console.log("Pump feedback saved & emitted:", payload);
+                await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
+                io.to(feedback.product_id.toString()).emit("pumpFeedback", payload);
               } catch (err) {
-                console.error(
-                  "Error sending pump feedback data:",
-                  err.response ? err.response.data : err.message
-                );
+                console.error("Error saving pump feedback:", err.response?.data||err.message);
               }
             }
-
-            continue;
-          }
-
-          // 2) Pump‐control command from frontend → forward to device
-          if (feedback.product_id && Array.isArray(feedback.pumps)) {
-            console.log(
-              "Pump control command received (forwarding):",
-              feedback
-            );
-            sendPumpControlMessage(feedback.product_id, feedback.pumps);
             continue;
           }
 
           console.log("Unrecognized ebhoomSub format:", feedback);
         }
-
-        return;
       }
     } catch (err) {
-      console.error("Error handling MQTT message:", err);
+      console.error("Error in message handler:", err);
     }
   });
 
-  // -------- Socket.IO handlers --------
+  // Socket.IO
   io.on("connection", (socket) => {
-    console.log("New client connected:", socket.id);
+    console.log("Socket connected:", socket.id);
 
-    // Clients must join a “room” to receive tank updates
-    socket.on("joinRoom", (payload) => {
-      const product_id =
-        typeof payload === "string" ? payload : payload && payload.product_id;
-      if (!product_id) {
-        console.error("Invalid joinRoom payload:", payload);
-        return;
-      }
-      socket.join(product_id.toString());
-      console.log(`Socket ${socket.id} joined room ${product_id}`);
+    socket.on("joinRoom", (room) => {
+      console.log("Socket joinRoom:", room);
+      socket.join(room);
     });
 
-    // Frontend can request to control pumps:
     socket.on("controlPump", ({ product_id, pumps }) => {
-      console.log(
-        `Control Pump Request for product ${product_id}:`,
-        pumps
-      );
-      if (!product_id || !Array.isArray(pumps) || pumps.length === 0) {
-        console.error("Invalid pump control request");
-        return;
-      }
+      console.log("Socket controlPump:", product_id, pumps);
       sendPumpControlMessage(product_id, pumps);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Socket disconnected:", socket.id);
     });
   });
 };
@@ -361,28 +309,27 @@ const sendPumpControlMessage = (product_id, pumps) => {
   const messageId = `cmd-${Date.now()}`;
   const message = {
     product_id,
-    pumps: pumps.map((pump) => ({
-      pumpId: pump.pumpId,
-      pumpName: pump.pumpName,
-      status: pump.status === "ON" ? 1 : 0,
+    pumps: pumps.map(p => ({
+      pumpId: p.pumpId,
+      pumpName: p.pumpName,
+      status: p.status === "ON" ? 1 : 0,
     })),
     timestamp: new Date().toISOString(),
     messageId,
   };
+  debugLog("sendPumpControlMessage → adding to sentCommandIds:", messageId);
+  sentCommandIds.add(messageId);
 
   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-    if (err) {
-      console.error("Error publishing pump control:", err);
-    } else {
-      console.log(`Pump command sent (ID: ${messageId}):`, message);
-    }
+    if (err) console.error("Error publishing pump control:", err);
+    else console.log("Pump command sent:", message);
   });
 };
 
 const initializeMqttClients = async (io) => {
   try {
     setupMqttClient(io);
-    console.log("All MQTT clients initialized.");
+    console.log("MQTT clients initialized");
   } catch (err) {
     console.error("Error initializing MQTT clients:", err);
   }

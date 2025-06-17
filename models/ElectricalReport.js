@@ -22,10 +22,10 @@ const ResponseSchema = new Schema({
   remarkStatus: { type: String, default: "" }
 }, { _id: false });
 
-// Technician sub‐schema — designation is now optional
+// Technician sub‐schema
 const TechnicianSchema = new Schema({
   name:        { type: String, required: true },
-  designation: { type: String, default: "" },     // <-- was `required: true`
+  designation: { type: String, default: "" },
   email:       { type: String, required: true }
 }, { _id: false });
 
@@ -37,9 +37,9 @@ const ElectricalReportSchema = new Schema({
   },
   technician:  { type: TechnicianSchema, required: true },
   equipment:   { type: EquipmentSchema,  required: true },
-  // Store responses as a Map of ResponseSchema
   responses:   { type: Map, of: ResponseSchema, required: true },
-  createdAt:   { type: Date, default: Date.now }
+  userName:    { type: String, required: true, index: true },    // ← new field
+  createdAt:   { type: Date,   default: Date.now }
 });
 
 module.exports = mongoose.model('ElectricalReport', ElectricalReportSchema);
