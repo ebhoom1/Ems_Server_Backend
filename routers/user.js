@@ -28,7 +28,8 @@ const {
   deleteOperator,
   getSitesForUser,
   getAllUsersByCreator,
-  getAllOperators
+  getAllOperators,
+  getCompaniesByTerritorialManager
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
 const User = require("../models/user");
@@ -90,5 +91,5 @@ router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
     res.status(500).json({ message: "Server error: " + err.message });
   }
 });
-
+router.get('/get-companies-by-territorialManager/:managerId', getCompaniesByTerritorialManager);
 module.exports = router;

@@ -968,6 +968,33 @@ const getAllOperators = async (req, res) => {
     return res.status(500).json({ status: 500, error: "Internal Server Error" });
   }
 };
+const getCompaniesByTerritorialManager = async (req, res) => {
+  try {
+    const { managerId } = req.params;
+
+    // Optional: Validate the managerId as a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(managerId)) {
+      return res.status(400).json({ success: false, message: 'Invalid Territorial Manager ID format.' });
+    }
+
+    // Find users (companies) where the 'territorialManager' field matches the managerId
+    // and the userType is 'user' (assuming 'user' type represents companies/clients)
+    const companies = await userdb.find({ // <--- CHANGE THIS LINE FROM 'User.find' TO 'userdb.find'
+      territorialManager: managerId,
+      userType: "user" // Adjust this if your 'company' userType is different
+    }).select('_id userName companyName'); // Select only necessary fields for the frontend dropdown
+
+    if (!companies || companies.length === 0) {
+      return res.status(404).json({ success: false, message: 'No companies found for this territorial manager.' });
+    }
+
+    res.status(200).json({ success: true, companies });
+
+  } catch (error) {
+    console.error("Error fetching companies by territorial manager:", error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
 
 module.exports = {
   register,
@@ -999,5 +1026,6 @@ module.exports = {
   deleteOperator,
   getSitesForUser,
   getAllUsersByCreator,
-  getAllOperators
+  getAllOperators,
+  getCompaniesByTerritorialManager
 };

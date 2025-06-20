@@ -1,11 +1,15 @@
 const ElectricalReport = require('../models/ElectricalReport');
+const Equipment       = require('../models/equipment'); 
+// controllers/electricalReport.js
+
 
 exports.createReport = async (req, res) => {
   try {
     const { equipmentId, technician, equipment, responses } = req.body;
-    const userName = req.user && req.user.userName    // assume populated by your auth middleware
-                  || req.body.userName;               // or fallback to body
+    const userName = (req.user && req.user.userName)    // from auth middleware
+                  || req.body.userName;               // or from body
 
+    // --- Validation ---
     if (!equipmentId) {
       return res.status(400).json({ success: false, message: 'equipmentId is required' });
     }
@@ -22,27 +26,37 @@ exports.createReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'userName is required' });
     }
 
-    // Convert to Map
+    // --- Convert plain object to Map for mongoose ---
     const responsesMap = new Map(
       Object.entries(responses).map(([key, value]) => [key, value])
     );
 
+    // --- Create the report, setting hasElectricalReport to true ---
     const report = new ElectricalReport({
       equipmentId,
       technician,
       equipment,
       responses: responsesMap,
-      userName
+      userName,
+      hasElectricalReport: true    // ← flag set here
     });
 
     await report.save();
-    return res.status(201).json({ success: true, report });
 
+    // --- Also update the Equipment document’s flag ---
+    await Equipment.findByIdAndUpdate(
+      equipmentId,
+      { $set: { hasElectricalReport: true } },
+      { new: true }
+    );
+
+    return res.status(201).json({ success: true, report });
   } catch (err) {
     console.error('🔴 Error creating ElectricalReport:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
 
 
 exports.getAllReports = async (req, res) => {
@@ -146,5 +160,21 @@ exports.getReportsByUserMonth = async (req, res) => {
   } catch (err) {
     console.error('Error fetching reports by user/month:', err);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.reportExists = async (req, res) => {
+  try {
+    const { equipmentId } = req.params;
+    const exists = await ElectricalReport.exists({
+      equipmentId,
+      hasElectricalReport: true
+    });
+    return res.json({ success: true, exists: Boolean(exists) });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, message: err.message });
   }
 };

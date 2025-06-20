@@ -24,4 +24,10 @@ router.get(
   ctrl.getReportsByUserMonth
 );
 
+// after your other routes
+router.get(
+  '/electricalreport/exists/:equipmentId',
+  ctrl.reportExists
+);
+
 module.exports = router;

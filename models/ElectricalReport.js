@@ -39,7 +39,11 @@ const ElectricalReportSchema = new Schema({
   equipment:   { type: EquipmentSchema,  required: true },
   responses:   { type: Map, of: ResponseSchema, required: true },
   userName:    { type: String, required: true, index: true },    // ← new field
-  createdAt:   { type: Date,   default: Date.now }
+  createdAt:   { type: Date,   default: Date.now },
+   hasElectricalReport: {
+    type: Boolean,
+    default: true // Default to false, means no report initially
+  },
 });
 
 module.exports = mongoose.model('ElectricalReport', ElectricalReportSchema);

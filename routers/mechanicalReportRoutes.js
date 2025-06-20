@@ -68,11 +68,6 @@ router.get(
   getReportsByUserAndMonth
 );
 
-// 3.4 Get reports by year/month - LESS SPECIFIC, GOES AFTER THE USER ONE
-/* router.get(
-  '/mechanicalreports/month/:year/:month',
-  getReportsByMonth
-); */
 
 
 module.exports = router;

@@ -399,5 +399,192 @@ const getLastEnergyHourlyByUserName = async (req, res) => {
   }
 };
 
+const getTodaysHourlyData = async (req, res) => {
+  try {
+    // format today in your stored format
+    const todayDate = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
 
-module.exports = { setupCronJob, getHourlyDataOfCumulatingFlowAndEnergy ,getLastEffluentHourlyByUserName,getLastEnergyHourlyByUserName};
+    const results = await HourlyData.find({ date: todayDate }).lean();
+
+    return res.status(200).json({
+      success: true,
+      data: results
+    });
+  } catch (error) {
+    console.error("❌ Error fetching today's hourly data:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+const getTodaysHourlyDataByUserFromS3 = async (req, res) => {
+  const { userName } = req.query;
+  if (!userName) {
+    return res.status(400).json({
+      success: false,
+      message: '❌ Missing required query param: userName'
+    });
+  }
+
+  try {
+    // 1) pull the full dump from S3
+    const s3Data = await fetchDataFromS3('hourly_data/hourlyData.json');
+    if (!Array.isArray(s3Data)) {
+      return res.status(500).json({
+        success: false,
+        message: '❌ Invalid data format in S3'
+      });
+    }
+
+    // 2) compute today’s date in DD/MM/YYYY
+    const today = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
+
+    // 3) filter by userName + date
+    const filtered = s3Data.filter(
+      entry => entry.userName === userName && entry.date === today
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: filtered
+    });
+  } catch (err) {
+    console.error('❌ Error fetching today’s hourly data from S3:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err.message
+    });
+  }
+};
+
+const getDailyEffluentAveragesByUser = async (req, res) => {
+  const { userName } = req.query;
+  const days = parseInt(req.query.days, 10) || 20;
+
+  if (!userName) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required query param: userName'
+    });
+  }
+
+  try {
+    // 1) Pull entire hourly dump from S3
+    const allHourly = await fetchDataFromS3('hourly_data/hourlyData.json');
+    if (!Array.isArray(allHourly)) {
+      return res.status(500).json({ success: false, message: 'Invalid S3 data' });
+    }
+
+    // 2) Filter to this user only and within last `days` days
+    const cutoff = moment().subtract(days - 1, 'days').startOf('day');
+    const userEntries = allHourly.filter(entry => {
+      return entry.userName === userName &&
+             moment(entry.date, 'DD/MM/YYYY').isSameOrAfter(cutoff, 'day');
+    });
+
+    // 3) Aggregate: date → stackName → { sum, count }
+    const agg = {};
+    userEntries.forEach(entry => {
+      const d = entry.date; // "DD/MM/YYYY"
+      (entry.stacks || [])
+        .filter(s => s.stationType === 'effluent_flow')
+        .forEach(s => {
+          agg[d] = agg[d] || {};
+          const st = agg[d][s.stackName] || { sum: 0, count: 0 };
+          st.sum += (s.cumulatingFlow || 0);
+          st.count += 1;
+          agg[d][s.stackName] = st;
+        });
+    });
+
+    // 4) Build sorted result array
+    const result = Object.entries(agg)
+      .map(([date, stacksMap]) => ({
+        date,
+        stacks: Object.entries(stacksMap).map(([stackName, { sum, count }]) => ({
+          stackName,
+          avgFlow: count ? parseFloat((sum / count).toFixed(2)) : 0
+        }))
+      }))
+      .sort((a, b) => {
+        const ma = moment(a.date, 'DD/MM/YYYY'),
+              mb = moment(b.date, 'DD/MM/YYYY');
+        return ma.isBefore(mb) ? -1 : 1;
+      });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('getDailyEffluentAveragesByUser error:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+const getDailyEffluentAverages90Days = async (req, res) => {
+  const { userName } = req.query;
+  if (!userName) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'Missing required query param: userName' });
+  }
+
+  try {
+    // 1) Pull entire hourly dump from S3
+    const allHourly = await fetchDataFromS3('hourly_data/hourlyData.json');
+    if (!Array.isArray(allHourly)) {
+      return res.status(500).json({ success: false, message: 'Invalid S3 data' });
+    }
+
+    // 2) Filter to this user only and within last 90 days
+    const cutoff = moment().subtract(89, 'days').startOf('day');  // 90 days including today
+    const userEntries = allHourly.filter(entry =>
+      entry.userName === userName &&
+      moment(entry.date, 'DD/MM/YYYY').isSameOrAfter(cutoff, 'day')
+    );
+
+    // 3) Aggregate: date → stackName → { sum, count }
+    const agg = {};
+    userEntries.forEach(entry => {
+      const d = entry.date;
+      (entry.stacks || [])
+        .filter(s => s.stationType === 'effluent_flow')
+        .forEach(s => {
+          agg[d] = agg[d] || {};
+          const st = agg[d][s.stackName] || { sum: 0, count: 0 };
+          st.sum   += (s.cumulatingFlow || 0);
+          st.count += 1;
+          agg[d][s.stackName] = st;
+        });
+    });
+
+    // 4) Build sorted result array
+    const result = Object.entries(agg)
+      .map(([date, stacksMap]) => ({
+        date,
+        stacks: Object.entries(stacksMap).map(([stackName, { sum, count }]) => ({
+          stackName,
+          avgFlow: count ? parseFloat((sum / count).toFixed(2)) : 0
+        }))
+      }))
+      .sort((a, b) => {
+        const ma = moment(a.date, 'DD/MM/YYYY');
+        const mb = moment(b.date, 'DD/MM/YYYY');
+        return ma.isBefore(mb) ? -1 : 1;
+      });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('getDailyEffluentAverages90Days error:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+module.exports = { setupCronJob, 
+    getHourlyDataOfCumulatingFlowAndEnergy ,
+    getLastEffluentHourlyByUserName,
+    getLastEnergyHourlyByUserName,
+    getTodaysHourlyData,
+    getTodaysHourlyDataByUserFromS3,
+getDailyEffluentAveragesByUser,
+getDailyEffluentAverages90Days};
