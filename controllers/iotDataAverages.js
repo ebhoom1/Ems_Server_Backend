@@ -1155,10 +1155,49 @@ const getHourlyAveragesByDate = async (req, res) => {
 
 //findAverageDataUsingUserNameAndStackNameAndIntervalType
 
+const getDailyAveragesLast20Days = async (req, res) => {
+  const { userName, stackName } = req.params;
 
+  try {
+    // Calculate cutoff: start of day, 19 days ago (so that today + 19 previous days = 20 days total)
+    const cutoff = moment().tz('Asia/Kolkata').startOf('day').subtract(19, 'days').toDate();
+
+    // Query MongoDB
+    const entries = await IotDataAverage.find({
+      userName,
+      interval: 'day',
+      'stackData.stackName': stackName,
+      timestamp: { $gte: cutoff },
+    })
+      .sort({ timestamp: 1 })    // oldest → newest
+      .limit(20)                 // up to 20 records
+      .lean();
+
+    if (!entries.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No daily averages found for user "${userName}" and stack "${stackName}" in the last 20 days.`,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Fetched ${entries.length} daily averages for user "${userName}" and stack "${stackName}".`,
+      data: entries,
+    });
+  } catch (err) {
+    console.error('Error in getDailyAveragesLast20Days:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error while fetching daily averages.',
+      error: err.message,
+    });
+  }
+};
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
-    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , calculateYesterdayAverage,getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange
+    fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , calculateYesterdayAverage,getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange,
+    getDailyAveragesLast20Days
 };

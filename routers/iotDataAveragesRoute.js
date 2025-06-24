@@ -12,7 +12,8 @@ const {
     getHourlyDataForDailyInterval,
     getHourlyAveragesByDate,
     calculateAverageForTimeRange,
-    calculateYesterdayAverage
+    calculateYesterdayAverage,
+    getDailyAveragesLast20Days
 } = require('../controllers/iotDataAverages');
 
 const router = express.Router();
@@ -62,4 +63,8 @@ router.get(
 router.get('/average/user/:userName/date/:day/:month/:year', getHourlyAveragesByDate);
 router.get('/average/user/:userName/stack/:stackName/time-range/average', calculateAverageForTimeRange);
 router.get('/yesterday-average/:userName/:stackName', calculateYesterdayAverage);
+router.get(
+  '/average/user/:userName/stack/:stackName/last-20-days',
+  getDailyAveragesLast20Days
+);
 module.exports = router;

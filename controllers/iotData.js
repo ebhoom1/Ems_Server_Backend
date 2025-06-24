@@ -1412,11 +1412,39 @@ try {
 }
 };
 
+const getRealTimeIoTData = async (req, res) => {
+  const { userName } = req.params;
+  try {
+    // find the single most‐recent entry for this user
+    const latest = await IotData
+      .findOne({ userName })
+      .sort({ timestamp: -1 })      // newest first
+      .lean();
 
+    if (!latest) {
+      return res.status(404).json({
+        success: false,
+        message: `No real-time data found for userName "${userName}"`,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: latest,
+    });
+  } catch (err) {
+    console.error("Error in getRealTimeIoTData:", err);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
 module.exports ={handleSaveMessage,  getLatestIoTData,getIotDataByUserName,
 downloadIotData,getDifferenceDataByUserName,downloadIotDataByUserName,
 deleteIotDataByDateAndUser,downloadIotDataByUserNameAndStackName,getIotDataByUserNameAndStackName,getIotDataByCompanyNameAndStackName,
-getIotDataByCompanyName,viewDataByDateUserAndStackName,getDifferenceDataByUserNameAndDateRange , getLast10MinIoTData
+getIotDataByCompanyName,viewDataByDateUserAndStackName,getDifferenceDataByUserNameAndDateRange , getLast10MinIoTData,getRealTimeIoTData
 }
 
 

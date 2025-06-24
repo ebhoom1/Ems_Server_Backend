@@ -13,7 +13,7 @@ const {
         getIotDataByCompanyNameAndStackName,
         getIotDataByCompanyName,
         viewDataByDateUserAndStackName,
-        getLast10MinIoTData
+        getLast10MinIoTData,getRealTimeIoTData
         
 } = require('../controllers/iotData');
 const { getLatestDataByUserName } = require('../controllers/lastIotDataController');
@@ -61,7 +61,7 @@ router.delete('/delete-by-date',deleteIotDataByDateAndUser)
 
 router.get('/get-IoT-Data-by-userName-and-stackName/:userName/:stackName', getIotDataByUserNameAndStackName);
 router.get('/get-IoT-Data-by-companyName-and-stackName/:companyName/:stackName',getIotDataByCompanyNameAndStackName);
-
+router.get('/realtime/:userName', getRealTimeIoTData);
 
 module.exports = router;
 

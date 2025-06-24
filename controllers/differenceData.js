@@ -1326,6 +1326,82 @@ const getTotalCumulatingFlowDifferenceByUserAndStack = async (req, res) => {
   }
 };
 // Add these to your module exports
+const getDifferenceDataLastNDays = async (req, res) => {
+  try {
+    const { userName } = req.params;
+    const days = parseInt(req.query.days, 10) || 90;
+
+    if (!userName) {
+      return res.status(400).json({ success: false, message: 'userName is required.' });
+    }
+    if (isNaN(days) || days < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid days parameter.' });
+    }
+
+    // Compute IST window [start, end]
+    const endIST   = moment().tz('Asia/Kolkata').endOf('day');
+    const startIST = endIST.clone().subtract(days - 1, 'days').startOf('day');
+    const startUTC = startIST.utc().toDate();
+    const endUTC   = endIST.utc().toDate();
+
+    // 1) Fetch from MongoDB, filtering stationType
+    const dbData = await DifferenceData.find({
+      userName,
+      stationType: 'effluent_flow',
+      timestamp: { $gte: startUTC, $lte: endUTC }
+    })
+    .sort({ timestamp: -1 })
+    .lean();
+
+    // 2) Fetch from S3, filtering stationType
+    let s3Data = [];
+    try {
+      const s3Obj = await s3.getObject({
+        Bucket: 'ems-ebhoom-bucket',
+        Key:    'difference_data/hourlyDifferenceData.json'
+      }).promise();
+
+      const fileData = JSON.parse(s3Obj.Body.toString('utf-8'));
+      s3Data = fileData.filter(entry => {
+        const ts = moment(entry.timestamp).toDate();
+        return (
+          entry.userName === userName &&
+          entry.stationType === 'effluent_flow' &&
+          ts >= startUTC &&
+          ts <= endUTC
+        );
+      });
+    } catch (err) {
+      if (err.code !== 'NoSuchKey') console.error('S3 fetch error:', err);
+      // if file missing or other S3 error, we just proceed with dbData
+    }
+
+    // 3) Merge & sort
+    const combined = [...dbData, ...s3Data]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if (!combined.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No effluent_flow records found for ${userName} in the last ${days} days.`
+      });
+    }
+
+    // 4) Return
+    res.json({
+      success: true,
+      userName,
+      stationType: 'effluent_flow',
+      days,
+      count: combined.length,
+      data: combined
+    });
+
+  } catch (err) {
+    console.error('getDifferenceDataLastNDays error:', err);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
 
 
 module.exports = {
@@ -1345,4 +1421,5 @@ module.exports = {
     getFirstDayMonthlyDifferenceData,
     getTotalCumulatingFlowDifferenceByUser,
     getTotalCumulatingFlowDifferenceByUserAndStack,
+    getDifferenceDataLastNDays,
 };
