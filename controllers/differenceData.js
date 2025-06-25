@@ -1402,8 +1402,123 @@ const getDifferenceDataLastNDays = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 };
+const getFirstCumulativeFlowOfMonth = async (req, res) => {
+  try {
+    const { userName, month } = req.params;
+    if (!userName || !month) {
+      return res.status(400).json({ success: false, message: 'userName and month are required.' });
+    }
+    const monthNum = parseInt(month, 10);
+    if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({ success: false, message: 'Invalid month. Use 1–12.' });
+    }
+
+    // Load from S3
+    const bucketName = 'ems-ebhoom-bucket';
+    const key = 'difference_data/hourlyDifferenceData.json';
+    const s3Object = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
+    const allData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+    // Filter entries for this user & month
+    const monthEntries = allData
+      .filter(e => 
+        e.userName === userName &&
+        moment(e.date, 'DD/MM/YYYY').month() + 1 === monthNum
+      );
+
+    if (!monthEntries.length) {
+      return res.status(404).json({ success: false, message: 'No data for that user/month.' });
+    }
+
+    // Sort by timestamp ascending
+    monthEntries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    // Pick first‐seen entry per stackName
+    const firstByStack = {};
+    for (const entry of monthEntries) {
+      if (!firstByStack[entry.stackName]) {
+        firstByStack[entry.stackName] = entry;
+      }
+    }
+
+    // Format output
+   const result = Object.values(firstByStack).map(e => ({
+  userName:              e.userName,
+  stackName:             e.stackName,
+  stationType:           e.stationType,
+  date:                  e.date,
+  timestamp:             e.timestamp,
+  initialCumulatingFlow: e.initialCumulatingFlow   // ← use this
+}));
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.error('Error in getFirstCumulativeFlowOfMonth:', err);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+};
+const getLastCumulativeFlowsForUserMonth = async (req, res) => {
+  try {
+    const { userName, month } = req.params;
+    if (!userName || !month) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'userName and month are required.' });
+    }
+    const monthNum = parseInt(month, 10);
+    if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid month. Use 1–12.' });
+    }
+
+    // Pull the S3 file
+    const bucketName = 'ems-ebhoom-bucket';
+    const key = 'difference_data/hourlyDifferenceData.json';
+    const s3Object = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
+    const allData = JSON.parse(s3Object.Body.toString('utf-8'));
+
+    // Filter down to this user & month
+    const monthEntries = allData.filter(e =>
+      e.userName === userName &&
+      moment(e.date, 'DD/MM/YYYY').month() + 1 === monthNum
+    );
+    if (!monthEntries.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'No data for that user/month.' });
+    }
+
+    // Sort newest first
+    monthEntries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Grab the very first (newest) record per stackName
+    const lastByStack = {};
+    for (const entry of monthEntries) {
+      if (!lastByStack[entry.stackName]) {
+        lastByStack[entry.stackName] = entry;
+      }
+    }
+
+    // Format
+    const result = Object.values(lastByStack).map(e => ({
+  userName:            e.userName,
+  stackName:           e.stackName,
+  stationType:         e.stationType,
+  date:                e.date,
+  timestamp:           e.timestamp,
+  lastCumulatingFlow:  (e.lastCumulatingFlow != null)
+                         ? e.lastCumulatingFlow
+                         : e.initialCumulatingFlow
+}));
 
 
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.error('Error in getLastCumulativeFlowsForUserMonth:', err);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+};
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
     getAllDifferenceDataByUserName,
@@ -1422,4 +1537,6 @@ module.exports = {
     getTotalCumulatingFlowDifferenceByUser,
     getTotalCumulatingFlowDifferenceByUserAndStack,
     getDifferenceDataLastNDays,
+    getFirstCumulativeFlowOfMonth,
+    getLastCumulativeFlowsForUserMonth
 };

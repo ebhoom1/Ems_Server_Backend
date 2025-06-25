@@ -17,6 +17,8 @@ const {
   getTotalCumulatingFlowDifferenceByUser,
   getTotalCumulatingFlowDifferenceByUserAndStack,
   getDifferenceDataLastNDays,
+  getFirstCumulativeFlowOfMonth,
+  getLastCumulativeFlowsForUserMonth
 
 } = require('../controllers/differenceData');
 
@@ -317,4 +319,9 @@ router.get('/total-cumulating-flow', getTotalCumulatingFlowDifferenceByUser);
 // Here, userName is passed as part of the URL parameters along with stackName.
 router.get('/total-cumulating-flow/:userName/:stackName', getTotalCumulatingFlowDifferenceByUserAndStack);
 router.get('/:userName/last-days', getDifferenceDataLastNDays);
+router.get('/first-flow/:userName/:month', getFirstCumulativeFlowOfMonth);
+router.get(
+  '/last-flow/:userName/:month',
+  getLastCumulativeFlowsForUserMonth
+);
 module.exports = router;
