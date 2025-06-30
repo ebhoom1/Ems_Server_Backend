@@ -87,7 +87,66 @@ const saveInitialData = async () => {
     console.error('Error saving initial data:', error);
   }
 };
+//to add data 
+const addManualDifferenceData = async (req, res) => {
+  try {
+    const { differenceData } = req.body;
 
+    if (!differenceData || !Array.isArray(differenceData)) {
+      return res.status(400).json({
+        success: false,
+        message: 'differenceData array is required in the request body'
+      });
+    }
+
+    // Add timestamp if not provided
+    const processedData = differenceData.map(item => ({
+      ...item,
+      timestamp: item.timestamp || new Date().toISOString()
+    }));
+
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey = 'difference_data/hourlyDifferenceData.json';
+    
+    // Get existing data
+    let existingData = [];
+    try {
+      const s3Object = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+      existingData = JSON.parse(s3Object.Body.toString('utf-8'));
+    } catch (error) {
+      if (error.code !== 'NoSuchKey') {
+        console.error('Error fetching existing data:', error);
+        throw error;
+      }
+    }
+
+    // Merge data (new data first)
+    const mergedData = [...processedData, ...existingData];
+
+    // Upload back to S3
+    await s3.putObject({
+      Bucket: bucketName,
+      Key: fileKey,
+      Body: JSON.stringify(mergedData),
+      ContentType: 'application/json'
+    }).promise();
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully added ${processedData.length} records`,
+      addedRecords: processedData.length,
+      totalRecords: mergedData.length
+    });
+
+  } catch (error) {
+    console.error('Error in manual data upload:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
 // Updated function: pick first non‑zero hourly value as initial if the very first is 0
 const calculateDailyDifferenceFromS3 = async () => {
   try {
@@ -181,12 +240,13 @@ const calculateDailyDifferenceFromS3 = async () => {
 // Schedule the two cron jobs
 const scheduleDifferenceCalculation = () => {
   // Initial data capture at 1:05 PM
-  cron.schedule('5 2 * * *', async () => {
+  cron.schedule('35 16 * * *', async () => {
     console.log('Running initial data capture cron job at 02:05...');
     await saveInitialData();
   });
   console.log('Initial data capture scheduled to run at 02:05 daily.');
-  
+   
+
   // Daily difference calculation at 23:45
   cron.schedule('45 23 * * *', async () => {
     console.log('Running daily difference calculation cron job at 23:45...');
@@ -1519,6 +1579,115 @@ const getLastCumulativeFlowsForUserMonth = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 };
+
+const getDifferenceReport = async (req, res) => {
+  try {
+    const { userName, fromDate, toDate } = req.query;
+
+    // 1) require parameters
+    if (!userName || !fromDate || !toDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'userName, fromDate and toDate are required parameters'
+      });
+    }
+
+    // 2) validate YYYY-MM-DD
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(fromDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(toDate)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    // 3) build IST→UTC range
+    const startIST = moment.tz(fromDate, 'YYYY-MM-DD', 'Asia/Kolkata').startOf('day');
+    const endIST   = moment.tz(toDate,   'YYYY-MM-DD', 'Asia/Kolkata').endOf('day');
+    const startUTC = startIST.utc().toDate();
+    const endUTC   = endIST.utc().toDate();
+
+    // 4) load your hourly file from S3
+    const bucket = 'ems-ebhoom-bucket';
+    const key    = 'difference_data/hourlyDifferenceData.json';
+    let all;
+    try {
+      const obj = await s3.getObject({ Bucket: bucket, Key: key }).promise();
+      all = JSON.parse(obj.Body.toString('utf-8'));
+    } catch (e) {
+      console.error('S3 getObject error', e);
+      return res.status(500).json({ success: false, message: 'Could not load S3 data' });
+    }
+
+    // 5) filter by userName + timestamp range
+    const filtered = all.filter(entry => {
+      if (entry.userName !== userName) return false;
+      const ts = moment.tz(
+        `${entry.date} ${entry.time}`,
+        'DD/MM/YYYY HH:mm:ss',
+        'Asia/Kolkata'
+      ).toDate();
+      return ts >= startUTC && ts <= endUTC;
+    });
+
+    if (!filtered.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No data found for ${userName} between ${fromDate} and ${toDate}`
+      });
+    }
+
+    // 6) group by (YYYY-MM-DD, stackName)
+    const groups = {};
+    filtered.forEach(e => {
+      const dayKey = moment.tz(e.date, 'DD/MM/YYYY', 'Asia/Kolkata').format('YYYY-MM-DD');
+      const groupKey = `${dayKey}|${e.stackName}`;
+      groups[groupKey] = groups[groupKey] || [];
+      groups[groupKey].push(e);
+    });
+
+    // 7) for each group, sort and pick first & last
+    const data = Object.values(groups).map(entries => {
+      entries.sort((a, b) => {
+        const ta = moment.tz(`${a.date} ${a.time}`, 'DD/MM/YYYY HH:mm:ss','Asia/Kolkata');
+        const tb = moment.tz(`${b.date} ${b.time}`, 'DD/MM/YYYY HH:mm:ss','Asia/Kolkata');
+        return ta.diff(tb);
+      });
+      const first = entries[0];
+      const last  = entries[entries.length - 1];
+
+      return {
+        date:                     moment.tz(first.date, 'DD/MM/YYYY','Asia/Kolkata').format('YYYY-MM-DD'),
+        stackName:                first.stackName,
+        initialCumulatingFlow:    first.initialCumulatingFlow.toFixed(1),
+        lastCumulatingFlow:       last.lastCumulatingFlow.toFixed(1),
+        cumulatingFlowDifference: (last.lastCumulatingFlow - first.initialCumulatingFlow).toFixed(1),
+        initialEnergy:            first.initialEnergy.toFixed(2),
+        lastEnergy:               last.lastEnergy.toFixed(2),
+        energyDifference:         (last.lastEnergy - first.initialEnergy).toFixed(2),
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Difference report for ${userName} from ${fromDate} to ${toDate}`,
+      data
+    });
+
+  } catch (error) {
+    console.error('getDifferenceReport error', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+
+
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
     getAllDifferenceDataByUserName,
@@ -1538,5 +1707,5 @@ module.exports = {
     getTotalCumulatingFlowDifferenceByUserAndStack,
     getDifferenceDataLastNDays,
     getFirstCumulativeFlowOfMonth,
-    getLastCumulativeFlowsForUserMonth
+    getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport
 };

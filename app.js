@@ -184,7 +184,6 @@ io.on('connection', (socket) => {
        socket.on('sendStackData', (data) => {
         console.log('Stack data received:', data);
         const { userName, stackData } = data;
-
         // Emit stack data to the specific user room
         io.to(userName).emit('stackDataUpdate', {
             stackData, // Send the entire stack data array

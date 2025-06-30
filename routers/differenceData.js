@@ -18,13 +18,25 @@ const {
   getTotalCumulatingFlowDifferenceByUserAndStack,
   getDifferenceDataLastNDays,
   getFirstCumulativeFlowOfMonth,
-  getLastCumulativeFlowsForUserMonth
+  getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
 
 } = require('../controllers/differenceData');
 
 // Helper function to validate intervals
 const isValidInterval = (interval) => ['daily', 'hourly'].includes(interval);
-
+// Route to manually add difference data to S3
+router.post('/manual', async (req, res) => {
+  try {
+    await addManualDifferenceData(req, res);
+  } catch (error) {
+    console.error('Error in manual difference data route:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
 // Route to get difference data by userName and interval (daily/hourly) with pagination
 router.get('/difference/:userName', async (req, res) => {
   const { userName } = req.params;
@@ -324,4 +336,6 @@ router.get(
   '/last-flow/:userName/:month',
   getLastCumulativeFlowsForUserMonth
 );
+
+router.get('/report', getDifferenceReport);
 module.exports = router;

@@ -1194,10 +1194,72 @@ const getDailyAveragesLast20Days = async (req, res) => {
     });
   }
 };
+
+const getDailyAveragesByRange = async (req, res) => {
+  const { userName, stackName } = req.params;
+  const { startDate, endDate } = req.query; // expected DD-MM-YYYY
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide startDate and endDate in DD-MM-YYYY format as query params'
+    });
+  }
+
+  // parse and build JS Date range in IST
+  const start = moment.tz(startDate, 'DD-MM-YYYY', 'Asia/Kolkata').startOf('day');
+  const end   = moment.tz(endDate,   'DD-MM-YYYY', 'Asia/Kolkata').endOf('day');
+  if (!start.isValid() || !end.isValid()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid date format. Use DD-MM-YYYY.'
+    });
+  }
+
+  try {
+    // fetch all daily entries for this user/stack in range
+    const entries = await IotDataAverage.find({
+      userName,
+      interval: 'day',
+      'stackData.stackName': stackName,
+      timestamp: { $gte: start.toDate(), $lte: end.toDate() },
+    })
+      .sort({ timestamp: 1 })
+      .lean();
+
+    if (!entries.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No daily averages found for ${userName}/${stackName} between ${startDate} and ${endDate}.`
+      });
+    }
+
+    // map to an array of { date: 'YYYY-MM-DD', ...parameters }
+    const result = entries.map(e => {
+      const d = moment(e.timestamp).tz('Asia/Kolkata').format('YYYY-MM-DD');
+      const params = e.stackData.find(s => s.stackName===stackName).parameters || {};
+      return { date: d, ...params };
+    });
+
+    res.json({
+      success: true,
+      message: `Fetched ${result.length} days of data`,
+      data: result
+    });
+  } catch (err) {
+    console.error('getDailyAveragesByRange:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching daily averages',
+      error: err.message
+    });
+  }
+};
+
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
     fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , calculateYesterdayAverage,getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange,
-    getDailyAveragesLast20Days
+    getDailyAveragesLast20Days ,getDailyAveragesByRange
 };
