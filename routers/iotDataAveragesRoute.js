@@ -14,7 +14,8 @@ const {
     calculateAverageForTimeRange,
     calculateYesterdayAverage,
     getDailyAveragesLast20Days, 
-    getDailyAveragesByRange
+    getDailyAveragesByRange,getAverageDataByMonthFromS3,
+    addAverageDataToS3
 } = require('../controllers/iotDataAverages');
 
 const router = express.Router();
@@ -75,4 +76,12 @@ router.get(
   // replace with the new handler
   
 )
+router.get(
+   "/average/user/:userName/daily/month/:year/:month",
+  getAverageDataByMonthFromS3
+);
+
+
+//add average
+router.post('/addToS3', addAverageDataToS3);
 module.exports = router;

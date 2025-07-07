@@ -19,6 +19,7 @@ const {
   getDifferenceDataLastNDays,
   getFirstCumulativeFlowOfMonth,
   getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
+  getDifferenceDataByMonth
 
 } = require('../controllers/differenceData');
 
@@ -338,4 +339,10 @@ router.get(
 );
 
 router.get('/report', getDifferenceReport);
+// Fetch all daily-difference records for a given user/month/year
+router.get(
+  '/difference/month/:userName/:month/:year',
+  getDifferenceDataByMonth
+);
+
 module.exports = router;

@@ -5,8 +5,7 @@ const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 const AWS = require('aws-sdk');
 const moment = require('moment');
-
-
+const S3_BUCKET = 'ems-ebhoom-bucket';
 
 const calculateAverages = async (userName, product_id, stackName, interval) => {
     const nowIST = moment().tz('Asia/Kolkata'); // Get current IST time
@@ -131,6 +130,56 @@ const calculateAverages = async (userName, product_id, stackName, interval) => {
     }
 };
 
+const addAverageDataToS3 = async (req, res) => {
+  try {
+    const bucket = S3_BUCKET;
+    const key = 'average_data/averageData.json';
+
+    // 1. Validate request body
+    const newEntries = req.body;
+    if (!Array.isArray(newEntries) || newEntries.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Request body must be a non-empty array' });
+    }
+
+    // 2. Fetch existing JSON (if any)
+    let existing = [];
+    try {
+      const params = { Bucket: bucket, Key: key };
+      const data = await s3.getObject(params).promise();
+      existing = JSON.parse(data.Body.toString('utf-8'));
+    } catch (err) {
+      if (err.code !== 'NoSuchKey' && err.code !== 'NoSuchBucket') {
+        throw err; // unexpected error
+      }
+      // else: file doesn't exist yet → start with []
+    }
+
+    // 3. Append and write back
+    const merged = existing.concat(newEntries);
+    await s3
+      .putObject({
+        Bucket: bucket,
+        Key: key,
+        Body: JSON.stringify(merged, null, 2),
+        ContentType: 'application/json',
+      })
+      .promise();
+
+    // 4. Respond with summary
+    return res.status(200).json({
+      success: true,
+      message: `Added ${newEntries.length} entries to S3. Total records: ${merged.length}`,
+      totalRecords: merged.length,
+    });
+  } catch (error) {
+    console.error('❌ Error in addAverageDataToS3:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Internal Server Error', error: error.message });
+  }
+};
 
 const getValidParameters = (parameters) => {
     const validParams = {};
@@ -1159,31 +1208,54 @@ const getDailyAveragesLast20Days = async (req, res) => {
   const { userName, stackName } = req.params;
 
   try {
-    // Calculate cutoff: start of day, 19 days ago (so that today + 19 previous days = 20 days total)
-    const cutoff = moment().tz('Asia/Kolkata').startOf('day').subtract(19, 'days').toDate();
+    // 1) Calculate the cutoff midnight IST 19 days ago
+    const cutoff = moment()
+      .tz('Asia/Kolkata')
+      .startOf('day')
+      .subtract(19, 'days')
+      .toDate();
 
-    // Query MongoDB
-    const entries = await IotDataAverage.find({
+    // 2) Pull in everything since then
+    const raw = await IotDataAverage.find({
       userName,
       interval: 'day',
       'stackData.stackName': stackName,
       timestamp: { $gte: cutoff },
     })
-      .sort({ timestamp: 1 })    // oldest → newest
-      .limit(20)                 // up to 20 records
-      .lean();
+    .sort({ timestamp: 1 })
+    .lean();
 
-    if (!entries.length) {
+    if (!raw.length) {
       return res.status(404).json({
         success: false,
         message: `No daily averages found for user "${userName}" and stack "${stackName}" in the last 20 days.`,
       });
     }
 
+    // 3) Build a Map keyed by the local date string, so we:
+    //    a) Guarantee each entry has a .date
+    //    b) Automatically drop any duplicates for the same date
+    const byDate = new Map();
+    raw.forEach(entry => {
+      const dateStr = moment(entry.timestamp)
+        .tz('Asia/Kolkata')
+        .format('DD/MM/YYYY');
+
+      if (!byDate.has(dateStr)) {
+        byDate.set(dateStr, {
+          ...entry,
+          date: dateStr,
+        });
+      }
+    });
+
+    // 4) Turn that back into an array and (just in case) cap it at 20
+    const data = Array.from(byDate.values()).slice(-20);
+
     res.json({
       success: true,
-      message: `Fetched ${entries.length} daily averages for user "${userName}" and stack "${stackName}".`,
-      data: entries,
+      message: `Fetched ${data.length} daily averages for user "${userName}" and stack "${stackName}".`,
+      data,
     });
   } catch (err) {
     console.error('Error in getDailyAveragesLast20Days:', err);
@@ -1194,6 +1266,7 @@ const getDailyAveragesLast20Days = async (req, res) => {
     });
   }
 };
+
 
 const getDailyAveragesByRange = async (req, res) => {
   const { userName, stackName } = req.params;
@@ -1255,11 +1328,109 @@ const getDailyAveragesByRange = async (req, res) => {
     });
   }
 };
+// in your controller file
+// in your controller file
+const BLACKLIST = new Set([
+  "cumulatingFlow",
+  "flowRate",
+  "energy",
+  "voltage",
+  "current",
+  "power",
+  "weight",
+  "_id",
+]);
+const getAverageDataByMonthFromS3 = async (req, res) => {
+  try {
+    const { userName, year, month } = req.params;
+    const y = parseInt(year,  10);
+    const m = parseInt(month, 10);
+    if (!userName || isNaN(y) || isNaN(m) || m < 1 || m > 12) {
+      return res.status(400).json({ success: false, message: "Invalid params" });
+    }
+
+    // month range
+    const start = moment({ year: y, month: m - 1, day: 1 }).startOf("month");
+    const end   = start.clone().endOf("month");
+
+    // load S3 data
+    const all = await fetchAverageDataFromS3();
+
+    // filter to this user's hourly effluent flows in that month
+    const entries = all.filter(e => {
+      if (e.userName !== userName || e.interval !== "hour") return false;
+      const d = moment(e.date, "DD/MM/YYYY");
+      return d.isValid() && d.isBetween(start, end, "day", "[]");
+    });
+    if (!entries.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No hourly entries for ${userName} in ${m}/${y}`
+      });
+    }
+
+    // accumulate sums+counts per day+stack
+    const byKey = {};
+    entries.forEach(e => {
+      e.stackData
+       .filter(sd => sd.stationType === "effluent")
+       .forEach(sd => {
+         const key = `${e.date}|${sd.stackName}`;
+         if (!byKey[key]) {
+           byKey[key] = { date: e.date, stackName: sd.stackName, count: 0, sums: {} };
+         }
+         const bucket = byKey[key];
+         bucket.count++;
+         Object.entries(sd.parameters).forEach(([k, v]) => {
+           if (typeof v === "number" && !isNaN(v)) {
+             bucket.sums[k] = (bucket.sums[k] || 0) + v;
+           }
+         });
+       });
+    });
+
+    // build final grouped
+    const grouped = {};
+    Object.values(byKey).forEach(({ date, stackName, count, sums }) => {
+      // compute averages and drop blacklist
+      const avg = {};
+      Object.entries(sums).forEach(([k, sum]) => {
+        if (!BLACKLIST.has(k)) {
+          avg[k] = parseFloat((sum / count).toFixed(2));
+        }
+      });
+      grouped[date] = grouped[date] || [];
+      grouped[date].push({ stackName, avgParameters: avg });
+    });
+
+    // to array, sorted by date
+    const data = Object.entries(grouped)
+      .sort(([a], [b]) =>
+        moment(a, "DD/MM/YYYY").diff(moment(b, "DD/MM/YYYY"))
+      )
+      .map(([date, stacks]) => ({ date, stacks }));
+
+    return res.json({
+      success: true,
+      message: `Daily effluent‐parameter averages for ${userName} in ${m}/${y}`,
+      data
+    });
+  }
+  catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: err.message
+    });
+  }
+};
+
 
 module.exports = { calculateAverages, scheduleAveragesCalculation,findAverageDataUsingUserName,
     findAverageDataUsingUserNameAndStackName,getAllAverageData,findAverageDataUsingUserNameAndStackNameAndIntervalType,
     findAverageDataUsingUserNameAndStackNameAndIntervalTypeWithTimeRange,
     downloadAverageDataWithUserNameStackNameAndIntervalWithTimeRange,
     fetchLastEntryOfEachDate, getTodayLastAverageDataByStackName ,moveDailyAveragesToS3 , calculateYesterdayAverage,getHourlyDataForDailyInterval,getHourlyAveragesByDate,calculateAverageForTimeRange,
-    getDailyAveragesLast20Days ,getDailyAveragesByRange
+    getDailyAveragesLast20Days ,getDailyAveragesByRange,getAverageDataByMonthFromS3,addAverageDataToS3 
 };

@@ -240,7 +240,7 @@ const calculateDailyDifferenceFromS3 = async () => {
 // Schedule the two cron jobs
 const scheduleDifferenceCalculation = () => {
   // Initial data capture at 1:05 PM
-  cron.schedule('37 11 * * *', async () => {
+  cron.schedule('5 2 * * *', async () => {
     console.log('Running initial data capture cron job at 02:05...');
     await saveInitialData();
   });
@@ -1687,7 +1687,23 @@ const getDifferenceReport = async (req, res) => {
   }
 };
 
-
+//get by month and username
+const getDifferenceDataByMonth = async (req, res) => {
+  try {
+    const { userName, month, year } = req.params;
+    // Validate month/year…
+    const fromDate = `01-${month.padStart(2,'0')}-${year}`;
+    // Get last day of month
+    const lastDay = moment(fromDate, 'DD-MM-YYYY').endOf('month').format('DD-MM-YYYY');
+    // Delegate to your existing time-range function:
+    const { data, total, page, totalPages } =
+      await getDifferenceDataByTimeRange(userName, 'daily', fromDate, lastDay, 1, 1000);
+    return res.json({ success: true, data, total, page, totalPages });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
@@ -1708,5 +1724,6 @@ module.exports = {
     getTotalCumulatingFlowDifferenceByUserAndStack,
     getDifferenceDataLastNDays,
     getFirstCumulativeFlowOfMonth,
-    getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport
+    getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
+    getDifferenceDataByMonth
 };
