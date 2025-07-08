@@ -19,7 +19,7 @@ const {
   getDifferenceDataLastNDays,
   getFirstCumulativeFlowOfMonth,
   getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
-  getDifferenceDataByMonth
+  getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth
 
 } = require('../controllers/differenceData');
 
@@ -38,6 +38,13 @@ router.post('/manual', async (req, res) => {
     });
   }
 });
+
+router.get(
+  '/difference/total-by-month',
+  getTotalCumulatingFlowDifferenceByUserAndMonth
+);
+
+
 // Route to get difference data by userName and interval (daily/hourly) with pagination
 router.get('/difference/:userName', async (req, res) => {
   const { userName } = req.params;
@@ -340,9 +347,10 @@ router.get(
 
 router.get('/report', getDifferenceReport);
 // Fetch all daily-difference records for a given user/month/year
-router.get(
+/* router.get(
   '/difference/month/:userName/:month/:year',
   getDifferenceDataByMonth
 );
+ */
 
 module.exports = router;

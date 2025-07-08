@@ -48,6 +48,7 @@ const generatorVehicleRoutes = require('./routers/generatorVehicleRoutes');
 const faultRoutes = require('./routers/faultRoutes');
 const techRoutes = require('./routers/technicianRoutes');
 const pumpStateRoutes = require('./routers/pumpStateRoutes');
+const pumpRuntimeRoutes=require('./routers/pumpRuntimeRoutes');
 
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
@@ -113,6 +114,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+// app.use(express.json({ limit: "10mb" })); // Needed for base64 image
 
 // Serve static files from the React app's build directory
 app.use(express.static(path.join(__dirname, '../Ems_client_frontend/build')));
@@ -160,16 +162,17 @@ app.use('/api', wasteRoutes);
 app.use('/api', dailyConsumptionRoutes);
 app.use('/api', generatorVehicleRoutes);
 app.use('/api', inventoryRoutes);
-app.use('/api', requestInventory)
-app.use('/api', equipmentRoutes)
-app.use('/api', faultRoutes)
-app.use('/api',electricalReportRoutes)
+app.use('/api', requestInventory);
+app.use('/api', equipmentRoutes);
+app.use('/api', faultRoutes);
+app.use('/api',electricalReportRoutes);
 app.use('/api', techRoutes);
 app.use('/api', mechRoutes);
 app.use('/api/dailyLog', dailyLogRoutes);
 app.use('/api', svgUploadRoutes);
 app.use('/api', attendanceRoutes);
 app.use('/api', pumpStateRoutes);
+app.use('/api', pumpRuntimeRoutes);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
@@ -184,6 +187,7 @@ io.on('connection', (socket) => {
        socket.on('sendStackData', (data) => {
         console.log('Stack data received:', data);
         const { userName, stackData } = data;
+
         // Emit stack data to the specific user room
         io.to(userName).emit('stackDataUpdate', {
             stackData, // Send the entire stack data array
@@ -361,7 +365,8 @@ console.log('Daily Report Scheduling Initialized.');
 // Initialize all MQTT clients at server startup
 server.listen(port, async () => {
     console.log(`Server running on port ${port}`);
-
+ // ✅ Set global socket reference
+ global.io = io;
     // Initialize the MQTT client when the server starts
     try {
         await initializeMqttClients(io);

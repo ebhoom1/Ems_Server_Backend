@@ -1704,6 +1704,122 @@ const getDifferenceDataByMonth = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+// Controller to get total cumulatingFlowDifference for a user in a given month/year (from S3)
+/**
+ * GET /difference/total-by-month
+ * Query params: userName, month (1–12), [year]
+ *
+ * Returns the sum of cumulatingFlowDifference for each stack,
+ * deduped so you only count one entry per day/stack.
+ */
+/**
+ * GET /difference/total-by-month
+ * Query params: userName (required), month (1–12, required), year (defaults to current IST)
+ *
+ * Returns one totalCumulatingFlowDifference per stackName for that month.
+ */
+const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
+  try {
+    const { userName, month, year } = req.query;
+    if (!userName || !month) {
+      return res.status(400).json({
+        success: false,
+        message: 'userName and month are required query parameters'
+      });
+    }
+
+    // 1) Validate month/year
+    const monthNum = parseInt(month, 10);
+    if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid month. Please specify a value from 1 to 12.'
+      });
+    }
+    const selectedYear = year
+      ? parseInt(year, 10)
+      : moment().tz('Asia/Kolkata').year();
+    if (isNaN(selectedYear)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid year.'
+      });
+    }
+
+    // Build a regex to match DD/MM/YYYY for this month/year
+    const monthStr = monthNum.toString().padStart(2, '0');
+    const dateRegex = new RegExp(`\\/${monthStr}\\/${selectedYear}$`);
+
+    // 2) Load DB entries (automated daily differences)
+    const dbEntries = await DifferenceData.find({
+      userName,
+      interval: 'daily',
+      date: dateRegex
+    })
+    .lean();
+
+    // 3) Load S3 entries (manual overrides)
+    const bucketName = 'ems-ebhoom-bucket';
+    const key = 'difference_data/hourlyDifferenceData.json';
+    let s3Raw = [];
+    try {
+      const obj = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
+      s3Raw = JSON.parse(obj.Body.toString('utf-8'));
+    } catch (err) {
+      if (err.code !== 'NoSuchKey') throw err;
+      // else: no manual data exists yet
+    }
+    // filter manual overrides for this user+month
+    const s3Entries = s3Raw.filter(e =>
+      e.userName === userName &&
+      e.interval === 'daily' &&
+      dateRegex.test(e.date)
+    );
+
+    // 4) Merge: use a map keyed by day+stack; manual overrides win
+    const byDayStack = {};
+    const addToMap = entry => {
+      const key = `${entry.date}__${entry.stackName}`;
+      byDayStack[key] = entry; // later calls overwrite
+    };
+    // first: all DB entries
+    dbEntries.forEach(addToMap);
+    // then: any manual override
+    s3Entries.forEach(addToMap);
+
+    const merged = Object.values(byDayStack);
+
+    // 5) Sum per stackName
+    const totalsByStack = merged.reduce((acc, e) => {
+      const stack = e.stackName;
+      const diff = Number(e.cumulatingFlowDifference) || 0;
+      acc[stack] = (acc[stack] || 0) + diff;
+      return acc;
+    }, {});
+
+    // 6) Format response
+    const totals = Object.entries(totalsByStack).map(
+      ([stackName, total]) => ({ stackName, totalCumulatingFlowDifference: total })
+    );
+
+    return res.status(200).json({
+      success: true,
+      userName,
+      month: monthNum,
+      year: selectedYear,
+      totals
+    });
+
+  } catch (error) {
+    console.error('Error in getTotalCumulatingFlowDifferenceByUserAndMonth:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message
+    });
+  }
+};
+
 
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
@@ -1725,5 +1841,5 @@ module.exports = {
     getDifferenceDataLastNDays,
     getFirstCumulativeFlowOfMonth,
     getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
-    getDifferenceDataByMonth
+    getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth
 };

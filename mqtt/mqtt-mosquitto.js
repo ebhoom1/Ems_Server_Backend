@@ -4,6 +4,7 @@ const moment = require("moment-timezone");
 const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
+const { updateRuntimeFromRealtime } = require('../controllers/pumpRuntimeController');
 
 const RETRY_DELAY = 5000; // 5 seconds
 
@@ -171,6 +172,14 @@ const setupMqttClient = (io) => {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
+                   await updateRuntimeFromRealtime({
+        product_id: item.product_id,
+        userName: item.userName,
+        pumpId: pump.pumpId,
+        pumpName: pump.pumpName,
+        status: pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
+        timestamp: item.ntpTime || item.timestamp || new Date().toISOString()
+      });
               } catch (err) {
                 console.error("Error saving pump state from acknowledgment:", err);
               }
