@@ -19,7 +19,7 @@ const {
   getDifferenceDataLastNDays,
   getFirstCumulativeFlowOfMonth,
   getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
-  getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth
+  getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth,deleteManualDifferenceData
 
 } = require('../controllers/differenceData');
 
@@ -38,7 +38,9 @@ router.post('/manual', async (req, res) => {
     });
   }
 });
+//delete
 
+router.delete('/difference/manual', deleteManualDifferenceData);
 router.get(
   '/difference/total-by-month',
   getTotalCumulatingFlowDifferenceByUserAndMonth
@@ -347,10 +349,10 @@ router.get(
 
 router.get('/report', getDifferenceReport);
 // Fetch all daily-difference records for a given user/month/year
-/* router.get(
+ router.get(
   '/difference/month/:userName/:month/:year',
   getDifferenceDataByMonth
 );
- */
+ 
 
 module.exports = router;

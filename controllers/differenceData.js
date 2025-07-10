@@ -240,7 +240,7 @@ const calculateDailyDifferenceFromS3 = async () => {
 // Schedule the two cron jobs
 const scheduleDifferenceCalculation = () => {
   // Initial data capture at 1:05 PM
-  cron.schedule('5 2 * * *', async () => {
+  cron.schedule('5 7 * * *', async () => {
     console.log('Running initial data capture cron job at 02:05...');
     await saveInitialData();
   });
@@ -1820,7 +1820,79 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
   }
 };
 
+//delete
+const deleteManualDifferenceData = async (req, res) => {
+  try {
+    // Normalize to an array of criteria
+    const criteria = Array.isArray(req.body)
+      ? req.body
+      : [req.body];
 
+    // Validate
+    for (const { userName, date } of criteria) {
+      if (!userName || !date) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each entry requires userName and date (DD/MM/YYYY).'
+        });
+      }
+    }
+
+    const bucketName = 'ems-ebhoom-bucket';
+    const fileKey    = 'difference_data/hourlyDifferenceData.json';
+
+    // 1. Download existing data
+    let existing = [];
+    try {
+      const obj = await s3.getObject({ Bucket: bucketName, Key: fileKey }).promise();
+      existing = JSON.parse(obj.Body.toString('utf-8'));
+    } catch (err) {
+      if (err.code !== 'NoSuchKey') throw err;
+    }
+
+    const beforeCount = existing.length;
+
+    // 2. Build a function: shouldKeep(item) => true if item does *not* match any delete criteria
+    const shouldKeep = item => {
+      return !criteria.some(({ userName, date, stackName }) => {
+        if (item.userName !== userName || item.date !== date) return false;
+        // matches on userName+date; if stackName given, must match that too
+        return !stackName || item.stackName === stackName;
+      });
+    };
+
+    const filtered = existing.filter(shouldKeep);
+    const removed  = beforeCount - filtered.length;
+
+    if (removed === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No matching records found for the given criteria.`
+      });
+    }
+
+    // 3. Write updated data back to S3
+    await s3.putObject({
+      Bucket: bucketName,
+      Key: fileKey,
+      Body: JSON.stringify(filtered),
+      ContentType: 'application/json'
+    }).promise();
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${removed} record(s).`,
+      totalRecords: filtered.length
+    });
+  } catch (error) {
+    console.error('Error deleting S3 data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
 module.exports = {
     getDifferenceDataByUserNameAndInterval,
     getAllDifferenceDataByUserName,
@@ -1841,5 +1913,5 @@ module.exports = {
     getDifferenceDataLastNDays,
     getFirstCumulativeFlowOfMonth,
     getLastCumulativeFlowsForUserMonth,addManualDifferenceData,getDifferenceReport,
-    getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth
+    getDifferenceDataByMonth,getTotalCumulatingFlowDifferenceByUserAndMonth,deleteManualDifferenceData
 };
