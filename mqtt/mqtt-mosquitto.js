@@ -80,83 +80,79 @@ const setupMqttClient = (io) => {
       }
 
       // --- ebhoomSub (Commands & Feedback) Handling ---
-      if (topic === "ebhoomSub") {
-        debugLog("Incoming messageIds for ebhoomSub:", data.map(d => d.messageId));
-        debugLog("Current sentCommandIds:", Array.from(sentCommandIds));
+   // In mqtt.js
+// --- ebhoomSub (Commands & Feedback) Handling ---
+if (topic === "ebhoomSub") {
+  try {
+    const messageString = messageBuffer.toString();
+    let data = JSON.parse(messageString);
+    data = Array.isArray(data) ? data : [data];
 
-        // === ECHO FILTER ===
-        // Remove messages that are echoes of commands we sent
-        data = data.filter(item => {
-          if (item.messageId && sentCommandIds.has(item.messageId)) {
-            debugLog("Dropping our own echo:", item.messageId);
-            sentCommandIds.delete(item.messageId); // Remove from set after processing its echo
-            return false;
-          }
-          return true;
-        });
-
-        debugLog("After echo-filter, messageIds for ebhoomSub:", data.map(d => d.messageId));
-        if (data.length === 0) {
-          debugLog("No items left after echo-filter on ebhoomSub; returning");
-          return;
-        }
-
-        // Process remaining (genuine feedback) messages on ebhoomSub
-        for (const feedback of data) {
-          debugLog("Processing genuine ebhoomSub feedback item:", feedback);
-
-          // Pump feedback (status updates from device)
-          if (
-            feedback.product_id &&
-            feedback.userName &&
-            Array.isArray(feedback.pumps)
-          ) {
-            console.log("Processing pump feedback:", feedback);
-            const userDetails = await userdb.findOne({
-              productID: feedback.product_id,
-              userName: feedback.userName,
-              pumpDetails: { $elemMatch: { pumpId: { $in: feedback.pumps.map(p => p.pumpId) } } }
-            });
-
-            if (!userDetails) {
-              console.error("No user found in DB for pump feedback:", feedback.product_id, feedback.userName);
-              continue;
-            }
-
-            const now = moment().tz("Asia/Kolkata").toDate();
-            for (const { pumpId, pumpName, status } of feedback.pumps) {
-              if (!pumpId || !pumpName || typeof status === "undefined") {
-                console.error("Invalid pump entry in feedback:", { pumpId, pumpName, status });
-                continue;
-              }
-              const payload = {
-                product_id: feedback.product_id,
-                userName: userDetails.userName,
-                email: userDetails.email,
-                mobileNumber: userDetails.mobileNumber,
-                companyName: userDetails.companyName,
-                industryType: userDetails.industryType,
-                pumpData: { pumpId, pumpName, status },
-                date: moment(now).format("DD/MM/YYYY"),
-                time: moment(now).format("HH:mm"),
-                timestamp: now,
-              };
-              console.log("Forwarding pump feedback payload:", payload);
-              try {
-                await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
-                io.to(feedback.product_id.toString()).emit("pumpFeedback", payload);
-              } catch (err) {
-                console.error("Error saving pump feedback:", err.response?.data || err.message);
-              }
-            }
-            continue; // Finished processing this feedback item
-          }
-
-          console.log("Unrecognized ebhoomSub feedback format:", feedback);
-        }
-        return; // Done with ebhoomSub topic
+    for (const item of data) {
+      // **FIX: Explicitly ignore command echoes based on their structure**
+      // Commands sent by this backend have a `messageId` but no `userName`.
+      // This check reliably identifies and ignores them.
+      if (item.messageId && !item.userName) {
+        debugLog("Ignoring command echo or unrecognized command format:", item);
+        continue; // Skip this item
       }
 
+      // **Process genuine feedback from devices**
+      // This logic assumes feedback messages contain a `userName`.
+      if (
+        item.product_id &&
+        item.userName &&
+        Array.isArray(item.pumps)
+      ) {
+        console.log("Processing pump feedback:", item);
+        const userDetails = await userdb.findOne({
+          productID: item.product_id,
+          userName: item.userName,
+          pumpDetails: { $elemMatch: { pumpId: { $in: item.pumps.map(p => p.pumpId) } } }
+        });
+
+        if (!userDetails) {
+          console.error("No user found in DB for pump feedback:", item.product_id, item.userName);
+          continue;
+        }
+
+        const now = moment().tz("Asia/Kolkata").toDate();
+        for (const { pumpId, pumpName, status } of item.pumps) {
+          if (!pumpId || !pumpName || typeof status === "undefined") {
+            console.error("Invalid pump entry in feedback:", { pumpId, pumpName, status });
+            continue;
+          }
+          const payload = {
+            product_id: item.product_id,
+            userName: userDetails.userName,
+            email: userDetails.email,
+            mobileNumber: userDetails.mobileNumber,
+            companyName: userDetails.companyName,
+            industryType: userDetails.industryType,
+            pumpData: { pumpId, pumpName, status },
+            date: moment(now).format("DD/MM/YYYY"),
+            time: moment(now).format("HH:mm"),
+            timestamp: now,
+          };
+          console.log("Forwarding pump feedback payload:", payload);
+          try {
+            await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
+            io.to(item.product_id.toString()).emit("pumpFeedback", payload);
+          } catch (err) {
+            console.error("Error saving pump feedback:", err.response?.data || err.message);
+          }
+        }
+        continue; // Finished processing this feedback item
+      }
+
+      // If a message is neither an echo nor valid feedback
+      console.log("Unrecognized ebhoomSub message format:", item);
+    }
+  } catch (err) {
+    console.error(`Error processing message on topic ${topic}:`, err);
+  }
+  return; // Done with ebhoomSub topic
+}
       // --- ebhoomPub (Sensor/Tank Data & Pump Acknowledgments) Handling ---
       if (topic === "ebhoomPub") {
         for (const item of data) {

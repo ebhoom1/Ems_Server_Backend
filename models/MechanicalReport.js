@@ -2,11 +2,11 @@
 const mongoose = require('mongoose');
 
 // Sub-schema for technician details
-const TechnicianSchema = new mongoose.Schema({
-  name:        { type: String, },
-  designation: { type: String,  },
-  email:       { type: String,  }
+const ManagerSchema = new mongoose.Schema({
+  name:  { type: String },
+  email: { type: String }
 });
+
 
 // Sub-schema for individual checklist checks
 const CheckSchema = new mongoose.Schema({
@@ -30,8 +30,8 @@ const MechanicalReportSchema = new mongoose.Schema({
   userName:      { type: String, required: true },
   capacity:      { type: String, default: '' },
   columns:       [{ type: String }],
-  technician:    { type: TechnicianSchema, required: true }, // Changed from territorialManager to technician as per schema
-  entries:       [EntrySchema],
+territorialManager: { type: ManagerSchema, required: true },
+    entries:       [EntrySchema],
   timestamp:     { type: Date, default: Date.now },
   isWorking:     { type: String, enum: ['yes','no'], default: 'yes' },
   comments:      { type: String, default: '' },
