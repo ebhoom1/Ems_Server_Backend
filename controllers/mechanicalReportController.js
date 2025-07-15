@@ -175,15 +175,46 @@ exports.getReportsByUserAndMonth = async (req, res) => {
 };
 
 //chcek if exist 
+// controllers/mechanicalReportController.js
+
 exports.checkMechanicalReportExists = async (req, res) => {
   try {
+    // 1. Get equipmentId from route parameters and year/month from the query string
     const { equipmentId } = req.params;
-    const report = await MechanicalReport.findOne({ equipmentId });
-    // Send back true if a report is found, false otherwise
-    res.json({ exists: !!report });
+    const { year, month } = req.query;
+
+    // 2. Validate that year and month were provided in the request
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "Year and month query parameters are required.",
+      });
+    }
+
+    // 3. Create a date range for the start and end of the specified month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    // 4. Query the database for a MechanicalReport within that date range
+    // IMPORTANT: Assumes your model has a 'createdAt' field. If your date field is named
+    // something else (e.g., 'reportDate'), change 'createdAt' in the query below.
+    const report = await MechanicalReport.findOne({
+      equipmentId: equipmentId,
+      createdAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    });
+
+    // 5. Return true if a report was found, otherwise false
+    return res.json({ success: true, exists: !!report });
+
   } catch (err) {
     console.error('Error in checkMechanicalReportExists:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ 
+        success: false, 
+        message: 'Server error while checking mechanical report.' 
+    });
   }
 };
 

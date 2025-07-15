@@ -1800,7 +1800,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
         message: 'userName and month are required query parameters'
       });
     }
-
+    
     // 1) Validate month/year
     const monthNum = parseInt(month, 10);
     if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
@@ -1811,7 +1811,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
     }
     const selectedYear = year
       ? parseInt(year, 10)
-      : moment().tz('Asia/Kolkata').year();
+      : new Date().getFullYear();
     if (isNaN(selectedYear)) {
       return res.status(400).json({
         success: false,
@@ -1828,8 +1828,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
       userName,
       interval: 'daily',
       date: dateRegex
-    })
-    .lean();
+    }).lean();
 
     // 3) Load S3 entries (manual overrides)
     const bucketName = 'ems-ebhoom-bucket';
@@ -1840,9 +1839,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
       s3Raw = JSON.parse(obj.Body.toString('utf-8'));
     } catch (err) {
       if (err.code !== 'NoSuchKey') throw err;
-      // else: no manual data exists yet
     }
-    // filter manual overrides for this user+month
     const s3Entries = s3Raw.filter(e =>
       e.userName === userName &&
       e.interval === 'daily' &&
@@ -1853,11 +1850,9 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
     const byDayStack = {};
     const addToMap = entry => {
       const key = `${entry.date}__${entry.stackName}`;
-      byDayStack[key] = entry; // later calls overwrite
+      byDayStack[key] = entry;
     };
-    // first: all DB entries
     dbEntries.forEach(addToMap);
-    // then: any manual override
     s3Entries.forEach(addToMap);
 
     const merged = Object.values(byDayStack);
@@ -1865,6 +1860,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
     // 5) Sum per stackName
     const totalsByStack = merged.reduce((acc, e) => {
       const stack = e.stackName;
+      // This assumes the 'cumulatingFlowDifference' field now holds the correct DAILY value.
       const diff = Number(e.cumulatingFlowDifference) || 0;
       acc[stack] = (acc[stack] || 0) + diff;
       return acc;
@@ -1872,7 +1868,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
 
     // 6) Format response
     const totals = Object.entries(totalsByStack).map(
-      ([stackName, total]) => ({ stackName, totalCumulatingFlowDifference: total })
+      ([stackName, total]) => ({ stackName, totalDifference: total.toFixed(2) }) // Using a consistent output key and formatting to 2 decimal places
     );
 
     return res.status(200).json({

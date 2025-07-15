@@ -163,18 +163,48 @@ exports.getReportsByUserMonth = async (req, res) => {
   }
 };
 
+// controllers/reportController.js
+
 exports.reportExists = async (req, res) => {
   try {
+    // 1. Get equipmentId from route parameters
     const { equipmentId } = req.params;
-    const exists = await ElectricalReport.exists({
-      equipmentId,
-      hasElectricalReport: true
+    // 2. Get year and month from query string
+    const { year, month } = req.query;
+
+    // 3. Validate that year and month were provided
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "Year and month query parameters are required.",
+      });
+    }
+
+    // 4. Create a date range for the beginning and end of the specified month
+    // Note: The month in JavaScript's Date object is 0-indexed (0=Jan, 1=Feb, etc.)
+    const startDate = new Date(year, month - 1, 1);
+    // By setting the day to 0 for the *next* month, we get the last day of the *current* month
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    // 5. Query the database for a report within the date range
+    // We assume your model has a timestamp field like 'createdAt'. 
+    // If you use a different field (e.g., 'reportDate'), change 'createdAt' below.
+    const report = await ElectricalReport.findOne({
+      equipmentId: equipmentId,
+      createdAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
     });
-    return res.json({ success: true, exists: Boolean(exists) });
+
+    // 6. Return true if a report was found (report is not null), otherwise false
+    return res.json({ success: true, exists: !!report });
+
   } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message });
+    console.error("Error checking if report exists:", err);
+    return res.status(500).json({ 
+        success: false, 
+        message: "Server error while checking report existence." 
+    });
   }
 };
