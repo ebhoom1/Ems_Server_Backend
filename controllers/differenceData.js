@@ -258,7 +258,7 @@ const scheduleDifferenceCalculation = () => {
     });
     console.log('Initial data capture scheduled to run at 00:05 IST daily.');
     
-    cron.schedule('56 23 * * *', async () => {
+    cron.schedule('52 23 * * *', async () => {
         console.log('Running daily difference calculation cron job at 23:55 IST...');
         await calculateDailyDifferenceFromS3();
     }, {
