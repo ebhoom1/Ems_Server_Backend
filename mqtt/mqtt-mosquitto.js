@@ -294,6 +294,67 @@ if (topic === "ebhoomSub") {
             continue;
           }
 
+          //motordata
+   
+     // ==========================================================
+          // === NEW: Handle Motor Performance Data (Voltage, RPM, etc.) ===
+          // ==========================================================
+          if (item.productId && item.username && typeof item.voltage !== 'undefined') {
+            console.log("Processing motor performance data:", item);
+            const now = moment().tz("Asia/Kolkata").toDate();
+
+            const userDetails = await userdb.findOne({
+              productID: item.productId,
+              userName:  item.username
+            });
+
+            if (!userDetails) {
+              console.error("No user found in DB for motor data:", item.productId, item.username);
+              continue; 
+            }
+
+            const motorPayload = {
+              product_id:   item.productId,
+              userName:     userDetails.userName,
+              email:        userDetails.email,
+              mobileNumber: userDetails.mobileNumber,
+              companyName:  userDetails.companyName,
+              industryType: userDetails.industryType,
+
+              // --- ADD DUMMY STACKS TO SATISFY API VALIDATION ---
+              stacks: [{ stackName: "motor_data", value: 0 }],
+              // ----------------------------------------------------
+              
+              motorData: {
+                voltage:     item.voltage,
+                current:     item.current,
+                temperature: item.temperature,
+                vibration:   item.vibration,
+                X:           item.X,
+                Y:           item.Y,
+                Z:           item.Z,
+                RPM:         item.RPM,
+              },
+              date:         moment(now).format("DD/MM/YYYY"),
+              time:         moment(now).format("HH:mm"),
+              timestamp:    now,
+            };
+
+            console.log("Sending motor payload:", motorPayload);
+            try {
+              await axios.post(
+                "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+                motorPayload
+              );
+              io.to(item.productId.toString()).emit("motorDataUpdate", motorPayload);
+            } catch (err) {
+              console.error("Error sending motor payload:", err.response?.data || err.message);
+            }
+
+            continue;
+          }
+
+
           console.log("Unrecognized ebhoomPub format:", item);
         }
         return;

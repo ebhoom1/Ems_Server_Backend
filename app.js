@@ -7,6 +7,8 @@ const path = require('path');
 const DB = require('./config/DB');
 const Chat = require('./models/chatModel'); // Import Chat model here
 
+const assignmentRoutes = require("./routers/assignmentRoutes");
+
 const userRoutes = require('./routers/user');
 const calibrationRoutes = require('./routers/calibration');
 const notificationRoutes = require('./routers/notification');
@@ -173,6 +175,9 @@ app.use('/api', svgUploadRoutes);
 app.use('/api', attendanceRoutes);
 app.use('/api', pumpStateRoutes);
 app.use('/api', pumpRuntimeRoutes);
+app.use("/api", assignmentRoutes);
+
+
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
