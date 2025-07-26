@@ -299,61 +299,53 @@ if (topic === "ebhoomSub") {
      // ==========================================================
           // === NEW: Handle Motor Performance Data (Voltage, RPM, etc.) ===
           // ==========================================================
-          if (item.productId && item.username && typeof item.voltage !== 'undefined') {
-            console.log("Processing motor performance data:", item);
-            const now = moment().tz("Asia/Kolkata").toDate();
+     // Check for the essential fields from the payload
+if (item.productId && item.userName && item.pump && item.stack) {
+    console.log("Processing motor performance data:", item);
+    const now = moment().tz("Asia/Kolkata").toDate();
 
-            const userDetails = await userdb.findOne({
-              productID: item.productId,
-              userName:  item.username
-            });
+    // Reference the nested 'pump' object for easier access
+    const pumpData = item.pump;
 
-            if (!userDetails) {
-              console.error("No user found in DB for motor data:", item.productId, item.username);
-              continue; 
-            }
+    // Construct the payload *only* with data from the incoming message
+    const motorPayload = {
+      product_id:   item.productId,
+      userName:     item.userName,
+      
+      // --- Use the stack name from the payload ---
+      stacks: [{ stackName: item.stack, value: 0 }],
+      
+      // --- Populate motorData strictly from the payload ---
+      motorData: {
+        voltage:     pumpData.voltage,
+        current:     pumpData.current,
+        temperature: pumpData.temperature,
+        vibration:   pumpData.vibration,
+        pumpId:      pumpData.pumpId,
+        pumpName:    pumpData.pumpName,
+        status:      pumpData.status,
+        fault:       pumpData.fault,
+      },
 
-            const motorPayload = {
-              product_id:   item.productId,
-              userName:     userDetails.userName,
-              email:        userDetails.email,
-              mobileNumber: userDetails.mobileNumber,
-              companyName:  userDetails.companyName,
-              industryType: userDetails.industryType,
+      date:         moment(now).format("DD/MM/YYYY"),
+      time:         moment(now).format("HH:mm"),
+      // Use the timestamp from the payload for accuracy, otherwise use current time
+      timestamp:    item.timestamp ? new Date(item.timestamp * 1000) : now,
+    };
 
-              // --- ADD DUMMY STACKS TO SATISFY API VALIDATION ---
-              stacks: [{ stackName: "motor_data", value: 0 }],
-              // ----------------------------------------------------
-              
-              motorData: {
-                voltage:     item.voltage,
-                current:     item.current,
-                temperature: item.temperature,
-                vibration:   item.vibration,
-                X:           item.X,
-                Y:           item.Y,
-                Z:           item.Z,
-                RPM:         item.RPM,
-              },
-              date:         moment(now).format("DD/MM/YYYY"),
-              time:         moment(now).format("HH:mm"),
-              timestamp:    now,
-            };
+    console.log("Sending motor payload:", motorPayload);
+    try {
+      await axios.post(
+        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+        motorPayload
+      );
+      io.to(item.productId.toString()).emit("motorDataUpdate", motorPayload);
+    } catch (err) {
+      console.error("Error sending motor payload:", err.response?.data || err.message);
+    }
 
-            console.log("Sending motor payload:", motorPayload);
-            try {
-              await axios.post(
-                "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                motorPayload
-              );
-              io.to(item.productId.toString()).emit("motorDataUpdate", motorPayload);
-            } catch (err) {
-              console.error("Error sending motor payload:", err.response?.data || err.message);
-            }
-
-            continue;
-          }
-
+    continue;
+}
 
           console.log("Unrecognized ebhoomPub format:", item);
         }
