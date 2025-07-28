@@ -14,7 +14,8 @@ const {
   getReportsByMonth,
   getReportsByUserAndMonth,
   checkMechanicalReportExists,
-  updateMechanicalReport
+  updateMechanicalReport,
+  getMechanicalReportByEquipmentAndMonth
 } = require('../controllers/mechanicalReportController');
 
 
@@ -52,11 +53,11 @@ router.post(
   addMechanicalReport
 );
 
-router.put(
-  '/updatemechanicalreport/:reportId',
-  photoUpload.array('photos', 10), // Use the same photo upload middleware
-  updateMechanicalReport
-);
+// router.put(
+//   '/updatemechanicalreport/:reportId',
+//   photoUpload.array('photos', 10), // Use the same photo upload middleware
+//   updateMechanicalReport
+// );
 // 3.2 Get all reports
 router.get(
   '/mechanicalreports',
@@ -80,6 +81,9 @@ router.get(
   checkMechanicalReportExists
 );
 
-
+router.get(
+  '/mechanicalreport/equipment/:equipmentId',
+  getMechanicalReportByEquipmentAndMonth
+);
 
 module.exports = router;

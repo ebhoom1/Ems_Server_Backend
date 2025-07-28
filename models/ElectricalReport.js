@@ -47,3 +47,4 @@ const ElectricalReportSchema = new Schema({
 });
 
 module.exports = mongoose.model('ElectricalReport', ElectricalReportSchema);
+

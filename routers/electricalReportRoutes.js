@@ -30,4 +30,9 @@ router.get(
   ctrl.reportExists
 );
 
+router.get(
+  '/electricalreport/equipment/:equipmentId', // equipmentId from params
+  ctrl.getReportByEquipmentAndMonth // year and month from query parameters
+);
+
 module.exports = router;
