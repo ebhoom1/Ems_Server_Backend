@@ -6,7 +6,7 @@ const {
   getLastEnergyHourlyByUserName,
   getTodaysHourlyDataByUserFromS3,
   getDailyEffluentAveragesByUser,
-  getDailyEffluentAverages90Days
+  getDailyEffluentAverages90Days,getHourlyDataByDateFromS3
 } = require('../controllers/saveHourlyData');
 
 const router = express.Router();
@@ -28,5 +28,6 @@ router.get('/hourly/today', getTodaysHourlyDataByUserFromS3);
 router.get('/daily/effluent-averages', getDailyEffluentAveragesByUser);
 
 router.get('/daily/effluent-averages/90days', getDailyEffluentAverages90Days);
+router.get('/hourly-by-date', getHourlyDataByDateFromS3);
 
 module.exports = router;

@@ -10,7 +10,7 @@ const RETRY_DELAY = 5000; // 5 seconds
 
 // MQTT Connection Options
 const options = {
-  host: "3.110.40.48",
+  host: "3.108.105.76",
   port: 1883,
   clientId: `EbhoomSubscriber-${Math.random().toString(16).substring(2, 10)}`,
   protocol: "mqtt",
@@ -31,7 +31,7 @@ const lastProcessedTime = {}; // For throttling sensor/tank data
 const lastTankDataByProductId = {};
 
 function debugLog(...args) {
-  console.log("🛠️ DEBUG:", ...args);
+ /*  console.log("🛠️ DEBUG:", ...args); */
 }
 
 const setupMqttClient = (io) => {
@@ -67,7 +67,7 @@ const setupMqttClient = (io) => {
   client.on("message", async (topic, messageBuffer) => {
     try {
       const messageString = messageBuffer.toString();
-      console.log(`\n--- Received on ${topic}:`, messageString);
+    /*   console.log(`\n--- Received on ${topic}:`, messageString); */
 
       // Parse JSON into an array
       let data;
@@ -194,7 +194,7 @@ if (topic === "ebhoomSub") {
 
           // Sensor & Tank data
           if (item.product_id && item.userName && Array.isArray(item.stacks)) {
-            console.log("Processing sensor/tank data:", item);
+        /*     console.log("Processing sensor/tank data:", item); */
             const now = moment().tz("Asia/Kolkata").toDate();
             const key = `${item.product_id}_${item.userName}`;
             if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {

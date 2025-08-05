@@ -6,7 +6,7 @@ const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 const HourlyData = require('../models/hourlyData');
 const s3 = new AWS.S3(); // make sure AWS is configured properly
-
+ 
 // Function to save the initial data (unchanged)
 const saveInitialData = async () => {
 try {
@@ -18,7 +18,7 @@ const hourlyFileKey = 'hourly_data/hourlyData.json';
     const differenceFileKey = 'difference_data/hourlyDifferenceData.json';
 let hourlyData = [];
     let existingDifferenceData = [];
-  
+  
 // --- Step 1: Fetch S3 files ---
 console.log('Fetching hourly data from S3...');
 try {
@@ -41,7 +41,7 @@ if (s3Error.code !== 'NoSuchKey') {
             throw s3Error; // Rethrow other critical errors
         }
     }
-  
+  
     // --- Step 2: Determine a unique set of all stacks to process ---
     const allStacks = new Map();
 
@@ -133,10 +133,50 @@ console.error('A critical error occurred in the saveInitialData job:', error);
 }
 };
 
+// FIXED: Helper function to find the best final value
+const findBestFinalValue = (hourlyEntries, initialValue, valueType) => {
+    // Sort entries by hour (descending) to start from hour 23 and go backwards
+    const sortedEntries = [...hourlyEntries].sort((a, b) => parseInt(b.hour) - parseInt(a.hour));
+    
+    console.log(`🔍 Finding best final value for ${valueType}. Initial: ${initialValue}`);
+    console.log(`📊 Available hours: ${sortedEntries.map(e => `H${e.hour}:${e[valueType]}`).join(', ')}`);
+    
+    // Step 1: Find the last non-zero value starting from hour 23
+    for (const entry of sortedEntries) {
+        const value = entry[valueType] || 0;
+        if (value > 0) {
+            console.log(`✅ Found non-zero value at hour ${entry.hour}: ${value}`);
+            
+            // Step 2: If this value is greater than initial, use it
+            if (value >= initialValue) {
+                console.log(`✅ Value ${value} >= initial ${initialValue}, using it as final`);
+                return value;
+            } else {
+                console.log(`⚠️  Value ${value} < initial ${initialValue}, searching for better value...`);
+                
+                // Step 3: Look for the highest value that's still >= initial
+                const validEntries = hourlyEntries
+                    .filter(e => (e[valueType] || 0) >= initialValue)
+                    .sort((a, b) => (b[valueType] || 0) - (a[valueType] || 0));
+                
+                if (validEntries.length > 0) {
+                    const bestValue = validEntries[0][valueType] || 0;
+                    console.log(`✅ Found best valid value: ${bestValue} at hour ${validEntries[0].hour}`);
+                    return bestValue;
+                } else {
+                    console.log(`⚠️  No valid values found >= initial. Using initial as final`);
+                    return initialValue;
+                }
+            }
+        }
+    }
+    
+    // Step 4: If all values are 0, use initial as final
+    console.log(`⚠️  All hourly values are 0, using initial ${initialValue} as final`);
+    return initialValue;
+};
 
-//to add data 
-
-// Updated function: pick first non‑zero hourly value as initial if the very first is 0
+// UPDATED: Fixed difference calculation with robust final value selection
 const calculateDailyDifferenceFromS3 = async () => {
 try {
 const bucketName = 'ems-ebhoom-bucket';
@@ -146,57 +186,78 @@ const hourlyFileKey = 'hourly_data/hourlyData.json';
     let differenceData = [];
 
 // --- Step 1: Fetch S3 files ---
-console.log('Fetching hourly data from S3...');
+console.log('🔄 Fetching hourly data from S3...');
 try {
 const hourlyS3Object = await s3.getObject({ Bucket: bucketName, Key: hourlyFileKey }).promise();
 hourlyData = JSON.parse(hourlyS3Object.Body.toString('utf-8'));
+console.log(`📊 Loaded ${hourlyData.length} hourly records from S3`);
 } catch (s3Error) {
 if (s3Error.code === 'NoSuchKey') {
-console.log('Hourly data file not found. Cannot proceed with final calculation.');
+console.log('❌ Hourly data file not found. Cannot proceed with final calculation.');
 return;
 }
 throw s3Error;
 }
 
-    console.log('Fetching difference data from S3 to update...');
+    console.log('🔄 Fetching difference data from S3 to update...');
     try {
         const differenceS3Object = await s3.getObject({ Bucket: bucketName, Key: differenceFileKey }).promise();
         differenceData = JSON.parse(differenceS3Object.Body.toString('utf-8'));
+        console.log(`📊 Loaded ${differenceData.length} difference records from S3`);
     } catch (s3Error) {
         if (s3Error.code === 'NoSuchKey') {
-            console.log('Difference data file not found. Cannot update.');
+            console.log('❌ Difference data file not found. Cannot update.');
             return;
         }
         throw s3Error;
     }
 
 const today = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
-console.log('Calculating final daily differences for date:', today);
+console.log(`📅 Calculating final daily differences for date: ${today}`);
+console.log(`⏰ Current time: ${moment().tz('Asia/Kolkata').format('DD/MM/YYYY HH:mm:ss')}`);
 
+// FIXED: Get all hourly data for today (should include hours 0-23)
 const todaysHourlyData = hourlyData.filter(entry => entry.date === today);
 if (todaysHourlyData.length === 0) {
-console.log('No hourly data for today. No calculations to perform.');
+console.log('❌ No hourly data for today. No calculations to perform.');
 return;
 }
 
-// --- Step 2: Group today's hourly data by stack ---
+console.log(`📊 Found ${todaysHourlyData.length} hourly entries for today`);
+console.log(`📊 Hours available: ${[...new Set(todaysHourlyData.map(e => e.hour))].sort((a,b) => parseInt(a) - parseInt(b)).join(', ')}`);
+
+// --- Step 2: Group today's hourly data by userName and stackName ---
 const grouped = {};
 todaysHourlyData.forEach(entry => {
 entry.stacks.forEach(stack => {
 const key = `${entry.userName}_${stack.stackName}`;
 if (!grouped[key]) {
-grouped[key] = { userName: entry.userName, stackName: stack.stackName, entries: [] };
+grouped[key] = { 
+    userName: entry.userName, 
+    stackName: stack.stackName, 
+    stationType: stack.stationType,
+    entries: [] 
+};
 }
-grouped[key].entries.push({ ...stack, timestamp: entry.timestamp });
+grouped[key].entries.push({ 
+    ...stack, 
+    hour: entry.hour,
+    date: entry.date,
+    timestamp: entry.timestamp 
+});
 });
 });
 
-    // --- Step 3: Update the differenceData in memory ---
+console.log(`🔍 Found ${Object.keys(grouped).length} unique stacks to process`);
+
+    // --- Step 3: Update the differenceData in memory with robust logic ---
     let updatedCount = 0;
 for (const key in grouped) {
-const { userName, stackName, entries } = grouped[key];
+const { userName, stackName, stationType, entries } = grouped[key];
 
-      // Find the corresponding record created by the morning job in our S3 data
+console.log(`\n🔄 Processing ${userName} - ${stackName} (${entries.length} hourly entries)`);
+
+      // Find the corresponding initial record for today
       const recordToUpdate = differenceData.find(rec => 
           rec.userName === userName &&
           rec.stackName === stackName &&
@@ -204,30 +265,46 @@ const { userName, stackName, entries } = grouped[key];
       );
 
 if (!recordToUpdate) {
-console.warn(`⚠️ Could not find initial record in S3 file for ${userName} - ${stackName}.`);
+console.warn(`⚠️  Could not find initial record in S3 file for ${userName} - ${stackName} on ${today}`);
 continue;
 }
 
 const { initialEnergy, initialCumulatingFlow } = recordToUpdate;
+console.log(`📍 Initial values - Energy: ${initialEnergy}, Flow: ${initialCumulatingFlow}`);
 
-entries.sort((a, b) => moment(a.timestamp).diff(moment(b.timestamp)));
+// Sort entries by hour for processing
+entries.sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
 
-const lastWithEnergy = [...entries].reverse().find(e => e.energy > 0);
-let finalEnergy = lastWithEnergy ? lastWithEnergy.energy : entries[entries.length - 1].energy || 0;
+// FIXED: Use robust final value selection
+let finalEnergy = 0;
+let finalCumFlow = 0;
 
-const lastWithFlow = [...entries].reverse().find(e => e.cumulatingFlow > 0);
-let finalCumFlow = lastWithFlow ? lastWithFlow.cumulatingFlow : entries[entries.length - 1].cumulatingFlow || 0;
+if (stationType === 'energy') {
+    finalEnergy = findBestFinalValue(entries, initialEnergy, 'energy');
+} else if (stationType === 'effluent_flow') {
+    finalCumFlow = findBestFinalValue(entries, initialCumulatingFlow, 'cumulatingFlow');
+} else {
+    // Handle both types if stack has both
+    finalEnergy = findBestFinalValue(entries, initialEnergy, 'energy');
+    finalCumFlow = findBestFinalValue(entries, initialCumulatingFlow, 'cumulatingFlow');
+}
+
+      // Calculate differences
+      const energyDiff = finalEnergy - initialEnergy;
+      const flowDiff = finalCumFlow - initialCumulatingFlow;
 
       // Update the record directly
       recordToUpdate.lastEnergy = finalEnergy;
-      recordToUpdate.energyDifference = finalEnergy - initialEnergy;
+      recordToUpdate.energyDifference = energyDiff;
       recordToUpdate.lastCumulatingFlow = finalCumFlow;
-      recordToUpdate.cumulatingFlowDifference = finalCumFlow - initialCumulatingFlow;
+      recordToUpdate.cumulatingFlowDifference = flowDiff;
       recordToUpdate.time = moment().tz('Asia/Kolkata').format('HH:mm:ss');
       recordToUpdate.timestamp = new Date().toISOString();
       
       updatedCount++;
-console.log(`✅ Calculated final difference for ${userName} - ${stackName}`);
+console.log(`✅ Final calculation for ${userName} - ${stackName}:`);
+console.log(`   Energy: ${initialEnergy} → ${finalEnergy} (diff: ${energyDiff})`);
+console.log(`   Flow: ${initialCumulatingFlow} → ${finalCumFlow} (diff: ${flowDiff})`);
 }
 
     // --- Step 4: Write the modified data back to S3 ---
@@ -240,38 +317,36 @@ console.log(`✅ Calculated final difference for ${userName} - ${stackName}`);
         }).promise();
         console.log(`📦 Successfully updated ${updatedCount} records in S3.`);
     } else {
-        console.log('No records were updated.');
+        console.log('⚠️  No records were updated.');
     }
 
 } catch (error) {
 console.error('❌ Error in calculateDailyDifferenceFromS3 job:', error);
 }
 };
-
-// Schedule the two cron jobs
+ 
+// UPDATED: Schedule difference calculation to run at 11:58 PM (after hourly data is complete)
 const scheduleDifferenceCalculation = () => { 
-    cron.schedule('5 0 * * *', async () => {
-        console.log('Running initial data capture cron job at 00:05 IST...');
+    cron.schedule('36 0 * * *', async () => {
+        console.log('🌅 Running initial data capture cron job at 00:05 IST...');
         await saveInitialData();
     }, {
     timezone: "Asia/Kolkata"
     });
-    console.log('Initial data capture scheduled to run at 00:05 IST daily.');
+    console.log('🌅 Initial data capture scheduled to run at 00:05 IST daily.');
     
-    cron.schedule('52 23 * * *', async () => {
-        console.log('Running daily difference calculation cron job at 23:55 IST...');
+    // FIXED: Changed from 23:52 to 23:58 to ensure all hourly data (including hour 23) is available
+    cron.schedule('58 23 * * *', async () => {
+        console.log('🌙 Running daily difference calculation cron job at 23:58 IST...');
         await calculateDailyDifferenceFromS3();
-    }, {
+    }, { 
     timezone: "Asia/Kolkata"
     });
-    console.log('Daily difference calculation scheduled to run at 23:55 IST daily.');
+    console.log('🌙 Daily difference calculation scheduled to run at 23:58 IST daily.');
 };
 
 // Kick off scheduling
 scheduleDifferenceCalculation();
-
-// Schedule the two cron jobs
-
 
 
 const addManualDifferenceData = async (req, res) => {

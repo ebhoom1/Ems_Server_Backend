@@ -8,38 +8,30 @@ const { calculateAndSaveConsumption } = require('./consumption');
 
 const saveHourlyData = async () => {
     const currentTimeIST = moment().tz('Asia/Kolkata');
-    const currentHour = currentTimeIST.format('HH');
-    const previousHour = moment(currentTimeIST).subtract(1, 'hour').format('HH');
+    const currentHour = currentTimeIST.format('HH'); // Current hour instead of previous
+    
+    // Fetch data for the current hour up to now
+    const startOfHour = currentTimeIST.clone().startOf('hour').utc().toDate();
+    const endOfNow = currentTimeIST.utc().toDate(); // Up to current time instead of end of hour
 
-    // ✅ **Fetch data from 4:00 - 4:59 when time is between 4:00 - 4:59**
-    const startOfHour = moment().tz('Asia/Kolkata').startOf('hour').utc().toDate();
-    const endOfHour = moment(startOfHour).add(59, 'minutes').utc().toDate(); // ✅ Adjusted to fetch up to 59 minutes
-
-    console.log(`🕒 Initiating hourly data save for hour: ${previousHour} (Fetching IoT Data Between: ${startOfHour} - ${endOfHour})`);
+    console.log(`🕒 Initiating hourly data save for CURRENT hour: ${currentHour} (Fetching IoT Data Between: ${startOfHour} - ${endOfNow})`);
 
     try {
-        // 🔍 Check if data exists in the correct range
-        const iotDataCheck = await IotData.findOne({
-            timestamp: { $gte: startOfHour, $lte: endOfHour }
-        });
-
-        if (!iotDataCheck) {
-            console.log(`❌ No IoT data found between ${startOfHour} and ${endOfHour}. Skipping.`);
-            return;
-        }
-
-        // 🔥 Fetch only the latest stack entry per user and stack within this adjusted range
+        // Fetch the LATEST (most recent) stack entry per user and stack within the current hour
         const lastEntries = await IotData.aggregate([
             {
                 $match: {
-                    timestamp: { $gte: startOfHour, $lte: endOfHour }
+                    timestamp: { $gte: startOfHour, $lte: endOfNow }
                 }
             },
-            { $unwind: "$stackData" }, // 🔥 Extract each stack entry separately
+            { $unwind: "$stackData" },
             {
                 $match: {
-                    "stackData.stationType": { $in: ["energy", "effluent_flow"] } // ✅ Only store valid station types
+                    "stackData.stationType": { $in: ["energy", "effluent_flow"] }
                 }
+            },
+            {
+                $sort: { timestamp: -1 } // Sort by timestamp descending to get latest first
             },
             {
                 $group: {
@@ -47,81 +39,109 @@ const saveHourlyData = async () => {
                         userName: "$userName",
                         stackName: "$stackData.stackName"
                     },
-                    latestEntry: { $first: "$stackData" },
-                    timestamp: { $first: "$timestamp" },
-                    product_id: { $first: "$product_id" }
+                    latestEntry: { $first: "$$ROOT" } // Get the most recent entry per user+stack combination
                 }
+            },
+            {
+                $replaceRoot: { newRoot: "$latestEntry" }
             }
         ]);
 
-        console.log(`🔍 Found ${lastEntries.length} stack entries to process.`);
-
         if (lastEntries.length === 0) {
-            console.log(`❌ No valid stack entries found for hour: ${previousHour}. Skipping data save.`);
+            console.log(`❌ No valid stack entries found for current hour: ${currentHour}. Skipping data save.`);
             return;
         }
 
-        // Group by user
+        console.log(`🔍 Found ${lastEntries.length} stack entries to process for current hour.`);
+
         const userHourlyData = {};
 
         for (let entry of lastEntries) {
-            if (!userHourlyData[entry._id.userName]) {
-                userHourlyData[entry._id.userName] = {
-                    userName: entry._id.userName,
+            const userName = entry.userName;
+            if (!userHourlyData[userName]) {
+                userHourlyData[userName] = {
+                    userName: userName,
                     product_id: entry.product_id,
-                    hour: previousHour, // ✅ Always save the previous hour's data
-                    date: moment(entry.timestamp).tz('Asia/Kolkata').format('DD/MM/YYYY'),
-                    month: moment(entry.timestamp).tz('Asia/Kolkata').format('MM'),
-                    year: moment(entry.timestamp).tz('Asia/Kolkata').format('YYYY'),
+                    hour: currentHour, // Use current hour
+                    date: currentTimeIST.format('DD/MM/YYYY'), // Use current IST date
+                    month: currentTimeIST.format('MM'),
+                    year: currentTimeIST.format('YYYY'),
                     stacks: [],
                     timestamp: new Date()
                 };
             }
-
-            // ✅ Save only energy and cumulatingFlow
-            userHourlyData[entry._id.userName].stacks.push({
-                stackName: entry._id.stackName,
-                stationType: entry.latestEntry.stationType,
-                energy: entry.latestEntry.stationType === 'energy' ? entry.latestEntry.energy || 0 : 0,
-                cumulatingFlow: entry.latestEntry.stationType === 'effluent_flow' ? entry.latestEntry.cumulatingFlow || 0 : 0
+            
+            const stack = entry.stackData;
+            userHourlyData[userName].stacks.push({
+                stackName: stack.stackName,
+                stationType: stack.stationType,
+                energy: stack.stationType === 'energy' ? stack.energy || 0 : 0,
+                cumulatingFlow: stack.stationType === 'effluent_flow' ? stack.cumulatingFlow || 0 : 0
             });
         }
+        
+        const newJsonData = Object.values(userHourlyData);
 
-        for (const user in userHourlyData) {
-            console.log(`💾 Saving hourly record for ${user}:`, JSON.stringify(userHourlyData[user], null, 2));
-
-            await HourlyData.findOneAndUpdate(
-                { userName: userHourlyData[user].userName, hour: previousHour, date: userHourlyData[user].date },
-                userHourlyData[user],
-                { upsert: true, new: true }
-            );
+        // ### S3 Direct Save Logic (No MongoDB save) ###
+        const fileName = 'hourly_data/hourlyData.json';
+        const bucketName = 'ems-ebhoom-bucket';
+        
+        let existingJsonData = [];
+        try {
+            console.log(`📥 Fetching existing data from S3: ${bucketName}/${fileName}`);
+            const s3Params = { Bucket: bucketName, Key: fileName };
+            const existingFile = await s3.getObject(s3Params).promise();
+            existingJsonData = JSON.parse(existingFile.Body.toString('utf-8'));
+        } catch (error) {
+            if (error.code !== 'NoSuchKey') {
+                console.error("❌ Error fetching from S3:", error);
+                return; // Exit if there's a critical error
+            }
+            console.log("⚠️ File not found in S3. A new file will be created.");
         }
 
-        console.log(`✅ Hourly data processing completed successfully for hour: ${previousHour}`);
+        // Remove any existing entries for the same user+date+hour combination to avoid duplicates
+        const filteredExistingData = existingJsonData.filter(existingEntry => {
+            return !(newJsonData.some(newEntry => 
+                existingEntry.userName === newEntry.userName && 
+                existingEntry.date === newEntry.date && 
+                existingEntry.hour === newEntry.hour
+            ));
+        });
 
-        // ✅ Trigger the consumption calculation
-        console.log(`⚡ Triggering consumption calculation for hour: ${previousHour}`);
+        // Append new data to the filtered existing data
+        const updatedJsonData = [...filteredExistingData, ...newJsonData];
+
+        // Upload the updated file back to S3
+        const uploadParams = {
+            Bucket: bucketName,
+            Key: fileName,
+            Body: JSON.stringify(updatedJsonData, null, 2),
+            ContentType: 'application/json'
+        };
+
+        await s3.upload(uploadParams).promise();
+        console.log(`✅ Successfully uploaded ${newJsonData.length} hourly records for CURRENT hour ${currentHour} to S3.`);
+
+        // Trigger consumption calculation
+        console.log(`⚡ Triggering consumption calculation for current hour: ${currentHour}`);
         await calculateAndSaveConsumption();
 
     } catch (error) {
-        console.error('❌ Error saving hourly data:', error);
+        console.error('❌ Error in the hourly data saving process:', error);
     }
 };
 
-
-
-
-
-// Schedule the task to run at the beginning of every hour
+// Schedule the task to run at 57 minutes past every hour to capture current hour data
 const setupCronJob = () => {
-  cron.schedule('58 * * * *', async () => {
+  cron.schedule('57 * * * *', async () => {
     const currentTimeIST = moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
-    console.log(`⏳ Cron job triggered at IST: ${currentTimeIST}`);
+    console.log(`⏳ Cron job triggered at IST: ${currentTimeIST} - Saving CURRENT hour data`);
     await saveHourlyData();
-}, {
+  }, {
     timezone: 'Asia/Kolkata',
-});
-
+  });
+  console.log('🕒 Hourly data job scheduled to save CURRENT hour data directly to S3 at 57 minutes past the hour.');
 };
 
 // Configure AWS SDK
@@ -133,23 +153,7 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-/* const fetchDataFromS3 = async (key) => {
-    try {
-        const params = {
-            Bucket: 'ems-ebhoom-bucket',
-            Key: key,
-        };
-
-        const data = await s3.getObject(params).promise();
-        console.log(`Fetched data from S3 for key: ${key}`, data.Body.toString('utf-8'));
-
-        return JSON.parse(data.Body.toString('utf-8'));
-    } catch (error) {
-        console.error('Error fetching data from S3:', error);
-        throw new Error('Failed to fetch data from S3');
-    }
-}; */
-
+// Rest of your existing functions remain the same...
 const getHourlyDataOfCumulatingFlowAndEnergy = async (req, res) => {
     const { userName, date } = req.query;
 
@@ -261,6 +265,7 @@ const fetchDataFromS3 = async (key) => {
         return null;
     }
 };
+
 const getLastEffluentHourlyByUserName = async (req, res) => {
   const { userName } = req.query;
   if (!userName) {
@@ -278,7 +283,7 @@ const getLastEffluentHourlyByUserName = async (req, res) => {
         .json({ success: false, message: 'No hourly data in S3.' });
     }
 
-    // 2) Filter down to this user’s records
+    // 2) Filter down to this user's records
     const userRecords = s3Data.filter(entry => entry.userName === userName);
     if (userRecords.length === 0) {
       return res
@@ -325,7 +330,6 @@ const getLastEffluentHourlyByUserName = async (req, res) => {
   }
 };
 
-
 const getLastEnergyHourlyByUserName = async (req, res) => {
   const { userName } = req.query;
   if (!userName) {
@@ -343,7 +347,7 @@ const getLastEnergyHourlyByUserName = async (req, res) => {
         .json({ success: false, message: 'No hourly data in S3.' });
     }
 
-    // 2) Filter down to this user’s records
+    // 2) Filter down to this user's records
     const userRecords = s3Data
       .filter(entry => entry.userName === userName)
       // 3) Sort descending by date & hour
@@ -377,7 +381,7 @@ const getLastEnergyHourlyByUserName = async (req, res) => {
         .json({ success: false, message: `No energy data found for user ${userName}` });
     }
 
-    // 5) Return that record’s date/hour plus all energy stacks
+    // 5) Return that record's date/hour plus all energy stacks
     return res.json({
       success: true,
       data: {
@@ -419,6 +423,7 @@ const getTodaysHourlyData = async (req, res) => {
     });
   }
 };
+
 const getTodaysHourlyDataByUserFromS3 = async (req, res) => {
   const { userName } = req.query;
   if (!userName) {
@@ -438,7 +443,7 @@ const getTodaysHourlyDataByUserFromS3 = async (req, res) => {
       });
     }
 
-    // 2) compute today’s date in DD/MM/YYYY
+    // 2) compute today's date in DD/MM/YYYY
     const today = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
 
     // 3) filter by userName + date
@@ -451,7 +456,7 @@ const getTodaysHourlyDataByUserFromS3 = async (req, res) => {
       data: filtered
     });
   } catch (err) {
-    console.error('❌ Error fetching today’s hourly data from S3:', err);
+    console.error('❌ Error fetching todays hourly data from S3:', err);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -521,6 +526,7 @@ const getDailyEffluentAveragesByUser = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
+
 const getDailyEffluentAverages90Days = async (req, res) => {
   const { userName } = req.query;
   if (!userName) {
@@ -580,11 +586,71 @@ const getDailyEffluentAverages90Days = async (req, res) => {
   }
 };
 
-module.exports = { setupCronJob, 
-    getHourlyDataOfCumulatingFlowAndEnergy ,
+/**
+ * Fetches all hourly records for a specific user on a given date from S3.
+ * The date should be in DD/MM/YYYY format.
+ */
+const getHourlyDataByDateFromS3 = async (req, res) => {
+  // 1. Get userName and date from query parameters
+  const { userName, date } = req.query;
+
+  // 2. Validate inputs
+  if (!userName || !date) {
+    return res.status(400).json({
+      success: false,
+      message: '❌ Missing required query parameters: userName and date (format: DD/MM/YYYY).',
+    });
+  }
+
+  try {
+    // 3. Fetch the full hourly data dump from S3
+    const allHourlyData = await fetchDataFromS3('hourly_data/hourlyData.json');
+
+    if (!allHourlyData || !Array.isArray(allHourlyData)) {
+      return res.status(404).json({
+        success: false,
+        message: '❌ Hourly data not found or is in an invalid format in S3.',
+      });
+    }
+
+    // 4. Filter the data for the matching user and date
+    const filteredData = allHourlyData.filter(
+      (entry) => entry.userName === userName && entry.date === date
+    );
+
+    if (filteredData.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `❌ No data found for user '${userName}' on date '${date}'.`,
+      });
+    }
+
+    // 5. Sort the results by hour for chronological order
+    filteredData.sort((a, b) => parseInt(a.hour, 10) - parseInt(b.hour, 10));
+
+    // 6. Return the filtered and sorted data
+    return res.status(200).json({
+      success: true,
+      data: filteredData,
+    });
+  } catch (error) {
+    console.error('❌ Error in getHourlyDataByDateFromS3:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error.',
+      error: error.message,
+    });
+  }
+};
+
+module.exports = { 
+    setupCronJob, 
+    getHourlyDataOfCumulatingFlowAndEnergy,
     getLastEffluentHourlyByUserName,
     getLastEnergyHourlyByUserName,
     getTodaysHourlyData,
     getTodaysHourlyDataByUserFromS3,
-getDailyEffluentAveragesByUser,
-getDailyEffluentAverages90Days};
+    getDailyEffluentAveragesByUser,
+    getDailyEffluentAverages90Days,
+    getHourlyDataByDateFromS3
+};
