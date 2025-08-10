@@ -51,6 +51,7 @@ const faultRoutes = require('./routers/faultRoutes');
 const techRoutes = require('./routers/technicianRoutes');
 const pumpStateRoutes = require('./routers/pumpStateRoutes');
 const pumpRuntimeRoutes=require('./routers/pumpRuntimeRoutes');
+const realtimeRoutes = require('./routers/realtime');
 
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
@@ -176,6 +177,7 @@ app.use('/api', attendanceRoutes);
 app.use('/api', pumpStateRoutes);
 app.use('/api', pumpRuntimeRoutes);
 app.use("/api", assignmentRoutes);
+app.use('/api', realtimeRoutes);
 
 
 // WebSockets for real-time chat

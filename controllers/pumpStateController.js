@@ -33,7 +33,7 @@ exports.getPumpStatesByProduct = async (productId) => {
     throw error;
   }
 };
-// controllers/pumpStateController.js
+// This function updates the status and clears the pending flag on acknowledgment
 exports.updatePumpState = async (productId, pumpId, status) => {
     return PumpState.findOneAndUpdate(
       { productId, pumpId },
@@ -42,3 +42,16 @@ exports.updatePumpState = async (productId, pumpId, status) => {
     );
   };
   
+  // This new function sets the pending flag when a command is sent
+  exports.setPumpPending = async (productId, pumpId, isPending) => {
+    try {
+        await PumpState.findOneAndUpdate(
+            { productId: Number(productId), pumpId },
+            { pending: isPending, lastUpdated: new Date() },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error('Error setting pump pending status:', error);
+        throw error;
+    }
+};

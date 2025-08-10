@@ -4,7 +4,9 @@ const moment = require("moment-timezone");
 const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
-const { updateRuntimeFromRealtime } = require('../controllers/pumpRuntimeController');
+const {
+  updateRuntimeFromRealtime,
+} = require("../controllers/pumpRuntimeController");
 
 const RETRY_DELAY = 5000; // 5 seconds
 
@@ -31,7 +33,7 @@ const lastProcessedTime = {}; // For throttling sensor/tank data
 const lastTankDataByProductId = {};
 
 function debugLog(...args) {
- /*  console.log("🛠️ DEBUG:", ...args); */
+  console.log("🛠️ DEBUG:", ...args);
 }
 
 const setupMqttClient = (io) => {
@@ -67,7 +69,7 @@ const setupMqttClient = (io) => {
   client.on("message", async (topic, messageBuffer) => {
     try {
       const messageString = messageBuffer.toString();
-    /*   console.log(`\n--- Received on ${topic}:`, messageString); */
+      console.log(`\n--- Received on ${topic}:`, messageString);
 
       // Parse JSON into an array
       let data;
@@ -80,79 +82,99 @@ const setupMqttClient = (io) => {
       }
 
       // --- ebhoomSub (Commands & Feedback) Handling ---
-   // In mqtt.js
-// --- ebhoomSub (Commands & Feedback) Handling ---
-if (topic === "ebhoomSub") {
-  try {
-    const messageString = messageBuffer.toString();
-    let data = JSON.parse(messageString);
-    data = Array.isArray(data) ? data : [data];
+      // In mqtt.js
+      // --- ebhoomSub (Commands & Feedback) Handling ---
+      if (topic === "ebhoomSub") {
+        try {
+          const messageString = messageBuffer.toString();
+          let data = JSON.parse(messageString);
+          data = Array.isArray(data) ? data : [data];
 
-    for (const item of data) {
-      // **FIX: Explicitly ignore command echoes based on their structure**
-      // Commands sent by this backend have a `messageId` but no `userName`.
-      // This check reliably identifies and ignores them.
-      if (item.messageId && !item.userName) {
-        debugLog("Ignoring command echo or unrecognized command format:", item);
-        continue; // Skip this item
-      }
+          for (const item of data) {
+           
+            if (item.messageId && !item.userName) {
+              debugLog(
+                "Ignoring command echo or unrecognized command format:",
+                item
+              );
+              continue; // Skip this item
+            }
 
-      // **Process genuine feedback from devices**
-      // This logic assumes feedback messages contain a `userName`.
-      if (
-        item.product_id &&
-        item.userName &&
-        Array.isArray(item.pumps)
-      ) {
-        console.log("Processing pump feedback:", item);
-        const userDetails = await userdb.findOne({
-          productID: item.product_id,
-          userName: item.userName,
-          pumpDetails: { $elemMatch: { pumpId: { $in: item.pumps.map(p => p.pumpId) } } }
-        });
+            // **Process genuine feedback from devices**
+            // This logic assumes feedback messages contain a `userName`.
+            if (item.product_id && item.userName && Array.isArray(item.pumps)) {
+              console.log("Processing pump feedback:", item);
+              // const productIdNumber = Number(item.product_id); 
+              const userDetails = await userdb.findOne({
+                productID: item.product_id,
+                userName: item.userName,
+               
+              });
 
-        if (!userDetails) {
-          console.error("No user found in DB for pump feedback:", item.product_id, item.userName);
-          continue;
-        }
+              if (!userDetails) {
+                console.error(
+                  "No user found in DB for pump feedback:",
+                  item.product_id,
+                  item.userName
+                );
+                continue;
+              }
 
-        const now = moment().tz("Asia/Kolkata").toDate();
-        for (const { pumpId, pumpName, status } of item.pumps) {
-          if (!pumpId || !pumpName || typeof status === "undefined") {
-            console.error("Invalid pump entry in feedback:", { pumpId, pumpName, status });
-            continue;
+              const now = moment().tz("Asia/Kolkata").toDate();
+              for (const { pumpId, pumpName, status } of item.pumps) {
+                if (!pumpId || !pumpName || typeof status === "undefined") {
+                  console.error("Invalid pump entry in feedback:", {
+                    pumpId,
+                    pumpName,
+                    status,
+                  });
+                  continue;
+                }
+                const payload = {
+                  product_id: item.product_id,
+                  userName: userDetails.userName,
+                  email: userDetails.email,
+                  mobileNumber: userDetails.mobileNumber,
+                  companyName: userDetails.companyName,
+                  industryType: userDetails.industryType,
+                  pumpData: { pumpId, pumpName, status },
+                  date: moment(now).format("DD/MM/YYYY"),
+                  time: moment(now).format("HH:mm"),
+                  timestamp: now,
+                };
+                console.log("Forwarding pump feedback payload:", payload);
+                try {
+                  await pumpStateController.updatePumpState(
+                  item.product_id,
+                  pumpId,
+                  status === 1 || status === "ON"
+                );
+                  // await axios.post(
+                  //   "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+                  //   payload
+                  // );
+                  io.to(item.product_id.toString()).emit(
+                    "pumpFeedback",
+                    payload
+                  );
+                } catch (err) {
+                  console.error(
+                    "Error saving pump feedback:",
+                    err.response?.data || err.message
+                  );
+                }
+              }
+              continue; // Finished processing this feedback item
+            }
+
+            // If a message is neither an echo nor valid feedback
+            console.log("Unrecognized ebhoomSub message format:", item);
           }
-          const payload = {
-            product_id: item.product_id,
-            userName: userDetails.userName,
-            email: userDetails.email,
-            mobileNumber: userDetails.mobileNumber,
-            companyName: userDetails.companyName,
-            industryType: userDetails.industryType,
-            pumpData: { pumpId, pumpName, status },
-            date: moment(now).format("DD/MM/YYYY"),
-            time: moment(now).format("HH:mm"),
-            timestamp: now,
-          };
-          console.log("Forwarding pump feedback payload:", payload);
-          try {
-            await axios.post("https://api.ocems.ebhoom.com/api/handleSaveMessage", payload);
-            io.to(item.product_id.toString()).emit("pumpFeedback", payload);
-          } catch (err) {
-            console.error("Error saving pump feedback:", err.response?.data || err.message);
-          }
+        } catch (err) {
+          console.error(`Error processing message on topic ${topic}:`, err);
         }
-        continue; // Finished processing this feedback item
+        return; // Done with ebhoomSub topic
       }
-
-      // If a message is neither an echo nor valid feedback
-      console.log("Unrecognized ebhoomSub message format:", item);
-    }
-  } catch (err) {
-    console.error(`Error processing message on topic ${topic}:`, err);
-  }
-  return; // Done with ebhoomSub topic
-}
       // --- ebhoomPub (Sensor/Tank Data & Pump Acknowledgments) Handling ---
       if (topic === "ebhoomPub") {
         for (const item of data) {
@@ -168,16 +190,21 @@ if (topic === "ebhoomSub") {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
-                   await updateRuntimeFromRealtime({
-        product_id: item.product_id,
-        userName: item.userName,
-        pumpId: pump.pumpId,
-        pumpName: pump.pumpName,
-        status: pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
-        timestamp: item.ntpTime || item.timestamp || new Date().toISOString()
-      });
+                // await updateRuntimeFromRealtime({
+                //   product_id: item.product_id,
+                //   userName: item.userName,
+                //   pumpId: pump.pumpId,
+                //   pumpName: pump.pumpName,
+                //   status:
+                //     pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
+                //   timestamp:
+                //     item.ntpTime || item.timestamp || new Date().toISOString(),
+                // });
               } catch (err) {
-                console.error("Error saving pump state from acknowledgment:", err);
+                console.error(
+                  "Error saving pump state from acknowledgment:",
+                  err
+                );
               }
             }
             const ackData = {
@@ -194,7 +221,7 @@ if (topic === "ebhoomSub") {
 
           // Sensor & Tank data
           if (item.product_id && item.userName && Array.isArray(item.stacks)) {
-        /*     console.log("Processing sensor/tank data:", item); */
+            console.log("Processing sensor/tank data:", item);
             const now = moment().tz("Asia/Kolkata").toDate();
             const key = `${item.product_id}_${item.userName}`;
             if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
@@ -205,8 +232,12 @@ if (topic === "ebhoomSub") {
 
             const userDetails = await userdb.findOne({
               productID: item.product_id,
-              userName:  item.userName,
-              stackName: { $elemMatch: { name: { $in: item.stacks.map(s => s.stackName) } } }
+              userName: item.userName,
+              stackName: {
+                $elemMatch: {
+                  name: { $in: item.stacks.map((s) => s.stackName) },
+                },
+              },
             });
             if (!userDetails) {
               console.error("No user found in DB for sensor/tank data:", item);
@@ -214,31 +245,33 @@ if (topic === "ebhoomSub") {
             }
 
             // split into sensor vs. tank
-            const sensorStacks = item.stacks.filter(s => !s.TankName);
-            const tankStacks   = item.stacks.filter(s => !!s.TankName);
+            const sensorStacks = item.stacks.filter((s) => !s.TankName);
+            const tankStacks = item.stacks.filter((s) => !!s.TankName);
 
-            // —— Process Sensor Data —— 
+            // —— Process Sensor Data ——
             if (sensorStacks.length) {
               // build a clean array of just the numeric fields
-              const clean = sensorStacks.map(s => ({
-                stackName:   s.stackName,
+              const clean = sensorStacks.map((s) => ({
+                stackName: s.stackName,
                 stationType: s.stationType,
                 ...Object.fromEntries(
-                  Object.entries(s).filter(([k]) => k !== "stackName" && k !== "stationType")
-                )
+                  Object.entries(s).filter(
+                    ([k]) => k !== "stackName" && k !== "stationType"
+                  )
+                ),
               }));
 
               const sensorPayload = {
-                product_id:   item.product_id,
-                userName:     userDetails.userName,
-                email:        userDetails.email,
+                product_id: item.product_id,
+                userName: userDetails.userName,
+                email: userDetails.email,
                 mobileNumber: userDetails.mobileNumber,
-                companyName:  userDetails.companyName,
+                companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                stacks:       clean,
-                date:         moment(now).format("DD/MM/YYYY"),
-                time:         moment(now).format("HH:mm"),
-                timestamp:    now,
+                stacks: clean,
+                date: moment(now).format("DD/MM/YYYY"),
+                time: moment(now).format("HH:mm"),
+                timestamp: now,
               };
 
               console.log("Sending sensor payload:", sensorPayload);
@@ -249,32 +282,35 @@ if (topic === "ebhoomSub") {
                 );
                 // ← updated emit: join on userName, not product_id
                 io.to(item.userName).emit("stackDataUpdate", {
-                  userName:  item.userName,
-                  stackData: sensorPayload.stacks
+                  userName: item.userName,
+                  stackData: sensorPayload.stacks,
                 });
               } catch (err) {
-                console.error("Error sending sensor payload:", err.response?.data || err.message);
+                console.error(
+                  "Error sending sensor payload:",
+                  err.response?.data || err.message
+                );
               }
             }
 
             // —— Process Tank Data —— (unchanged)
             if (tankStacks.length) {
               const tankPayload = {
-                product_id:   item.product_id,
-                userName:     userDetails.userName,
-                email:        userDetails.email,
+                product_id: item.product_id,
+                userName: userDetails.userName,
+                email: userDetails.email,
                 mobileNumber: userDetails.mobileNumber,
-                companyName:  userDetails.companyName,
+                companyName: userDetails.companyName,
                 industryType: userDetails.industryType,
-                stacks:       [{ stackName: "dummy", value: 0 }],
-                tankData:     tankStacks.map(t => ({
-                  stackName:  t.stackName,
-                  tankName:   t.TankName,
-                  level:      t.level,
-                  percentage: t.percentage
+                stacks: [{ stackName: "dummy", value: 0 }],
+                tankData: tankStacks.map((t) => ({
+                  stackName: t.stackName,
+                  tankName: t.TankName,
+                  level: t.level,
+                  percentage: t.percentage,
                 })),
-                date:      moment(now).format("DD/MM/YYYY"),
-                time:      moment(now).format("HH:mm"),
+                date: moment(now).format("DD/MM/YYYY"),
+                time: moment(now).format("HH:mm"),
                 timestamp: now,
               };
               console.log("Sending tank payload:", tankPayload);
@@ -285,73 +321,23 @@ if (topic === "ebhoomSub") {
                 );
                 io.to(item.product_id.toString()).emit("data", tankPayload);
                 // === NEW: Store last tank data for this productId ===
-                lastTankDataByProductId[item.product_id.toString()] = tankPayload;
+                lastTankDataByProductId[item.product_id.toString()] =
+                  tankPayload;
               } catch (err) {
-                console.error("Error sending tank payload:", err.response?.data || err.message);
+                console.error(
+                  "Error sending tank payload:",
+                  err.response?.data || err.message
+                );
               }
             }
 
             continue;
           }
 
-          //motordata
-   
-     // ==========================================================
-          // === NEW: Handle Motor Performance Data (Voltage, RPM, etc.) ===
-          // ==========================================================
-     // Check for the essential fields from the payload
-if (item.productId && item.userName && item.pump && item.stack) {
-    console.log("Processing motor performance data:", item);
-    const now = moment().tz("Asia/Kolkata").toDate();
-
-    // Reference the nested 'pump' object for easier access
-    const pumpData = item.pump;
-
-    // Construct the payload *only* with data from the incoming message
-    const motorPayload = {
-      product_id:   item.productId,
-      userName:     item.userName,
-      
-      // --- Use the stack name from the payload ---
-      stacks: [{ stackName: item.stack, value: 0 }],
-      
-      // --- Populate motorData strictly from the payload ---
-      motorData: {
-        voltage:     pumpData.voltage,
-        current:     pumpData.current,
-        temperature: pumpData.temperature,
-        vibration:   pumpData.vibration,
-        pumpId:      pumpData.pumpId,
-        pumpName:    pumpData.pumpName,
-        status:      pumpData.status,
-        fault:       pumpData.fault,
-      },
-
-      date:         moment(now).format("DD/MM/YYYY"),
-      time:         moment(now).format("HH:mm"),
-      // Use the timestamp from the payload for accuracy, otherwise use current time
-      timestamp:    item.timestamp ? new Date(item.timestamp * 1000) : now,
-    };
-
-    console.log("Sending motor payload:", motorPayload);
-    try {
-      await axios.post(
-        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-        motorPayload
-      );
-      io.to(item.productId.toString()).emit("motorDataUpdate", motorPayload);
-    } catch (err) {
-      console.error("Error sending motor payload:", err.response?.data || err.message);
-    }
-
-    continue;
-}
-
           console.log("Unrecognized ebhoomPub format:", item);
         }
         return;
       }
-
     } catch (err) {
       console.error("Error in MQTT message handler:", err);
     }
@@ -382,7 +368,14 @@ if (item.productId && item.userName && item.pump && item.stack) {
     });
 
     socket.on("controlPump", ({ product_id, pumps }) => {
-      console.log(`Socket controlPump request received for product ${product_id}:`, pumps);
+      console.log(
+        `Socket controlPump request received for product ${product_id}:`,
+        pumps
+      );
+      console.log(
+        `[BACKEND] Received controlPump request from frontend for product ID: ${product_id}`
+      );
+      console.log("[BACKEND] Pumps data received:", pumps);
 
       if (!product_id || !Array.isArray(pumps) || pumps.length === 0) {
         console.error("Invalid pump control request from socket.");
@@ -397,26 +390,57 @@ if (item.productId && item.userName && item.pump && item.stack) {
   });
 };
 
-const sendPumpControlMessage = (product_id, pumps) => {
-  const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`; // More robust unique ID
-  const message = {
-    product_id,
-    pumps: pumps.map(p => ({
-      pumpId: p.pumpId,
-      pumpName: p.pumpName,
-      status: p.status === "ON" ? 1 : 0, // Convert "ON"/"OFF" to 1/0
-    })),
-    timestamp: new Date().toISOString(),
-    messageId, // Include unique ID for echo filtering
-  };
+// const sendPumpControlMessage = (product_id, pumps) => {
+//   const messageId = `cmd-${Date.now()}-${Math.random()
+//     .toString(36)
+//     .substring(2, 9)}`; // More robust unique ID
+//   const message = {
+//     product_id,
+//     pumps: pumps.map((p) => ({
+//       pumpId: p.pumpId,
+//       pumpName: p.pumpName,
+//       status: p.status === "ON" ? 1 : 0, // Convert "ON"/"OFF" to 1/0
+//     })),
+//     timestamp: new Date().toISOString(),
+//     messageId, // Include unique ID for echo filtering
+//   };
 
-  debugLog("sendPumpControlMessage → adding to sentCommandIds:", messageId);
-  sentCommandIds.add(messageId); // Add command ID to set for echo filtering
+//   debugLog("sendPumpControlMessage → adding to sentCommandIds:", messageId);
+//   sentCommandIds.add(messageId); // Add command ID to set for echo filtering
 
-  client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-    if (err) console.error("Error publishing pump control:", err);
-    else console.log("Pump command sent:", message);
-  });
+//   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
+//     if (err) console.error("Error publishing pump control:", err);
+//     else console.log("Pump command sent:", message);
+//   });
+// };
+
+const sendPumpControlMessage = async (product_id, pumps) => {
+    const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const message = {
+        product_id,
+        pumps: pumps.map((p) => ({
+            pumpId: p.pumpId,
+            pumpName: p.pumpName,
+            status: p.status === "ON" ? 1 : 0,
+        })),
+        timestamp: new Date().toISOString(),
+        messageId,
+    };
+
+    try {
+        // Set the pending status to true in the database for each pump
+        for (const pump of pumps) {
+            await pumpStateController.setPumpPending(product_id, pump.pumpId, true);
+        }
+    } catch (err) {
+        console.error("Error setting pump pending status:", err);
+    }
+
+    // ... (rest of the sendPumpControlMessage function)
+    client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
+        if (err) console.error("Error publishing pump control:", err);
+        else console.log("Pump command sent:", message);
+    });
 };
 
 const initializeMqttClients = async (io) => {
