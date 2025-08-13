@@ -1,65 +1,3 @@
-// // 📦 BACKEND: pumpRuntimeController.js
-// // const PumpRuntimeLog = require('../models/PumpRuntimeLog');
-// const PumpRuntimeDaily = require('../models/PumpRuntimeDaily');
-// const moment = require('moment');
-
-// const getPumpRuntimePerDay = async (req, res) => {
-//   try {
-//     const { userName, product_id } = req.params;
-//     const records = await PumpRuntimeDaily.find({ userName, product_id });
-//     res.status(200).json({ data: records });
-//   } catch (err) {
-//     console.error('Error in getPumpRuntimePerDay:', err);
-//     res.status(500).json({ message: 'Server Error' });
-//   }
-// };
-
-// // 🆕 Save or update runtime every ON/OFF event
-// const updateRuntimeFromRealtime = async ({
-//   product_id,
-//   userName,
-//   pumpId,
-//   pumpName,
-//   status,
-//   timestamp
-// }) => {
-//   try {
-//     const ts = moment(timestamp);
-//     const dateStr = ts.format('YYYY-MM-DD');
-
-//     // Find existing daily runtime record
-//     let record = await PumpRuntimeDaily.findOne({ userName, product_id, pumpId, date: dateStr });
-//     if (!record) {
-//       record = new PumpRuntimeDaily({
-//         userName,
-//         product_id,
-//         pumpId,
-//         pumpName,
-//         date: dateStr,
-//         totalRuntimeMs: 0,
-//         lastOnTime: null,
-//       });
-//     }
-//     if (status === 'ON') {
-//       record.lastOnTime = ts.toISOString();
-//     } else if (status === 'OFF' && record.lastOnTime){
-//       const onTime = moment(record.lastOnTime);
-//       const durationMs = ts.diff(onTime);
-//       record.totalRuntimeMs += durationMs;
-//       record.lastOnTime = null;
-//     }
-//     await record.save();
-//   } catch (err) {
-//     console.error('Error updating runtime:', err);
-//   }
-// };
-
-// module.exports = {
-//   getPumpRuntimePerDay,
-//   updateRuntimeFromRealtime,
-// };
-
-
 
 const moment = require('moment');
 const PumpRuntimeDaily = require('../models/PumpRuntimeDailySchema');
@@ -148,7 +86,72 @@ const getDailyPumpRuntime = async (req, res) => {
   }
 };
 
+const getRuntimeHistory = async (req, res) => {
+  try {
+    const { product_id, userName, from, to, pumpId } = req.query;
+
+    if (!product_id || !userName || !from || !to) {
+      return res.status(400).json({ message: "product_id, userName, from, to are required" });
+    }
+
+    // dates are stored as 'YYYY-MM-DD' strings, simple lexicographic range works
+    const q = {
+      product_id,
+      userName,
+      date: { $gte: from, $lte: to },
+    };
+    if (pumpId) q.pumpId = pumpId;
+
+    const logs = await PumpRuntimeDaily.find(q).sort({ date: 1, pumpName: 1 }).lean();
+
+    const formatHMS = (ms) => {
+      const total = Math.floor(ms / 1000);
+      const h = String(Math.floor(total / 3600)).padStart(2, '0');
+      const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+      const s = String(total % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    };
+
+    const data = logs.map(l => ({
+      date: l.date,
+      pumpId: l.pumpId,
+      pumpName: l.pumpName,
+      totalRuntimeMs: l.totalRuntimeMs,
+      runtime: formatHMS(l.totalRuntimeMs),
+    }));
+
+    res.status(200).json({ data });
+  } catch (err) {
+    console.error('Error in getRuntimeHistory:', err);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+const getRuntimePumps = async (req, res) => {
+  try {
+    const { product_id, userName } = req.params;
+    if (!product_id || !userName) {
+      return res.status(400).json({ message: "product_id and userName are required" });
+    }
+
+    const pumps = await PumpRuntimeDaily.aggregate([
+      { $match: { product_id, userName } },
+      { $group: { _id: { pumpId: "$pumpId", pumpName: "$pumpName" } } },
+      { $project: { _id: 0, pumpId: "$_id.pumpId", pumpName: "$_id.pumpName" } },
+      { $sort: { pumpName: 1 } }
+    ]);
+
+    res.status(200).json({ data: pumps });
+  } catch (err) {
+    console.error('Error in getRuntimePumps:', err);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+
 module.exports = {
   updateRuntimeFromRealtime,
-  getDailyPumpRuntime
+  getDailyPumpRuntime,
+  getRuntimeHistory,
+  getRuntimePumps,
 };

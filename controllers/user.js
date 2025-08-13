@@ -996,6 +996,56 @@ const getCompaniesByTerritorialManager = async (req, res) => {
   }
 };
 
+//new for fault alert
+const getUsersByAdminTypeQuery = async (req, res) => {
+  try {
+    const { adminType } = req.query;
+    if (!adminType) {
+      return res.status(400).json({ error: "adminType query param is required" });
+    }
+
+    // requester info (optional but recommended): use your existing authenticate middleware
+    let requester = null;
+    if (req.userId) {
+      requester = await userdb.findById(req.userId).lean();
+    }
+
+    // base query: only real site users
+    let query = { userType: "user" };
+
+    // EBHOOM super-admin can see all
+    const isEbhoom = (requester?.adminType === "EBHOOM") || (adminType === "EBHOOM");
+    if (!isEbhoom) {
+      // If requester is a Territorial Manager, show only assigned users
+      if (requester?.isTerritorialManager) {
+        query.territorialManager = new mongoose.Types.ObjectId(requester._id);
+      } else {
+        // Regular admin: match by adminType
+        query.adminType = adminType;
+      }
+    }
+
+    // keep payload light – return what the frontend needs to join rooms
+    const users = await userdb
+      .find(query, {
+        _id: 1,
+        userName: 1,
+        companyName: 1,
+        adminType: 1,
+        userType: 1,
+        productID: 1,
+        email: 1,
+      })
+      .lean();
+
+    return res.status(200).json(users);
+  } catch (err) {
+    console.error("getUsersByAdminTypeQuery error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+
 module.exports = {
   register,
   updateStackName,
@@ -1027,5 +1077,6 @@ module.exports = {
   getSitesForUser,
   getAllUsersByCreator,
   getAllOperators,
-  getCompaniesByTerritorialManager
+  getCompaniesByTerritorialManager,
+  getUsersByAdminTypeQuery
 };

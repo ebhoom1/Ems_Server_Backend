@@ -29,7 +29,8 @@ const {
   getSitesForUser,
   getAllUsersByCreator,
   getAllOperators,
-  getCompaniesByTerritorialManager
+  getCompaniesByTerritorialManager,
+  getUsersByAdminTypeQuery,
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
 const User = require("../models/user");
@@ -92,4 +93,6 @@ router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
   }
 });
 router.get('/get-companies-by-territorialManager/:managerId', getCompaniesByTerritorialManager);
+router.get("/users/by-admin-type", getUsersByAdminTypeQuery);
+
 module.exports = router;

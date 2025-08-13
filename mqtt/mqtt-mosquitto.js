@@ -190,16 +190,16 @@ const setupMqttClient = (io) => {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
-                // await updateRuntimeFromRealtime({
-                //   product_id: item.product_id,
-                //   userName: item.userName,
-                //   pumpId: pump.pumpId,
-                //   pumpName: pump.pumpName,
-                //   status:
-                //     pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
-                //   timestamp:
-                //     item.ntpTime || item.timestamp || new Date().toISOString(),
-                // });
+                await updateRuntimeFromRealtime({
+                  product_id: item.product_id,
+                  userName: item.userName,
+                  pumpId: pump.pumpId,
+                  pumpName: pump.pumpName,
+                  status:
+                    pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
+                  timestamp:
+                    item.ntpTime || item.timestamp || new Date().toISOString(),
+                });
               } catch (err) {
                 console.error(
                   "Error saving pump state from acknowledgment:",
@@ -209,6 +209,7 @@ const setupMqttClient = (io) => {
             }
             const ackData = {
               product_id: item.product_id,
+              userName:item.userName,
               pumps: item.pumps,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
