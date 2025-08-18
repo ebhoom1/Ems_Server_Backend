@@ -31,7 +31,7 @@ router.get('/pump-states/:productId', async (req, res) => {
 });
 
 // ← Your new PATCH endpoint
-router.patch('/pump-states/:productId/:pumpId', async (req, res) => {
+router.patch('/pump-states/:productId/:pumpId', async (req, res) => {   
   try {
     const { status, pending } = req.body;
     const updated = await PumpState.findOneAndUpdate(

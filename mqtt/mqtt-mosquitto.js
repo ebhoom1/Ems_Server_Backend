@@ -36,6 +36,38 @@ function debugLog(...args) {
   console.log("🛠️ DEBUG:", ...args);
 }
 
+// ---- numeric coercion helpers ----
+const toNum = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+// Clamp a number between min and max
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+
+// Convert a single tank stack entry to numeric fields
+const coerceTankStack = (t) => ({
+  stackName: t.stackName,
+  tankName: t.TankName, // be consistent with your emitted field
+  level: toNum(t.level, 0),
+  percentage: clamp(toNum(t.percentage, 0), 0, 100),
+});
+
+// Convert a single sensor stack entry (keeps non-numeric fields as-is, numeric → number)
+const coerceSensorStack = (s) => {
+  const out = {
+    stackName: s.stackName,
+    stationType: s.stationType,
+  };
+  for (const [k, v] of Object.entries(s)) {
+    if (k === "stackName" || k === "stationType") continue;
+    const num = Number(v);
+    out[k] = Number.isFinite(num) ? num : v; // keep strings like status, units, etc.
+  }
+  return out;
+};
+
+
 const setupMqttClient = (io) => {
   client = mqtt.connect(options);
 
@@ -221,119 +253,243 @@ const setupMqttClient = (io) => {
           }
 
           // Sensor & Tank data
-          if (item.product_id && item.userName && Array.isArray(item.stacks)) {
-            console.log("Processing sensor/tank data:", item);
-            const now = moment().tz("Asia/Kolkata").toDate();
-            const key = `${item.product_id}_${item.userName}`;
-            if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
-              console.log("Throttling duplicate sensor/tank message:", item);
-              continue;
-            }
-            lastProcessedTime[key] = now;
+          // if (item.product_id && item.userName && Array.isArray(item.stacks)) {
+          //   console.log("Processing sensor/tank data:", item);
+          //   const now = moment().tz("Asia/Kolkata").toDate();
+          //   const key = `${item.product_id}_${item.userName}`;
+          //   if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
+          //     console.log("Throttling duplicate sensor/tank message:", item);
+          //     continue;
+          //   }
+          //   lastProcessedTime[key] = now;
 
-            const userDetails = await userdb.findOne({
-              productID: item.product_id,
-              userName: item.userName,
-              stackName: {
-                $elemMatch: {
-                  name: { $in: item.stacks.map((s) => s.stackName) },
-                },
-              },
-            });
-            if (!userDetails) {
-              console.error("No user found in DB for sensor/tank data:", item);
-              continue;
-            }
+          //   const userDetails = await userdb.findOne({
+          //     productID: item.product_id,
+          //     userName: item.userName,
+          //     stackName: {
+          //       $elemMatch: {
+          //         name: { $in: item.stacks.map((s) => s.stackName) },
+          //       },
+          //     },
+          //   });
+          //   if (!userDetails) {
+          //     console.error("No user found in DB for sensor/tank data:", item);
+          //     continue;
+          //   }
 
-            // split into sensor vs. tank
-            const sensorStacks = item.stacks.filter((s) => !s.TankName);
-            const tankStacks = item.stacks.filter((s) => !!s.TankName);
+          //   // split into sensor vs. tank
+          //   const sensorStacks = item.stacks.filter((s) => !s.TankName);
+          //   const tankStacks = item.stacks.filter((s) => !!s.TankName);
 
-            // —— Process Sensor Data ——
-            if (sensorStacks.length) {
-              // build a clean array of just the numeric fields
-              const clean = sensorStacks.map((s) => ({
-                stackName: s.stackName,
-                stationType: s.stationType,
-                ...Object.fromEntries(
-                  Object.entries(s).filter(
-                    ([k]) => k !== "stackName" && k !== "stationType"
-                  )
-                ),
-              }));
+          //   // —— Process Sensor Data ——
+          //   if (sensorStacks.length) {
+          //     // build a clean array of just the numeric fields
+          //     const clean = sensorStacks.map((s) => ({
+          //       stackName: s.stackName,
+          //       stationType: s.stationType,
+          //       ...Object.fromEntries(
+          //         Object.entries(s).filter(
+          //           ([k]) => k !== "stackName" && k !== "stationType"
+          //         )
+          //       ),
+          //     }));
 
-              const sensorPayload = {
-                product_id: item.product_id,
-                userName: userDetails.userName,
-                email: userDetails.email,
-                mobileNumber: userDetails.mobileNumber,
-                companyName: userDetails.companyName,
-                industryType: userDetails.industryType,
-                stacks: clean,
-                date: moment(now).format("DD/MM/YYYY"),
-                time: moment(now).format("HH:mm"),
-                timestamp: now,
-              };
+          //     const sensorPayload = {
+          //       product_id: item.product_id,
+          //       userName: userDetails.userName,
+          //       email: userDetails.email,
+          //       mobileNumber: userDetails.mobileNumber,
+          //       companyName: userDetails.companyName,
+          //       industryType: userDetails.industryType,
+          //       stacks: clean,
+          //       date: moment(now).format("DD/MM/YYYY"),
+          //       time: moment(now).format("HH:mm"),
+          //       timestamp: now,
+          //     };
 
-              console.log("Sending sensor payload:", sensorPayload);
-              try {
-                await axios.post(
-                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                  sensorPayload
-                );
-                // ← updated emit: join on userName, not product_id
-                io.to(item.userName).emit("stackDataUpdate", {
-                  userName: item.userName,
-                  stackData: sensorPayload.stacks,
-                });
-              } catch (err) {
-                console.error(
-                  "Error sending sensor payload:",
-                  err.response?.data || err.message
-                );
-              }
-            }
+          //     console.log("Sending sensor payload:", sensorPayload);
+          //     try {
+          //       await axios.post(
+          //         "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+          //         sensorPayload
+          //       );
+          //       // ← updated emit: join on userName, not product_id
+          //       io.to(item.userName).emit("stackDataUpdate", {
+          //         userName: item.userName,
+          //         stackData: sensorPayload.stacks,
+          //       });
+          //     } catch (err) {
+          //       console.error(
+          //         "Error sending sensor payload:",
+          //         err.response?.data || err.message
+          //       );
+          //     }
+          //   }
 
-            // —— Process Tank Data —— (unchanged)
-            if (tankStacks.length) {
-              const tankPayload = {
-                product_id: item.product_id,
-                userName: userDetails.userName,
-                email: userDetails.email,
-                mobileNumber: userDetails.mobileNumber,
-                companyName: userDetails.companyName,
-                industryType: userDetails.industryType,
-                stacks: [{ stackName: "dummy", value: 0 }],
-                tankData: tankStacks.map((t) => ({
-                  stackName: t.stackName,
-                  tankName: t.TankName,
-                  level: t.level,
-                  percentage: t.percentage,
-                })),
-                date: moment(now).format("DD/MM/YYYY"),
-                time: moment(now).format("HH:mm"),
-                timestamp: now,
-              };
-              console.log("Sending tank payload:", tankPayload);
-              try {
-                await axios.post(
-                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-                  tankPayload
-                );
-                io.to(item.product_id.toString()).emit("data", tankPayload);
-                // === NEW: Store last tank data for this productId ===
-                lastTankDataByProductId[item.product_id.toString()] =
-                  tankPayload;
-              } catch (err) {
-                console.error(
-                  "Error sending tank payload:",
-                  err.response?.data || err.message
-                );
-              }
-            }
+          //   // —— Process Tank Data —— (unchanged)
+          //   if (tankStacks.length) {
+          //     const tankPayload = {
+          //       product_id: item.product_id,
+          //       userName: userDetails.userName,
+          //       email: userDetails.email,
+          //       mobileNumber: userDetails.mobileNumber,
+          //       companyName: userDetails.companyName,
+          //       industryType: userDetails.industryType,
+          //       stacks: [{ stackName: "dummy", value: 0 }],
+          //       tankData: tankStacks.map((t) => ({
+          //         stackName: t.stackName,
+          //         tankName: t.TankName,
+          //         level: t.level,
+          //         percentage: t.percentage,
+          //       })),
+          //       date: moment(now).format("DD/MM/YYYY"),
+          //       time: moment(now).format("HH:mm"),
+          //       timestamp: now,
+          //     };
+          //     console.log("Sending tank payload:", tankPayload);
+          //     try {
+          //       await axios.post(
+          //         "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+          //         tankPayload
+          //       );
+          //       io.to(item.product_id.toString()).emit("data", tankPayload);
+          //       // === NEW: Store last tank data for this productId ===
+          //       lastTankDataByProductId[item.product_id.toString()] =
+          //         tankPayload;
+          //     } catch (err) {
+          //       console.error(
+          //         "Error sending tank payload:",
+          //         err.response?.data || err.message
+          //       );
+          //     }
+          //   }
 
-            continue;
-          }
+          //   continue;
+          // }
+// Sensor & Tank data
+if (item.product_id && item.userName && Array.isArray(item.stacks)) {
+  console.log("Processing sensor/tank data:", item);
+  const now = moment().tz("Asia/Kolkata").toDate();
+  const key = `${item.product_id}_${item.userName}`;
+  if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
+    console.log("Throttling duplicate sensor/tank message:", item);
+    continue;
+  }
+  lastProcessedTime[key] = now;
+
+  // split into sensor vs. tank
+  const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
+  const tankStacksRaw   = item.stacks.filter((s) => !!s.TankName);
+
+  // --- Try strict user match first (with stackName elemMatch) ---
+  let userDetails = await userdb.findOne({
+    productID: item.product_id,
+    userName: item.userName,
+    stackName: {
+      $elemMatch: {
+        name: { $in: item.stacks.map((s) => s.stackName) },
+      },
+    },
+  });
+
+  // --- If not found and we have only tank data, relax the condition ---
+  if (!userDetails && tankStacksRaw.length && !sensorStacksRaw.length) {
+    userDetails = await userdb.findOne({
+      productID: item.product_id,
+      userName: item.userName,
+    });
+    if (!userDetails) {
+      console.error("No user found for tank-only data (relaxed lookup failed):", item);
+      continue;
+    } else {
+      console.warn("Relaxed user lookup used for tank-only data:", {
+        productID: item.product_id,
+        userName: item.userName,
+      });
+    }
+  }
+
+  if (!userDetails) {
+    console.error("No user found in DB for sensor/tank data:", item);
+    continue;
+  }
+
+  // —— Process Sensor Data (coerced numbers) ——
+  if (sensorStacksRaw.length) {
+    const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
+
+    const sensorPayload = {
+      product_id: item.product_id,
+      userName: userDetails.userName,
+      email: userDetails.email,
+      mobileNumber: userDetails.mobileNumber,
+      companyName: userDetails.companyName,
+      industryType: userDetails.industryType,
+      stacks: cleanSensor,
+      date: moment(now).format("DD/MM/YYYY"),
+      time: moment(now).format("HH:mm"),
+      timestamp: now,
+    };
+
+    console.log("Sending sensor payload:", sensorPayload);
+    try {
+      await axios.post(
+        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+        sensorPayload
+      );
+      // Emit to userName room for sensors (as you already do)
+      io.to(item.userName).emit("stackDataUpdate", {
+        userName: item.userName,
+        stackData: sensorPayload.stacks,
+      });
+    } catch (err) {
+      console.error(
+        "Error sending sensor payload:",
+        err.response?.data || err.message
+      );
+    }
+  }
+
+  // —— Process Tank Data (coerced numbers) ——
+  if (tankStacksRaw.length) {
+    const tankData = tankStacksRaw.map(coerceTankStack);
+
+    const tankPayload = {
+      product_id: item.product_id,
+      userName: userDetails.userName,
+      email: userDetails.email,
+      mobileNumber: userDetails.mobileNumber,
+      companyName: userDetails.companyName,
+      industryType: userDetails.industryType,
+      stacks: [{ stackName: "dummy", value: 0 }], // keep your existing shape
+      tankData, // <- numeric level/percentage
+      date: moment(now).format("DD/MM/YYYY"),
+      time: moment(now).format("HH:mm"),
+      timestamp: now,
+    };
+
+    console.log("Sending tank payload:", tankPayload);
+    try {
+      await axios.post(
+        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+        tankPayload
+      );
+      // Emit to product room for tanks (as you already do)
+      const room = item.product_id.toString();
+      io.to(room).emit("data", tankPayload);
+
+      // cache last tank payload for late joiners
+      lastTankDataByProductId[room] = tankPayload;
+    } catch (err) {
+      console.error(
+        "Error sending tank payload:",
+        err.response?.data || err.message
+      );
+    }
+  }
+
+  continue;
+}
 
           console.log("Unrecognized ebhoomPub format:", item);
         }
