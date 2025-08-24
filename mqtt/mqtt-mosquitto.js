@@ -7,7 +7,7 @@ const pumpStateController = require("../controllers/pumpStateController");
 const {
   updateRuntimeFromRealtime,
 } = require("../controllers/pumpRuntimeController");
-
+const tankDataController = require("../controllers/tankDataController");
 const RETRY_DELAY = 5000; // 5 seconds
 
 // MQTT Connection Options
@@ -451,42 +451,50 @@ if (item.product_id && item.userName && Array.isArray(item.stacks)) {
   }
 
   // —— Process Tank Data (coerced numbers) ——
-  if (tankStacksRaw.length) {
-    const tankData = tankStacksRaw.map(coerceTankStack);
+// In mqtt.js, find the section for processing tank data
 
-    const tankPayload = {
-      product_id: item.product_id,
-      userName: userDetails.userName,
-      email: userDetails.email,
-      mobileNumber: userDetails.mobileNumber,
-      companyName: userDetails.companyName,
-      industryType: userDetails.industryType,
-      stacks: [{ stackName: "dummy", value: 0 }], // keep your existing shape
-      tankData, // <- numeric level/percentage
-      date: moment(now).format("DD/MM/YYYY"),
-      time: moment(now).format("HH:mm"),
-      timestamp: now,
-    };
+// —— Process Tank Data (coerced numbers) ——
+if (tankStacksRaw.length) {
+  const tankData = tankStacksRaw.map(coerceTankStack);
+  const tankPayload = {
+    product_id: item.product_id,
+    userName: userDetails.userName,
+    email: userDetails.email,
+    mobileNumber: userDetails.mobileNumber,
+    companyName: userDetails.companyName,
+    industryType: userDetails.industryType,
+    stacks: [{ stackName: "dummy", value: 0 }],
+    tankData, // <- numeric level/percentage
+    date: moment(now).format("DD/MM/YYYY"),
+    time: moment(now).format("HH:mm"),
+    timestamp: now,
+  };
 
-    console.log("Sending tank payload:", tankPayload);
-    try {
-      await axios.post(
-        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-        tankPayload
-      );
-      // Emit to product room for tanks (as you already do)
-      const room = item.product_id.toString();
-      io.to(room).emit("data", tankPayload);
+  console.log("Sending tank payload:", tankPayload);
 
-      // cache last tank payload for late joiners
-      lastTankDataByProductId[room] = tankPayload;
-    } catch (err) {
-      console.error(
-        "Error sending tank payload:",
-        err.response?.data || err.message
-      );
-    }
+  try {
+    // =========================================================
+    // ▼▼▼ ADD THIS LINE TO SAVE THE DATA TO YOUR DATABASE ▼▼▼
+    // =========================================================
+    await tankDataController.saveTankData(tankPayload);
+
+    // Your existing code to send data to the API and emit via socket
+    await axios.post(
+      "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+      tankPayload
+    );
+
+    const room = item.product_id.toString();
+    io.to(room).emit("data", tankPayload);
+    lastTankDataByProductId[room] = tankPayload;
+
+  } catch (err) {
+    console.error(
+      "Error sending/saving tank payload:", // Updated log message
+      err.response?.data || err.message
+    );
   }
+}
 
   continue;
 }
