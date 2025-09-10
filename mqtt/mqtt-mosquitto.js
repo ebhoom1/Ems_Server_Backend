@@ -4,6 +4,7 @@ const moment = require("moment-timezone");
 const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
+const pumpDataController = require("../controllers/pumpDataController");
 const {
   updateRuntimeFromRealtime,
 } = require("../controllers/pumpRuntimeController");
@@ -215,6 +216,10 @@ const setupMqttClient = (io) => {
           // Pump acknowledgments (device confirming receipt/action of a command)
           if (item.product_id && Array.isArray(item.pumps)) {
             console.log("Processing pump acknowledgment:", item);
+
+            //vibration
+           //  await pumpDataController.savePumpMetrics(item);
+
             for (const pump of item.pumps) {
               try {
                 await pumpStateController.updatePumpState(
@@ -476,7 +481,9 @@ if (tankStacksRaw.length) {
     // =========================================================
     // ▼▼▼ ADD THIS LINE TO SAVE THE DATA TO YOUR DATABASE ▼▼▼
     // =========================================================
-    await tankDataController.saveTankData(tankPayload);
+
+    //tankdata
+    //await tankDataController.saveTankData(tankPayload);
 
     // Your existing code to send data to the API and emit via socket
     await axios.post(

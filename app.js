@@ -41,6 +41,7 @@ const equipmentRoutes =require('./routers/equipmentRoutes')
 const electricalReportRoutes = require('./routers/electricalReportRoutes')
 const mechRoutes = require('./routers/mechanicalReportRoutes');
 const dailyLogRoutes = require('./routers/dailyLogRoutes');
+const serviceReportRoutes = require('./routers/serviceReportRoutes')
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -52,7 +53,7 @@ const techRoutes = require('./routers/technicianRoutes');
 const pumpStateRoutes = require('./routers/pumpStateRoutes');
 const pumpRuntimeRoutes=require('./routers/pumpRuntimeRoutes');
 const realtimeRoutes = require('./routers/realtime');
-
+const downloadRoutes = require('./routers/downloadRoutes');
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -178,7 +179,8 @@ app.use('/api', pumpStateRoutes);
 app.use('/api', pumpRuntimeRoutes);
 app.use("/api", assignmentRoutes);
 app.use('/api', realtimeRoutes);
-
+app.use('/api', serviceReportRoutes)
+app.use('/api', downloadRoutes);
 
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
