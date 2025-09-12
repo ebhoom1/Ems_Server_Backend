@@ -1,21 +1,162 @@
-const ServiceReport = require('../models/ServiceReport');
+// const ServiceReport = require('../models/ServiceReport');
 
-// controllers/serviceReportController.js
+// // controllers/serviceReportController.js
+// // exports.createServiceReport = async (req, res) => {
+// //   console.log(
+// //     "--- multer files for ServiceReport (general photos):",
+// //     req.files
+// //   );
+// //   console.log("--- form fields for ServiceReport:", req.body);
+
+// //   try {
+// //     const {
+// //       equipmentId,
+// //       equipmentName,
+// //       userName, // This now comes from the editable customerNameInput
+// //       technicianName,
+// //       technicianEmail,
+// //       equipmentDetails, // This is a JSON string, which might be 'null' or '{}' if not provided
+// //       detailsOfServiceDone,
+// //       equipmentWorkingStatus,
+// //       suggestionsFromEngineer,
+// //       customerRemarks,
+// //       classificationCode,
+// //       customerSignoffText,
+// //       technicianSignatureText,
+// //       issueDescription, // Keeping for compatibility, but can be removed if not used
+// //       actionTaken, // Keeping for compatibility, but can be removed if not used
+// //       sparesUsed, // Keeping for compatibility, but can be removed if not used
+// //       isResolved, // Keeping for compatibility, but can be removed if not used
+// //     } = req.body;
+
+// //     // UPDATED VALIDATION: Only check for absolutely essential fields that identify the report
+// //     // Other fields will be saved as empty strings if not provided.
+// //     if (
+// //       !equipmentId ||
+// //       !equipmentName ||
+// //       !userName ||
+// //       !technicianName ||
+// //       !technicianEmail
+// //     ) {
+// //       return res
+// //         .status(400)
+// //         .json({
+// //           success: false,
+// //           message:
+// //             "Missing essential identifying information for Service Report (Equipment, User, Technician).",
+// //         });
+// //     }
+
+// //     const technician = { name: technicianName, email: technicianEmail };
+// //     const newPhotoUrls = (req.files || []).map((file) => file.location);
+
+// //     const currentDate = new Date();
+// //     const currentYear = currentDate.getFullYear();
+// //     const currentMonth = currentDate.getMonth() + 1;
+// //     const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
+// //     const endOfMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+
+// //     let existingReport = await ServiceReport.findOne({
+// //       equipmentId,
+// //       reportDate: { $gte: startOfMonth, $lte: endOfMonth },
+// //     });
+
+// //     let report;
+// //     if (existingReport) {
+// //       // Update existing report
+// //       existingReport.equipmentName = equipmentName;
+// //       existingReport.userName = userName;
+// //       existingReport.technician = technician;
+// //       // Parse equipmentDetails, providing an empty object as fallback
+// //       existingReport.equipmentDetails = JSON.parse(equipmentDetails || "{}");
+// //       existingReport.detailsOfServiceDone = detailsOfServiceDone || ""; // Allow empty
+// //       existingReport.equipmentWorkingStatus =
+// //         equipmentWorkingStatus || "Normal conditions"; // Allow empty, default to 'Normal conditions'
+// //       existingReport.suggestionsFromEngineer = suggestionsFromEngineer || ""; // Allow empty
+// //       existingReport.customerRemarks = customerRemarks || ""; // Allow empty
+// //       existingReport.classificationCode = classificationCode || ""; // Allow empty
+// //       existingReport.customerSignoffText = customerSignoffText || ""; // Allow empty
+// //       existingReport.technicianSignatureText = technicianSignatureText || ""; // Allow empty
+
+// //       // Update optional fields if they are sent and not undefined
+// //       if (issueDescription !== undefined)
+// //         existingReport.issueDescription = issueDescription;
+// //       if (actionTaken !== undefined) existingReport.actionTaken = actionTaken;
+// //       if (sparesUsed !== undefined) existingReport.sparesUsed = sparesUsed;
+// //       if (isResolved !== undefined)
+// //         existingReport.isResolved = isResolved === "true";
+
+// //       existingReport.photos = [...existingReport.photos, ...newPhotoUrls]; // Append new general photos
+
+// //       report = await existingReport.save();
+// //       console.log("Service report updated successfully:", report._id);
+// //     } else {
+// //       // Create a new report
+// //       report = new ServiceReport({
+// //         equipmentId,
+// //         equipmentName,
+// //         userName,
+// //         technician,
+// //         equipmentDetails: JSON.parse(equipmentDetails || "{}"),
+// //         detailsOfServiceDone: detailsOfServiceDone || "",
+// //         equipmentWorkingStatus: equipmentWorkingStatus || "Normal conditions",
+// //         suggestionsFromEngineer: suggestionsFromEngineer || "",
+// //         customerRemarks: customerRemarks || "",
+// //         classificationCode: classificationCode || "",
+// //         customerSignoffText: customerSignoffText || "",
+// //         technicianSignatureText: technicianSignatureText || "",
+// //         issueDescription: issueDescription,
+// //         actionTaken: actionTaken,
+// //         sparesUsed: sparesUsed,
+// //         isResolved: isResolved === "true",
+// //         photos: newPhotoUrls,
+// //         reportDate: new Date(),
+// //       });
+// //       await report.save();
+// //       console.log("Service Report created successfully:", report._id);
+// //     }
+
+// //     res
+// //       .status(201)
+// //       .json({
+// //         success: true,
+// //         message: "Service Report processed successfully",
+// //         report,
+// //       });
+// //   } catch (err) {
+// //     console.error(
+// //       "🔴 Error creating/updating Service Report:",
+// //       err.stack || err
+// //     );
+// //     res
+// //       .status(500)
+// //       .json({
+// //         success: false,
+// //         message: "Server error processing service report",
+// //       });
+// //   }
+// // };
+
+// // controllers/serviceReportController.js
 // exports.createServiceReport = async (req, res) => {
-//   console.log(
-//     "--- multer files for ServiceReport (general photos):",
-//     req.files
-//   );
+//   console.log("--- multer files for ServiceReport (general photos):", req.files);
 //   console.log("--- form fields for ServiceReport:", req.body);
 
 //   try {
 //     const {
 //       equipmentId,
 //       equipmentName,
-//       userName, // This now comes from the editable customerNameInput
+//       userName,
 //       technicianName,
 //       technicianEmail,
-//       equipmentDetails, // This is a JSON string, which might be 'null' or '{}' if not provided
+
+//       // NEW: who submitted (from frontend userData)
+//       submittedByRole,     // 'Technician' | 'TerritorialManager'
+//       submittedByName,
+//       submittedByEmail,
+//       submittedById,       // optional (Mongo ObjectId string)
+
+//       equipmentDetails,
 //       detailsOfServiceDone,
 //       equipmentWorkingStatus,
 //       suggestionsFromEngineer,
@@ -23,29 +164,27 @@ const ServiceReport = require('../models/ServiceReport');
 //       classificationCode,
 //       customerSignoffText,
 //       technicianSignatureText,
-//       issueDescription, // Keeping for compatibility, but can be removed if not used
-//       actionTaken, // Keeping for compatibility, but can be removed if not used
-//       sparesUsed, // Keeping for compatibility, but can be removed if not used
-//       isResolved, // Keeping for compatibility, but can be removed if not used
+//       issueDescription,
+//       actionTaken,
+//       sparesUsed,
+//       isResolved,
 //     } = req.body;
 
-//     // UPDATED VALIDATION: Only check for absolutely essential fields that identify the report
-//     // Other fields will be saved as empty strings if not provided.
-//     if (
-//       !equipmentId ||
-//       !equipmentName ||
-//       !userName ||
-//       !technicianName ||
-//       !technicianEmail
-//     ) {
-//       return res
-//         .status(400)
-//         .json({
-//           success: false,
-//           message:
-//             "Missing essential identifying information for Service Report (Equipment, User, Technician).",
-//         });
+//     if (!equipmentId || !equipmentName || !userName || !technicianName || !technicianEmail) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing essential identifying information for Service Report (Equipment, User, Technician).",
+//       });
 //     }
+
+//     // Ensure submitter payload is valid; fallback to technician fields
+//     const role = submittedByRole === 'TerritorialManager' ? 'TerritorialManager' : 'Technician';
+//     const submittedBy = {
+//       userId: submittedById || undefined,
+//       role,
+//       name: submittedByName || technicianName,
+//       email: submittedByEmail || technicianEmail,
+//     };
 
 //     const technician = { name: technicianName, email: technicianEmail };
 //     const newPhotoUrls = (req.files || []).map((file) => file.location);
@@ -63,40 +202,47 @@ const ServiceReport = require('../models/ServiceReport');
 
 //     let report;
 //     if (existingReport) {
-//       // Update existing report
 //       existingReport.equipmentName = equipmentName;
 //       existingReport.userName = userName;
-//       existingReport.technician = technician;
-//       // Parse equipmentDetails, providing an empty object as fallback
-//       existingReport.equipmentDetails = JSON.parse(equipmentDetails || "{}");
-//       existingReport.detailsOfServiceDone = detailsOfServiceDone || ""; // Allow empty
-//       existingReport.equipmentWorkingStatus =
-//         equipmentWorkingStatus || "Normal conditions"; // Allow empty, default to 'Normal conditions'
-//       existingReport.suggestionsFromEngineer = suggestionsFromEngineer || ""; // Allow empty
-//       existingReport.customerRemarks = customerRemarks || ""; // Allow empty
-//       existingReport.classificationCode = classificationCode || ""; // Allow empty
-//       existingReport.customerSignoffText = customerSignoffText || ""; // Allow empty
-//       existingReport.technicianSignatureText = technicianSignatureText || ""; // Allow empty
 
-//       // Update optional fields if they are sent and not undefined
-//       if (issueDescription !== undefined)
-//         existingReport.issueDescription = issueDescription;
+//       // keep legacy field in sync
+//       existingReport.technician = technician;
+
+//       // NEW: capture who submitted this update
+//       existingReport.submittedBy = submittedBy;
+//       existingReport.submittedAt = new Date();
+
+//       existingReport.equipmentDetails = JSON.parse(equipmentDetails || "{}");
+//       existingReport.detailsOfServiceDone = detailsOfServiceDone || "";
+//       existingReport.equipmentWorkingStatus = equipmentWorkingStatus || "Normal conditions";
+//       existingReport.suggestionsFromEngineer = suggestionsFromEngineer || "";
+//       existingReport.customerRemarks = customerRemarks || "";
+//       existingReport.classificationCode = classificationCode || "";
+//       existingReport.customerSignoffText = customerSignoffText || "";
+//       existingReport.technicianSignatureText = technicianSignatureText || "";
+
+//       if (issueDescription !== undefined) existingReport.issueDescription = issueDescription;
 //       if (actionTaken !== undefined) existingReport.actionTaken = actionTaken;
 //       if (sparesUsed !== undefined) existingReport.sparesUsed = sparesUsed;
-//       if (isResolved !== undefined)
-//         existingReport.isResolved = isResolved === "true";
+//       if (isResolved !== undefined) existingReport.isResolved = isResolved === "true";
 
-//       existingReport.photos = [...existingReport.photos, ...newPhotoUrls]; // Append new general photos
+//       existingReport.photos = [...existingReport.photos, ...newPhotoUrls];
 
 //       report = await existingReport.save();
 //       console.log("Service report updated successfully:", report._id);
 //     } else {
-//       // Create a new report
 //       report = new ServiceReport({
 //         equipmentId,
 //         equipmentName,
 //         userName,
+
+//         // legacy but required
 //         technician,
+
+//         // NEW
+//         submittedBy,
+//         submittedAt: new Date(),
+
 //         equipmentDetails: JSON.parse(equipmentDetails || "{}"),
 //         detailsOfServiceDone: detailsOfServiceDone || "",
 //         equipmentWorkingStatus: equipmentWorkingStatus || "Normal conditions",
@@ -105,9 +251,9 @@ const ServiceReport = require('../models/ServiceReport');
 //         classificationCode: classificationCode || "",
 //         customerSignoffText: customerSignoffText || "",
 //         technicianSignatureText: technicianSignatureText || "",
-//         issueDescription: issueDescription,
-//         actionTaken: actionTaken,
-//         sparesUsed: sparesUsed,
+//         issueDescription,
+//         actionTaken,
+//         sparesUsed,
 //         isResolved: isResolved === "true",
 //         photos: newPhotoUrls,
 //         reportDate: new Date(),
@@ -116,32 +262,586 @@ const ServiceReport = require('../models/ServiceReport');
 //       console.log("Service Report created successfully:", report._id);
 //     }
 
-//     res
-//       .status(201)
-//       .json({
-//         success: true,
-//         message: "Service Report processed successfully",
-//         report,
-//       });
+//     return res.status(201).json({
+//       success: true,
+//       message: "Service Report processed successfully",
+//       report,
+//     });
 //   } catch (err) {
-//     console.error(
-//       "🔴 Error creating/updating Service Report:",
-//       err.stack || err
-//     );
+//     console.error("🔴 Error creating/updating Service Report:", err.stack || err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error processing service report",
+//     });
+//   }
+// };
+
+
+// // No changes needed for the following functions, as they fetch existing data
+// exports.getServiceReportsByEquipmentAndMonth = async (req, res) => {
+//   try {
+//     const { equipmentId } = req.params;
+//     const { year, month } = req.query;
+
+//     if (!year || !month) {
+//       return res
+//         .status(400)
+//         .json({
+//           success: false,
+//           message: "Year and month query parameters are required.",
+//         });
+//     }
+
+//     const startDate = new Date(year, month - 1, 1);
+//     const endDate = new Date(year, month, 0, 23, 59, 59);
+
+//     const reports = await ServiceReport.find({
+//       equipmentId: equipmentId,
+//       reportDate: { $gte: startDate, $lte: endDate },
+//     }).sort({ reportDate: -1 });
+
+//     if (!reports || reports.length === 0) {
+//       return res
+//         .status(404)
+//         .json({
+//           success: false,
+//           message: "No Service Reports found for this equipment and month.",
+//         });
+//     }
+//     res.json({ success: true, reports });
+//   } catch (err) {
+//     console.error("Error in getServiceReportsByEquipmentAndMonth:", err);
 //     res
 //       .status(500)
 //       .json({
 //         success: false,
-//         message: "Server error processing service report",
+//         message: "Server error fetching service reports.",
 //       });
 //   }
 // };
 
-// controllers/serviceReportController.js
-exports.createServiceReport = async (req, res) => {
-  console.log("--- multer files for ServiceReport (general photos):", req.files);
-  console.log("--- form fields for ServiceReport:", req.body);
+// exports.checkServiceReportExists = async (req, res) => {
+//   try {
+//     const { equipmentId } = req.params;
+//     const { year, month } = req.query;
 
+//     if (!year || !month) {
+//       return res
+//         .status(400)
+//         .json({
+//           success: false,
+//           message: "Year and month query parameters are required.",
+//         });
+//     }
+
+//     const startDate = new Date(year, month - 1, 1);
+//     const endDate = new Date(year, month, 0, 23, 59, 59);
+
+//     const report = await ServiceReport.findOne({
+//       equipmentId: equipmentId,
+//       reportDate: { $gte: startDate, $lte: endDate },
+//     });
+
+//     return res.json({ success: true, exists: !!report });
+//   } catch (err) {
+//     console.error("Error in checkServiceReportExists:", err);
+//     res
+//       .status(500)
+//       .json({
+//         success: false,
+//         message: "Server error checking service report existence.",
+//       });
+//   }
+// };
+
+// exports.getReportsByUserAndMonth = async (req, res) => {
+//   try {
+//     const { userName, year, month } = req.params;
+//     const y = parseInt(year, 10);
+//     const m = parseInt(month, 10);
+
+//     if (isNaN(y) || isNaN(m) || m < 1 || m > 12) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid year or month" });
+//     }
+
+//     const start = new Date(y, m - 1, 1);
+//     const end = new Date(y, m, 1);
+
+//     const reports = await ServiceReport.find({
+//       userName: userName,
+//       reportDate: { $gte: start, $lt: end },
+//     }).sort({ reportDate: -1 });
+
+//     if (!reports.length) {
+//       return res.json({
+//         success: false,
+//         message: "No service reports found for this user.",
+//       });
+//     }
+//     res.json({ success: true, reports });
+//   } catch (err) {
+//     console.error("Error in getReportsByUserAndMonth:", err);
+//     res.status(500).json({ success: false, message: "Server error" });
+//   }
+// };
+
+
+const ServiceReport = require('../models/ServiceReport');
+
+
+
+/**
+ * Normalize a field that may arrive as:
+ *   - undefined
+ *   - single string
+ *   - array of strings
+ */
+function toArray(val) {
+  if (val == null) return [];
+  return Array.isArray(val) ? val : [val];
+}
+
+/** Safely JSON.parse, returning {} on error */
+function safeJsonParse(objStr, fallback = {}) {
+  try {
+    if (!objStr || typeof objStr !== 'string') return fallback;
+    return JSON.parse(objStr);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/** Extract S3 URLs from a multer field array */
+function extractUrls(fieldArray) {
+  if (!Array.isArray(fieldArray)) return [];
+  // If your uploader stores at file.path or file.key, adjust here.
+  return fieldArray
+    .map(f => f?.location || f?.path || '')
+    .filter(Boolean);
+}
+
+/** Get month range [start, end) for a Date */
+function monthRange(d = new Date()) {
+  const start = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0);
+  return { start, end };
+}
+
+// exports.createServiceReport = async (req, res) => {
+//   // Debug logs help when integrating new fields
+//   console.log('[ServiceReport] BODY:', req.body);
+//   console.log('[ServiceReport] FILES:', req.files);
+
+//   try {
+//     const {
+//       equipmentId,
+//       equipmentName,
+//       userName,
+
+//       // legacy technician fields (kept for compat)
+//       technicianName,
+//       technicianEmail,
+
+//       // role-aware submitter
+//       submittedByRole,
+//       submittedByName,
+//       submittedByEmail,
+//       submittedById,
+
+//       // structured JSON string from FE
+//       equipmentDetails,
+
+//       // text fields
+//       detailsOfServiceDone,
+//       equipmentWorkingStatus,           // viewer no longer shows it, but keep for data integrity
+//       suggestionsFromEngineer,         // now labeled as "Recommendations" on FE
+//       customerRemarks,
+//       classificationCode,
+//       customerSignoffText,
+//       technicianSignatureText,
+
+//       // NEW FIELDS
+//       issueReported,                   // text
+
+//       // Before/After captions can arrive as beforeCaptions[] / afterCaptions[] or single keys
+//       // multer + browser can serialize arrays differently depending on how appended
+//       // We'll normalize both possibilities.
+//     } = req.body;
+
+//     // Basic validation (frontend also guards these)
+//     if (!equipmentId || !equipmentName || !userName) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required fields: equipmentId, equipmentName, or userName.'
+//       });
+//     }
+
+//     // Build structured pieces
+//     const technician = {
+//       name: technicianName || '',
+//       email: technicianEmail || '',
+//     };
+
+//     const submittedBy = submittedByRole ? {
+//       role: submittedByRole,
+//       name: submittedByName || '',
+//       email: submittedByEmail || '',
+//       id: submittedById || null,
+//     } : undefined;
+
+//     const equipmentDetailsObj = safeJsonParse(equipmentDetails, {});
+
+//     // FILES (from multer.fields)
+//     const bag = req.files || {};
+//     const generalPhotoUrls = extractUrls(bag.photos);
+//     const issuePhotoUrls   = extractUrls(bag.issuePhotos);
+//     const beforeUrls       = extractUrls(bag.beforeImages);
+//     const afterUrls        = extractUrls(bag.afterImages);
+
+//     // CAPTIONS (index-aligned to beforeUrls/afterUrls)
+//     // Support both "beforeCaptions[]" and "beforeCaptions"
+//     const beforeCaps = toArray(
+//       req.body['beforeCaptions[]'] != null ? req.body['beforeCaptions[]'] : req.body.beforeCaptions
+//     );
+//     const afterCaps = toArray(
+//       req.body['afterCaptions[]'] != null ? req.body['afterCaptions[]'] : req.body.afterCaptions
+//     );
+
+//     // Find existing report for same equipment in current month
+//     const { start, end } = monthRange(new Date());
+//     let existing = await ServiceReport.findOne({
+//       equipmentId,
+//       reportDate: { $gte: start, $lt: end }
+//     });
+
+//     if (existing) {
+//       // Update/merge
+//       existing.equipmentName = equipmentName || existing.equipmentName;
+//       existing.userName = userName || existing.userName;
+//       existing.technician = (technician.name || technician.email) ? technician : existing.technician;
+//       if (submittedBy) existing.submittedBy = submittedBy;
+
+//       // Replace equipmentDetails (or merge if you prefer)
+//       if (Object.keys(equipmentDetailsObj).length) {
+//         existing.equipmentDetails = equipmentDetailsObj;
+//       }
+
+//       if (typeof detailsOfServiceDone === 'string') existing.detailsOfServiceDone = detailsOfServiceDone;
+//       if (typeof equipmentWorkingStatus === 'string') existing.equipmentWorkingStatus = equipmentWorkingStatus;
+//       if (typeof suggestionsFromEngineer === 'string') existing.suggestionsFromEngineer = suggestionsFromEngineer;
+//       if (typeof customerRemarks === 'string') existing.customerRemarks = customerRemarks;
+//       if (typeof classificationCode === 'string') existing.classificationCode = classificationCode;
+//       if (typeof customerSignoffText === 'string') existing.customerSignoffText = customerSignoffText;
+//       if (typeof technicianSignatureText === 'string') existing.technicianSignatureText = technicianSignatureText;
+
+//       if (typeof issueReported === 'string') {
+//         existing.issueReported = issueReported;
+//       }
+
+//       // Append new images/captions (keep history)
+//       if (generalPhotoUrls.length) {
+//         existing.photos = [...(existing.photos || []), ...generalPhotoUrls];
+//       }
+//       if (issuePhotoUrls.length) {
+//         existing.issuePhotos = [...(existing.issuePhotos || []), ...issuePhotoUrls];
+//       }
+//       if (beforeUrls.length) {
+//         existing.beforeImages = [...(existing.beforeImages || []), ...beforeUrls];
+//         // align captions (pad blanks if fewer captions provided)
+//         const pads = Array(Math.max(0, beforeUrls.length - beforeCaps.length)).fill('');
+//         existing.beforeCaptions = [
+//           ...(existing.beforeCaptions || []),
+//           ...beforeCaps.slice(0, beforeUrls.length),
+//           ...pads
+//         ];
+//       }
+//       if (afterUrls.length) {
+//         existing.afterImages = [...(existing.afterImages || []), ...afterUrls];
+//         const pads = Array(Math.max(0, afterUrls.length - afterCaps.length)).fill('');
+//         existing.afterCaptions = [
+//           ...(existing.afterCaptions || []),
+//           ...afterCaps.slice(0, afterUrls.length),
+//           ...pads
+//         ];
+//       }
+
+//       await existing.save();
+//       return res.json({
+//         success: true,
+//         message: 'Service Report updated for current month.',
+//         report: existing
+//       });
+//     }
+
+//     // Create new report
+//     const report = new ServiceReport({
+//       equipmentId,
+//       equipmentName,
+//       userName,
+//       technician: (technician.name || technician.email) ? technician : undefined,
+//       submittedBy,
+//       submittedAt: new Date(),
+
+//       equipmentDetails: equipmentDetailsObj,
+//       detailsOfServiceDone: detailsOfServiceDone || '',
+//       equipmentWorkingStatus: equipmentWorkingStatus || 'Normal conditions', // kept for data integrity
+//       suggestionsFromEngineer: suggestionsFromEngineer || '',               // labeled "Recommendations" in UI
+//       customerRemarks: customerRemarks || '',
+//       classificationCode: classificationCode || '',
+//       customerSignoffText: customerSignoffText || '',
+//       technicianSignatureText: technicianSignatureText || '',
+
+//       // NEW
+//       issueReported: issueReported || '',
+//       issuePhotos: issuePhotoUrls,
+//       beforeImages: beforeUrls,
+//       beforeCaptions: beforeUrls.length ? beforeCaps.slice(0, beforeUrls.length)
+//                                         : [], // align length
+//       afterImages: afterUrls,
+//       afterCaptions: afterUrls.length ? afterCaps.slice(0, afterUrls.length)
+//                                       : [],
+
+//       photos: generalPhotoUrls,
+
+//       reportDate: new Date()
+//     });
+
+//     await report.save();
+//     return res.json({
+//       success: true,
+//       message: 'Service Report created.',
+//       report
+//     });
+//   } catch (err) {
+//     console.error('[ServiceReport] createServiceReport error:', err);
+//     return res.status(500).json({
+//       success: false,
+//       message: err?.message || 'Internal server error'
+//     });
+//   }
+// };
+
+
+
+// exports.createServiceReport = async (req, res) => {
+//   try {
+//     const {
+//       equipmentId,
+//       equipmentName,
+//       userName,
+//       technicianName,
+//       technicianEmail,
+
+//       // submitter (role-aware)
+//       submittedByRole,
+//       submittedByName,
+//       submittedByEmail,
+//       submittedById,
+
+//       // equipment
+//       equipmentDetails,
+//       detailsOfServiceDone,
+//       equipmentWorkingStatus,
+//       suggestionsFromEngineer,
+//       customerRemarks,
+//       classificationCode,
+//       customerSignoffText,
+//       technicianSignatureText,
+
+//       // issue/legacy
+//       issueReported,
+//       issueDescription,
+//       actionTaken,
+//       sparesUsed,
+//       isResolved,
+
+//       // NEW header fields
+//       headerSite,
+//       headerDate,         // yyyy-mm-dd from form
+//       headerReportNo,
+//       headerAreaOfInspection,
+//       headerReference,
+//       headerIncidentDate,
+//       headerTypeOfService,
+//       headerAnalyzedBy,
+//       headerPreparedBy,
+//     } = req.body;
+
+//     // minimal validation (same shape you already had)
+//     if (!equipmentId || !equipmentName || !userName || !technicianName || !technicianEmail) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing essential identifying information for Service Report (Equipment, User, Technician).",
+//       });
+//     }
+
+//     const role = submittedByRole === 'TerritorialManager' ? 'TerritorialManager' : 'Technician';
+//     const submittedBy = {
+//       userId: submittedById || undefined,
+//       role,
+//       name: submittedByName || technicianName,
+//       email: submittedByEmail || technicianEmail,
+//     };
+
+//     const technician = { name: technicianName, email: technicianEmail };
+
+//     // uploaded files (multiple groups) are under req.files via multer.fields(...)
+//     const generalPhotoUrls = (req.files?.photos || []).map(f => f.location);
+//     const issuePhotoUrls   = (req.files?.issuePhotos || []).map(f => f.location);
+//     const beforeUrls       = (req.files?.beforeImages || []).map(f => f.location);
+//     const afterUrls        = (req.files?.afterImages || []).map(f => f.location);
+
+//     // captions come comma-joined from form (optional)
+//     const beforeCaps = typeof req.body.beforeCaptions === 'string'
+//       ? req.body.beforeCaptions.split('||').map(s => s.trim())
+//       : [];
+//     const afterCaps = typeof req.body.afterCaptions === 'string'
+//       ? req.body.afterCaptions.split('||').map(s => s.trim())
+//       : [];
+
+//     // parse equipment details JSON sent from form (unchanged pattern)
+//     let equipmentDetailsObj = {};
+//     try { equipmentDetailsObj = JSON.parse(equipmentDetails || "{}"); } catch { equipmentDetailsObj = {}; }
+
+//     // NEW: build header object
+//     const header = {
+//       site: headerSite || '',
+//       date: headerDate ? new Date(headerDate) : undefined,
+//       reportNo: headerReportNo || '',
+//       areaOfInspection: headerAreaOfInspection || '',
+//       reference: headerReference || '',
+//       incidentDate: headerIncidentDate || '',
+//       typeOfService: headerTypeOfService || '',
+//       analyzedBy: headerAnalyzedBy || '',
+//       preparedBy: headerPreparedBy || '',
+//     };
+
+//     // month window (update if exists)
+//     const now = new Date();
+//     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+//     const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+//     const existing = await ServiceReport.findOne({
+//       equipmentId,
+//       reportDate: { $gte: startOfMonth, $lte: endOfMonth },
+//     });
+
+//     if (existing) {
+//       // keep your existing upsert style (simplified & safe updates)
+//       existing.equipmentName = equipmentName;
+//       existing.userName = userName;
+//       existing.technician = technician;
+//       existing.submittedBy = submittedBy;
+//       existing.submittedAt = new Date();
+
+//       existing.equipmentDetails = equipmentDetailsObj;
+//       if (typeof detailsOfServiceDone === 'string') existing.detailsOfServiceDone = detailsOfServiceDone;
+//       if (typeof equipmentWorkingStatus === 'string') existing.equipmentWorkingStatus = equipmentWorkingStatus;
+//       if (typeof suggestionsFromEngineer === 'string') existing.suggestionsFromEngineer = suggestionsFromEngineer;
+//       if (typeof customerRemarks === 'string') existing.customerRemarks = customerRemarks;
+//       if (typeof classificationCode === 'string') existing.classificationCode = classificationCode;
+//       if (typeof customerSignoffText === 'string') existing.customerSignoffText = customerSignoffText;
+//       if (typeof technicianSignatureText === 'string') existing.technicianSignatureText = technicianSignatureText;
+
+//       if (typeof issueReported === 'string') existing.issueReported = issueReported;
+
+//       // header
+//       existing.header = { ...(existing.header || {}), ...header };
+
+//       // append new images
+//       if (generalPhotoUrls.length) existing.photos = [...(existing.photos || []), ...generalPhotoUrls];
+//       if (issuePhotoUrls.length)   existing.issuePhotos = [...(existing.issuePhotos || []), ...issuePhotoUrls];
+//       if (beforeUrls.length) {
+//         existing.beforeImages = [...(existing.beforeImages || []), ...beforeUrls];
+//         const pads = Array(Math.max(0, beforeUrls.length - beforeCaps.length)).fill('');
+//         existing.beforeCaptions = [...(existing.beforeCaptions || []), ...beforeCaps.slice(0, beforeUrls.length), ...pads];
+//       }
+//       if (afterUrls.length) {
+//         existing.afterImages = [...(existing.afterImages || []), ...afterUrls];
+//         const pads = Array(Math.max(0, afterUrls.length - afterCaps.length)).fill('');
+//         existing.afterCaptions = [...(existing.afterCaptions || []), ...afterCaps.slice(0, afterUrls.length), ...pads];
+//       }
+
+//       await existing.save();
+//       return res.json({ success: true, message: 'Service Report updated for current month.', report: existing });
+//     }
+
+//     // create new
+//     const report = new ServiceReport({
+//       equipmentId,
+//       equipmentName,
+//       userName,
+
+//       technician,
+//       submittedBy,
+//       submittedAt: new Date(),
+
+//       header, // NEW
+
+//       equipmentDetails: equipmentDetailsObj,
+//       detailsOfServiceDone: detailsOfServiceDone || '',
+//       equipmentWorkingStatus: equipmentWorkingStatus || 'Normal conditions',
+//       suggestionsFromEngineer: suggestionsFromEngineer || '',
+//       customerRemarks: customerRemarks || '',
+//       classificationCode: classificationCode || '',
+//       customerSignoffText: customerSignoffText || '',
+//       technicianSignatureText: technicianSignatureText || '',
+
+//       issueReported: issueReported || '',
+//       issuePhotos: issuePhotoUrls,
+//       beforeImages: beforeUrls,
+//       beforeCaptions: beforeUrls.length ? beforeCaps.slice(0, beforeUrls.length) : [],
+//       afterImages: afterUrls,
+//       afterCaptions: afterUrls.length ? afterCaps.slice(0, afterUrls.length) : [],
+
+//       photos: generalPhotoUrls,
+//       reportDate: new Date(),
+//     });
+
+//     await report.save();
+//     return res.json({ success: true, message: 'Service Report created.', report });
+//   } catch (err) {
+//     console.error('🔴 ServiceReport create error:', err);
+//     return res.status(500).json({ success: false, message: 'Server error processing service report' });
+//   }
+// };
+/* utils */
+function toArray(val) {
+  if (val == null) return [];
+  return Array.isArray(val) ? val : [val];
+}
+function safeJsonParse(objStr, fallback = {}) {
+  try { return objStr && typeof objStr === 'string' ? JSON.parse(objStr) : fallback; }
+  catch { return fallback; }
+}
+function siteCode(src) {
+  return (src || 'SITE').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'SITE';
+}
+
+/**
+ * GET /api/service-reports/next-seq?fy=24-25&site=PTP - VALDEL
+ * Returns the next series number like PTPVAL/SR/24-25/001
+ * Simple count-based approach (good enough; avoids extra model).
+ */
+exports.getNextServiceReportSeq = async (req, res) => {
+  try {
+    const fy = (req.query.fy || '').trim();        // e.g. "24-25"
+    const site = (req.query.site || '').trim();    // e.g. "PTP - VALDEL"
+    if (!fy) return res.status(400).json({ success: false, message: 'Missing fy' });
+    const prefix = `${siteCode(site)}/SR/${fy}/`;
+
+    const count = await ServiceReport.countDocuments({ 'header.reportNo': { $regex: `^${prefix}\\d+$` } });
+    const next = String(count + 1).padStart(3, '0');
+    return res.json({ success: true, reportNo: `${prefix}${next}` });
+  } catch (err) {
+    console.error('next-seq error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to compute next sequence' });
+  }
+};
+
+exports.createServiceReport = async (req, res) => {
   try {
     const {
       equipmentId,
@@ -150,11 +850,10 @@ exports.createServiceReport = async (req, res) => {
       technicianName,
       technicianEmail,
 
-      // NEW: who submitted (from frontend userData)
-      submittedByRole,     // 'Technician' | 'TerritorialManager'
+      submittedByRole,
       submittedByName,
       submittedByEmail,
-      submittedById,       // optional (Mongo ObjectId string)
+      submittedById,
 
       equipmentDetails,
       detailsOfServiceDone,
@@ -164,10 +863,27 @@ exports.createServiceReport = async (req, res) => {
       classificationCode,
       customerSignoffText,
       technicianSignatureText,
+
+      issueReported,
       issueDescription,
       actionTaken,
       sparesUsed,
       isResolved,
+
+      // Header fields coming from FE (note: Plant Capacity, no "Analyzed by")
+      headerSite,
+      headerDate,
+      headerReportNo,
+      headerPlantCapacity,    // NEW (UI label)
+      headerReference,
+      headerIncidentDate,
+      headerTypeOfService,
+      headerPreparedBy,
+
+      customerSigName,
+      customerSigDesignation,
+      technicianSigName,
+      technicianSigDesignation,
     } = req.body;
 
     if (!equipmentId || !equipmentName || !userName || !technicianName || !technicianEmail) {
@@ -177,7 +893,6 @@ exports.createServiceReport = async (req, res) => {
       });
     }
 
-    // Ensure submitter payload is valid; fallback to technician fields
     const role = submittedByRole === 'TerritorialManager' ? 'TerritorialManager' : 'Technician';
     const submittedBy = {
       userId: submittedById || undefined,
@@ -185,97 +900,168 @@ exports.createServiceReport = async (req, res) => {
       name: submittedByName || technicianName,
       email: submittedByEmail || technicianEmail,
     };
-
     const technician = { name: technicianName, email: technicianEmail };
-    const newPhotoUrls = (req.files || []).map((file) => file.location);
 
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() + 1;
-    const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
-    const endOfMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+    // FILES via multer.fields
+    const bag = req.files || {};
+    const getLoc = (arr) => (Array.isArray(arr) ? arr.map(f => f?.location || f?.path).filter(Boolean) : []);
+    const generalPhotoUrls = getLoc(bag.photos);
+    const issuePhotoUrls = getLoc(bag.issuePhotos);
+    const beforeUrls = getLoc(bag.beforeImages);
+    const afterUrls = getLoc(bag.afterImages);
 
-    let existingReport = await ServiceReport.findOne({
+    // NEW: signature images
+    const customerSignatureImageUrl = bag.customerSignatureImage?.[0]?.location || null;
+    const technicianSignatureImageUrl = bag.technicianSignatureImage?.[0]?.location || null;
+
+    // Captions: support both beforeCaptions[] and beforeCaptions
+    const beforeCaps = toArray(
+      req.body['beforeCaptions[]'] != null ? req.body['beforeCaptions[]'] : req.body.beforeCaptions
+    );
+    const afterCaps = toArray(
+      req.body['afterCaptions[]'] != null ? req.body['afterCaptions[]'] : req.body.afterCaptions
+    );
+
+    const equipmentDetailsObj = safeJsonParse(equipmentDetails, {});
+
+    // Header: set plantCapacity; mirror into legacy areaOfInspection for compatibility
+    const header = {
+      site: headerSite || '',
+      date: headerDate ? new Date(headerDate) : undefined,
+      reportNo: headerReportNo || '',
+      plantCapacity: headerPlantCapacity || '',
+      areaOfInspection: headerPlantCapacity || '', // legacy mirror
+      reference: headerReference || '',
+      incidentDate: headerIncidentDate || '',
+      typeOfService: headerTypeOfService || '',
+      // analyzedBy: intentionally omitted
+      preparedBy: headerPreparedBy || '',
+    };
+
+    // Upsert “this month”
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const existing = await ServiceReport.findOne({
       equipmentId,
       reportDate: { $gte: startOfMonth, $lte: endOfMonth },
     });
 
-    let report;
-    if (existingReport) {
-      existingReport.equipmentName = equipmentName;
-      existingReport.userName = userName;
+    if (existing) {
+      existing.equipmentName = equipmentName;
+      existing.userName = userName;
+      existing.technician = technician;
+      existing.submittedBy = submittedBy;
+      existing.submittedAt = new Date();
 
-      // keep legacy field in sync
-      existingReport.technician = technician;
+      existing.customerSigName = customerSigName || existing.customerSigName;
+      existing.customerSigDesignation = customerSigDesignation || existing.customerSigDesignation;
+      existing.technicianSigName = technicianSigName || existing.technicianSigName;
+      existing.technicianSigDesignation = technicianSigDesignation || existing.technicianSigDesignation;
 
-      // NEW: capture who submitted this update
-      existingReport.submittedBy = submittedBy;
-      existingReport.submittedAt = new Date();
 
-      existingReport.equipmentDetails = JSON.parse(equipmentDetails || "{}");
-      existingReport.detailsOfServiceDone = detailsOfServiceDone || "";
-      existingReport.equipmentWorkingStatus = equipmentWorkingStatus || "Normal conditions";
-      existingReport.suggestionsFromEngineer = suggestionsFromEngineer || "";
-      existingReport.customerRemarks = customerRemarks || "";
-      existingReport.classificationCode = classificationCode || "";
-      existingReport.customerSignoffText = customerSignoffText || "";
-      existingReport.technicianSignatureText = technicianSignatureText || "";
+      existing.header = { ...(existing.header || {}), ...header };
 
-      if (issueDescription !== undefined) existingReport.issueDescription = issueDescription;
-      if (actionTaken !== undefined) existingReport.actionTaken = actionTaken;
-      if (sparesUsed !== undefined) existingReport.sparesUsed = sparesUsed;
-      if (isResolved !== undefined) existingReport.isResolved = isResolved === "true";
+      existing.equipmentDetails = equipmentDetailsObj;
+      if (typeof detailsOfServiceDone === 'string') existing.detailsOfServiceDone = detailsOfServiceDone;
+      if (typeof equipmentWorkingStatus === 'string') existing.equipmentWorkingStatus = equipmentWorkingStatus;
+      if (typeof suggestionsFromEngineer === 'string') existing.suggestionsFromEngineer = suggestionsFromEngineer;
+      if (typeof customerRemarks === 'string') existing.customerRemarks = customerRemarks;
+      if (typeof classificationCode === 'string') existing.classificationCode = classificationCode;
+      if (typeof customerSignoffText === 'string') existing.customerSignoffText = customerSignoffText;
+      if (typeof technicianSignatureText === 'string') existing.technicianSignatureText = technicianSignatureText;
+      if (typeof issueReported === 'string') existing.issueReported = issueReported;
 
-      existingReport.photos = [...existingReport.photos, ...newPhotoUrls];
+      // NEW: signature images
+      if (customerSignatureImageUrl) existing.customerSignatureImageUrl = customerSignatureImageUrl;
+      if (technicianSignatureImageUrl) existing.technicianSignatureImageUrl = technicianSignatureImageUrl;
 
-      report = await existingReport.save();
-      console.log("Service report updated successfully:", report._id);
-    } else {
-      report = new ServiceReport({
-        equipmentId,
-        equipmentName,
-        userName,
+      if (generalPhotoUrls.length) existing.photos = [...(existing.photos || []), ...generalPhotoUrls];
+      if (issuePhotoUrls.length) existing.issuePhotos = [...(existing.issuePhotos || []), ...issuePhotoUrls];
 
-        // legacy but required
-        technician,
+      if (beforeUrls.length) {
+        existing.beforeImages = [...(existing.beforeImages || []), ...beforeUrls];
+        const pads = Array(Math.max(0, beforeUrls.length - beforeCaps.length)).fill('');
+        existing.beforeCaptions = [
+          ...(existing.beforeCaptions || []),
+          ...beforeCaps.slice(0, beforeUrls.length),
+          ...pads
+        ];
+      }
+      if (afterUrls.length) {
+        existing.afterImages = [...(existing.afterImages || []), ...afterUrls];
+        const pads = Array(Math.max(0, afterUrls.length - afterCaps.length)).fill('');
+        existing.afterCaptions = [
+          ...(existing.afterCaptions || []),
+          ...afterCaps.slice(0, afterUrls.length),
+          ...pads
+        ];
+      }
 
-        // NEW
-        submittedBy,
-        submittedAt: new Date(),
+      // legacy
+      if (issueDescription !== undefined) existing.issueDescription = issueDescription;
+      if (actionTaken !== undefined) existing.actionTaken = actionTaken;
+      if (sparesUsed !== undefined) existing.sparesUsed = sparesUsed;
+      if (isResolved !== undefined) existing.isResolved = isResolved === 'true';
 
-        equipmentDetails: JSON.parse(equipmentDetails || "{}"),
-        detailsOfServiceDone: detailsOfServiceDone || "",
-        equipmentWorkingStatus: equipmentWorkingStatus || "Normal conditions",
-        suggestionsFromEngineer: suggestionsFromEngineer || "",
-        customerRemarks: customerRemarks || "",
-        classificationCode: classificationCode || "",
-        customerSignoffText: customerSignoffText || "",
-        technicianSignatureText: technicianSignatureText || "",
-        issueDescription,
-        actionTaken,
-        sparesUsed,
-        isResolved: isResolved === "true",
-        photos: newPhotoUrls,
-        reportDate: new Date(),
-      });
-      await report.save();
-      console.log("Service Report created successfully:", report._id);
+      await existing.save();
+      return res.json({ success: true, message: 'Service Report updated for current month.', report: existing });
     }
 
-    return res.status(201).json({
-      success: true,
-      message: "Service Report processed successfully",
-      report,
+    const report = new ServiceReport({
+      equipmentId,
+      equipmentName,
+      userName,
+      technician,
+      submittedBy,
+      submittedAt: new Date(),
+
+      header,
+
+      equipmentDetails: equipmentDetailsObj,
+      detailsOfServiceDone: detailsOfServiceDone || '',
+      equipmentWorkingStatus: equipmentWorkingStatus || 'Normal conditions',
+      suggestionsFromEngineer: suggestionsFromEngineer || '',
+      customerRemarks: customerRemarks || '',
+      classificationCode: classificationCode || '',
+      customerSignoffText: customerSignoffText || '',
+      technicianSignatureText: technicianSignatureText || '',
+
+      // NEW: signature image URLs
+      customerSignatureImageUrl,
+      technicianSignatureImageUrl,
+
+      customerSigName,
+      customerSigDesignation,
+      technicianSigName,
+      technicianSigDesignation,
+
+      issueReported: issueReported || '',
+      issuePhotos: issuePhotoUrls,
+      beforeImages: beforeUrls,
+      beforeCaptions: beforeUrls.length ? beforeCaps.slice(0, beforeUrls.length) : [],
+      afterImages: afterUrls,
+      afterCaptions: afterUrls.length ? afterCaps.slice(0, afterUrls.length) : [],
+
+      photos: generalPhotoUrls,
+
+      // legacy
+      issueDescription,
+      actionTaken,
+      sparesUsed,
+      isResolved: isResolved === 'true',
+
+      reportDate: new Date(),
     });
+
+    await report.save();
+    return res.json({ success: true, message: 'Service Report created.', report });
   } catch (err) {
-    console.error("🔴 Error creating/updating Service Report:", err.stack || err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error processing service report",
-    });
+    console.error('🔴 ServiceReport create error:', err);
+    return res.status(500).json({ success: false, message: 'Server error processing service report' });
   }
 };
-
 
 // No changes needed for the following functions, as they fetch existing data
 exports.getServiceReportsByEquipmentAndMonth = async (req, res) => {
@@ -386,3 +1172,5 @@ exports.getReportsByUserAndMonth = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+
