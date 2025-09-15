@@ -3,7 +3,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const AWS = require('aws-sdk');
 const ElectricalReport = require('../models/ElectricalReport');
-
+//electrical report
 // 1. Connect to MongoDB
 async function connectDB() {
   try {
