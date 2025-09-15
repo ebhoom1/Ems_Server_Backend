@@ -42,6 +42,7 @@ const electricalReportRoutes = require('./routers/electricalReportRoutes')
 const mechRoutes = require('./routers/mechanicalReportRoutes');
 const dailyLogRoutes = require('./routers/dailyLogRoutes');
 const serviceReportRoutes = require('./routers/serviceReportRoutes')
+const engineerReportRoutes=require('./routers/engineerVisitReportRoutes');
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -180,6 +181,7 @@ app.use('/api', pumpRuntimeRoutes);
 app.use("/api", assignmentRoutes);
 app.use('/api', realtimeRoutes);
 app.use('/api', serviceReportRoutes)
+app.use('/api', engineerReportRoutes)
 app.use('/api', downloadRoutes);
 
 // WebSockets for real-time chat
