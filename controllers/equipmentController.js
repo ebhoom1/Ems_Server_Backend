@@ -17,8 +17,8 @@ exports.addEquipment = async (req, res) => {
   };
   
 
-// Get all equipment
-exports.getAllEquipment = async (req, res) => {
+// Get all equipment -old
+/* exports.getAllEquipment = async (req, res) => {
     try {
       const equipmentList = await Equipment.find().sort({ createdAt: -1 });
       res.status(200).json({
@@ -29,6 +29,54 @@ exports.getAllEquipment = async (req, res) => {
       res.status(500).json({ message: "Error fetching equipment list", error });
     }
   };
+ */
+  //new 
+  exports.getAllEquipment = async (req, res) => {
+  try {
+    // Step 1: Fetch all equipment. Use .lean() for better performance and plain JS objects.
+    const equipmentList = await Equipment.find().sort({ createdAt: -1 }).lean();
+
+    // Step 2: Asynchronously process each item in the list to add its maintenance status.
+    // Promise.all runs these checks in parallel for maximum efficiency.
+    const equipmentWithStatus = await Promise.all(
+      equipmentList.map(async (equipment) => {
+        const now = new Date();
+        const thisMonth = now.getMonth(); // 0-11
+        const thisYear = now.getFullYear();
+
+        // Check for the most recent Mechanical report for this equipment
+        const lastMech = await MechanicalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
+
+        // Check for the most recent Electrical report for this equipment
+        const lastElec = await ElectricalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
+
+        // Determine if a new report can be created this month
+        const canMechanical = !lastMech || 
+          !(new Date(lastMech.timestamp).getMonth() === thisMonth && new Date(lastMech.timestamp).getFullYear() === thisYear);
+        
+        const canElectrical = !lastElec || 
+          !(new Date(lastElec.timestamp).getMonth() === thisMonth && new Date(lastElec.timestamp).getFullYear() === thisYear);
+
+        // Step 3: Return a new object combining the original equipment data with its new status
+        return {
+          ...equipment,
+          canMechanical,
+          canElectrical,
+        };
+      })
+    );
+
+    // Step 4: Send the complete, enhanced list to the client
+    res.status(200).json({
+      message: "Equipment list fetched successfully",
+      equipment: equipmentWithStatus, // Send the new list with statuses
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching equipment list", error: error.message });
+  }
+};
+
   
  // Get equipment by userName
 exports.getEquipmentByUserName = async (req, res) => {
