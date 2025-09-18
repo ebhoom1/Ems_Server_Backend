@@ -10,7 +10,7 @@ const {
 } = require("../controllers/pumpRuntimeController");
 const tankDataController = require("../controllers/tankDataController");
 const RETRY_DELAY = 5000; // 5 seconds
-
+const { saveRealtimeDataToS3 } = require("../S3Bucket/s3saveRealtimeData");
 // MQTT Connection Options
 const options = {
   host: "3.108.105.76",
@@ -442,6 +442,9 @@ if (item.product_id && item.userName && Array.isArray(item.stacks)) {
         "https://api.ocems.ebhoom.com/api/handleSaveMessage",
         sensorPayload
       );
+
+         // 🔹 Save only energy data to S3
+    await saveRealtimeDataToS3(sensorPayload);
       // Emit to userName room for sensors (as you already do)
       io.to(item.userName).emit("stackDataUpdate", {
         userName: item.userName,
