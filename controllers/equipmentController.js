@@ -1,7 +1,9 @@
+
 const Equipment = require('../models/equipment');
 const User = require('../models/user')
 const MechanicalReport  = require('../models/MechanicalReport');
 const ElectricalReport  = require('../models/ElectricalReport');
+const ServiceReport=require("../models/ServiceReport");
 // Add new equipment
 exports.addEquipment = async (req, res) => {
     try {
@@ -31,6 +33,7 @@ exports.addEquipment = async (req, res) => {
   };
  */
   //new 
+
   exports.getAllEquipment = async (req, res) => {
   try {
     // Step 1: Fetch all equipment. Use .lean() for better performance and plain JS objects.
@@ -40,29 +43,54 @@ exports.addEquipment = async (req, res) => {
     // Promise.all runs these checks in parallel for maximum efficiency.
     const equipmentWithStatus = await Promise.all(
       equipmentList.map(async (equipment) => {
-        const now = new Date();
-        const thisMonth = now.getMonth(); // 0-11
-        const thisYear = now.getFullYear();
+        // const now = new Date();
+        // const thisMonth = now.getMonth(); // 0-11
+        // const thisYear = now.getFullYear();
 
-        // Check for the most recent Mechanical report for this equipment
-        const lastMech = await MechanicalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
+        // // Check for the most recent Mechanical report for this equipment
+        // const lastMech = await MechanicalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
 
-        // Check for the most recent Electrical report for this equipment
-        const lastElec = await ElectricalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
+        // // Check for the most recent Electrical report for this equipment
+        // const lastElec = await ElectricalReport.findOne({ equipmentId: equipment._id }).sort({ timestamp: -1 });
 
-        // Determine if a new report can be created this month
-        const canMechanical = !lastMech || 
-          !(new Date(lastMech.timestamp).getMonth() === thisMonth && new Date(lastMech.timestamp).getFullYear() === thisYear);
+        // // Determine if a new report can be created this month
+        // const canMechanical = !lastMech || 
+        //   !(new Date(lastMech.timestamp).getMonth() === thisMonth && new Date(lastMech.timestamp).getFullYear() === thisYear);
         
-        const canElectrical = !lastElec || 
-          !(new Date(lastElec.timestamp).getMonth() === thisMonth && new Date(lastElec.timestamp).getFullYear() === thisYear);
+        // const canElectrical = !lastElec || 
+        //   !(new Date(lastElec.timestamp).getMonth() === thisMonth && new Date(lastElec.timestamp).getFullYear() === thisYear);
 
-        // Step 3: Return a new object combining the original equipment data with its new status
-        return {
-          ...equipment,
-          canMechanical,
-          canElectrical,
-        };
+        // // Step 3: Return a new object combining the original equipment data with its new status
+        // return {
+        //   ...equipment,
+        //   canMechanical,
+        //   canElectrical,
+        // };
+        const now = new Date();
+const thisYear = now.getFullYear();
+
+const lastMech = await MechanicalReport.findOne({ equipmentId: equipment._id })
+  .sort({ createdAt: -1 });
+
+const lastElec = await ElectricalReport.findOne({ equipmentId: equipment._id })
+  .sort({ createdAt: -1 });
+
+const lastService = await ServiceReport.findOne({ equipmentId: equipment._id })
+  .sort({ createdAt: -1 });
+
+const isThisYear = (date) =>
+  date && new Date(date).getFullYear() === thisYear;
+
+const hasMechanical = lastMech && isThisYear(lastMech.timestamp);
+const hasElectrical = lastElec && isThisYear(lastElec.timestamp);
+const hasService = lastService && isThisYear(lastService.createdAt);
+
+return {
+  ...equipment,
+  hasMechanical,
+  hasElectrical,
+  hasService,
+};
       })
     );
 
@@ -164,45 +192,93 @@ exports.getEquipmentByAdminType = async (req, res) => {
   }
 };
 
-  exports.getMaintenanceStatus = async (req, res) => {
-    const equipmentId = req.params.id;
+  // exports.getMaintenanceStatus = async (req, res) => {
+  //   const equipmentId = req.params.id;
   
-    try {
-      const now        = new Date();
-      const thisMonth  = now.getMonth();
-      const thisYear   = now.getFullYear();
+  //   try {
+  //     const now        = new Date();
+  //     const thisMonth  = now.getMonth();
+  //     const thisYear   = now.getFullYear();
   
-      // Fetch the latest mechanical report
-      const [lastMech] = await MechanicalReport
-        .find({ equipmentId })
-        .sort({ timestamp: -1 })
-        .limit(1);
+  //     // Fetch the latest mechanical report
+  //     const [lastMech] = await MechanicalReport
+  //       .find({ equipmentId })
+  //       .sort({ timestamp: -1 })
+  //       .limit(1);
   
-      // Fetch the latest electrical report
-      const [lastElec] = await ElectricalReport
-        .find({ equipmentId })
-        .sort({ timestamp: -1 })
-        .limit(1);
+  //     // Fetch the latest electrical report
+  //     const [lastElec] = await ElectricalReport
+  //       .find({ equipmentId })
+  //       .sort({ timestamp: -1 })
+  //       .limit(1);
   
-      // Determine availability
-      const canMechanical = !lastMech ||
-        !(new Date(lastMech.timestamp).getMonth() === thisMonth &&
-          new Date(lastMech.timestamp).getFullYear() === thisYear);
+  //     // Determine availability
+  //     const canMechanical = !lastMech ||
+  //       !(new Date(lastMech.timestamp).getMonth() === thisMonth &&
+  //         new Date(lastMech.timestamp).getFullYear() === thisYear);
   
-      const canElectrical = !lastElec ||
-        !(new Date(lastElec.timestamp).getMonth() === thisMonth &&
-          new Date(lastElec.timestamp).getFullYear() === thisYear);
+  //     const canElectrical = !lastElec ||
+  //       !(new Date(lastElec.timestamp).getMonth() === thisMonth &&
+  //         new Date(lastElec.timestamp).getFullYear() === thisYear);
   
-      return res.status(200).json({ canMechanical, canElectrical });
-    } catch (error) {
-      console.error('Error in getMaintenanceStatus:', error);
-      return res.status(500).json({
-        message: 'Error checking maintenance status',
-        error: error.message
-      });
-    }
-  };
-  
+  //     return res.status(200).json({ canMechanical, canElectrical });
+  //   } catch (error) {
+  //     console.error('Error in getMaintenanceStatus:', error);
+  //     return res.status(500).json({
+  //       message: 'Error checking maintenance status',
+  //       error: error.message
+  //     });
+  //   }
+  // };
+
+// controllers/equipmentController.js
+exports.getMaintenanceStatus = async (req, res) => {
+  const equipmentId = req.params.id;
+
+  try {
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    // Fetch last reports
+    const [lastMech] = await MechanicalReport.find({ equipmentId })
+      .sort({ timestamp: -1 })
+      .limit(1);
+
+    const [lastElec] = await ElectricalReport.find({ equipmentId })
+      .sort({ timestamp: -1 })
+      .limit(1);
+
+    const [lastService] = await ServiceReport.find({ equipmentId })
+      .sort({ createdAt: -1 })
+      .limit(1);
+
+    // Helper: check if given date is in this month/year
+    const isThisMonth = (date) =>
+      date &&
+      new Date(date).getMonth() === thisMonth &&
+      new Date(date).getFullYear() === thisYear;
+
+    // ✅ Use correct fields per report type
+    const hasMechanical = lastMech && isThisMonth(lastMech.timestamp);
+    const hasElectrical = lastElec && isThisMonth(lastElec.timestamp);
+    const hasService = lastService && isThisMonth(lastService.createdAt);
+
+    return res.status(200).json({
+      hasMechanical,
+      hasElectrical,
+      hasService,
+    });
+  } catch (error) {
+    console.error("Error in getMaintenanceStatus:", error);
+    return res.status(500).json({
+      message: "Error checking maintenance status",
+      error: error.message,
+    });
+  }
+};
+
+
   // Update equipment by ID
 exports.updateEquipment = async (req, res) => {
   try {

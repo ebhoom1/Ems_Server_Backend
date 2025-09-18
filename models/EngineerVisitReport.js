@@ -31,9 +31,7 @@ const ConsumablesSchema = new Schema({
   grease: String,
 }, { _id: false });
 
-const EngineerVisitReportSchema = new Schema({
-  equipmentId: { type: Schema.Types.ObjectId, ref: 'Equipment', required: true },
-  equipmentName: { type: String, required: true },
+  const EngineerVisitReportSchema = new Schema({
   customerName: { type: String, required: true },
 
   referenceNo: { type: String },   // ✅ updated

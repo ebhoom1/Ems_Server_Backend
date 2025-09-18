@@ -3,7 +3,7 @@ const EngineerVisitReport = require('../models/EngineerVisitReport');
 exports.createEngineerVisitReport = async (req, res) => {
   try {
     const {
-      equipmentId, equipmentName, customerName,
+      customerName,
       referenceNo, date, engineerName,
       plantCapacity, technology,
       parameters, keyPoints, consumables,
@@ -12,7 +12,7 @@ exports.createEngineerVisitReport = async (req, res) => {
       engineerSigName, engineerSigDesignation
     } = req.body;
 
-    if (!equipmentId || !equipmentName || !customerName || !engineerName) {
+    if ( !customerName || !engineerName) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
@@ -20,8 +20,7 @@ exports.createEngineerVisitReport = async (req, res) => {
     const engineerSig = req.files?.engineerSignatureImage?.[0]?.location || "";
 
     const report = new EngineerVisitReport({
-      equipmentId,
-      equipmentName,
+      
       customerName,
       referenceNo, // ✅ updated
       date,
@@ -58,5 +57,24 @@ exports.getEngineerVisitReportByEquipment = async (req, res) => {
     res.json({ success: true, report });
   } catch (err) {
     res.status(500).json({ success: false, message: "Error fetching report" });
+  }
+};
+
+exports.getEngineerVisitReportsByUserAndMonth = async (req, res) => {
+  try {
+    const { userName, year, month } = req.params;
+
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59);
+
+    const reports = await EngineerVisitReport.find({
+      customerName: userName,
+      date: { $gte: start, $lte: end },
+    });
+
+    res.json({ success: true, reports });
+  } catch (err) {
+    console.error("Error fetching engineer visit reports", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

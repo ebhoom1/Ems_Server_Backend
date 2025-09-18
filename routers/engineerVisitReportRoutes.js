@@ -2,7 +2,7 @@ const express = require('express');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const { createEngineerVisitReport, getEngineerVisitReportByEquipment } = require('../controllers/engineerVisitReportController');
+const { createEngineerVisitReport, getEngineerVisitReportByEquipment ,getEngineerVisitReportsByUserAndMonth} = require('../controllers/engineerVisitReportController');
 
 const router = express.Router();
 
@@ -37,5 +37,9 @@ const uploadFields = upload.fields([
 
 router.post('/add-engineerreport', uploadFields, createEngineerVisitReport);
 router.get('/engineerreport/:equipmentId', getEngineerVisitReportByEquipment);
+router.get(
+  '/engineerreport/user/:userName/:year/:month',
+  getEngineerVisitReportsByUserAndMonth
+);
 
 module.exports = router;
