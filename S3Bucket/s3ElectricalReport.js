@@ -41,4 +41,45 @@ async function saveReportToS3(newReport) {
   return reports[reports.length - 1];
 }
 
-module.exports = { getReportsFromS3, saveReportsToS3, saveReportToS3 };
+
+
+/**
+ * Deletes reports from S3 based on matching criteria.
+ * @param {object} criteria - The criteria to match for deletion.
+ * @param {string} criteria.userName - The user name to match.
+ * @param {string} criteria.date - The date to match (in 'YYYY-MM-DD' format).
+ * @param {string} [criteria.equipmentId] - (Optional) The equipment ID to match.
+ * @returns {Promise<{deletedCount: number}>} - The number of reports deleted.
+ */
+async function deleteReportsFromS3(criteria) {
+  const { userName, date, equipmentId } = criteria;
+  
+  // 1. Fetch all current reports
+  const allReports = await getReportsFromS3();
+  const initialCount = allReports.length;
+
+  // 2. Filter the reports, keeping only the ones that DO NOT match the criteria
+  const reportsToKeep = allReports.filter(report => {
+    // Check if the date part of the 'createdAt' timestamp matches the provided date
+    const reportDate = report.createdAt.substring(0, 10); // Extracts 'YYYY-MM-DD' from '2025-06-25T09:33:19.590Z'
+    
+    const isUserMatch = report.userName === userName;
+    const isDateMatch = reportDate === date;
+    
+    // If equipmentId is provided, it must also match. Otherwise, we ignore it.
+    const isEquipmentMatch = !equipmentId || report.equipmentId === equipmentId;
+
+    // We want to delete if all conditions match. So, we KEEP the report if any condition is FALSE.
+    // The filter keeps items that return 'true'. So we return 'false' for items we want to remove.
+    return !(isUserMatch && isDateMatch && isEquipmentMatch);
+  });
+
+  // 3. If any reports were filtered out, save the new array back to S3
+  if (reportsToKeep.length < initialCount) {
+    await saveReportsToS3(reportsToKeep);
+  }
+
+  const deletedCount = initialCount - reportsToKeep.length;
+  return { deletedCount };
+}
+module.exports = { getReportsFromS3, saveReportsToS3, saveReportToS3 ,deleteReportsFromS3};

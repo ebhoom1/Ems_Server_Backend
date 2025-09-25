@@ -44,6 +44,8 @@ const dailyLogRoutes = require('./routers/dailyLogRoutes');
 const serviceReportRoutes = require('./routers/serviceReportRoutes')
 const engineerReportRoutes=require('./routers/engineerVisitReportRoutes');
 const safetyReportRoutes=require('./routers/safetyReportRoutes');
+const reports3routes = require('./routers/reports3Routes')
+const realtimedatas3Route = require('./routers/realtimeDataRoutes')
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -87,7 +89,7 @@ const {setupCronJobS3HourlyData} = require('./S3Bucket/s3HourlyData');
 const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
 const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
 const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
-
+const { calculateAndSaveHourlyConsumption } = require('./S3Bucket/s3HourlyConsumption');
 
 const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
 const svgUploadRoutes = require('./routers/svgUpload');
@@ -187,6 +189,8 @@ app.use('/api', engineerReportRoutes);
 app.use('/api', safetyReportRoutes);
 app.use('/api', downloadRoutes);
 app.use("/api", consumptionRouters);
+app.use('/api', reports3routes);
+app.use('/api',realtimedatas3Route);
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
@@ -362,6 +366,13 @@ cron.schedule('33 1 * * *', async () => {
 });
 console.log('Daily Report Scheduling Initialized.');
 
+
+// Schedule the hourly consumption calculation to run at 59 minutes past every hour
+console.log("🕒 Scheduling hourly consumption job of real time ...");
+cron.schedule('57 * * * *', calculateAndSaveHourlyConsumption, {
+    timezone: 'Asia/Kolkata'
+});
+console.log("✅ Hourly consumption job scheduled to run at HH:57.");
 
 // // Place this inside your app.js for testing
 // app.get('/test-email', async (req, res) => {
