@@ -44,8 +44,14 @@ router.post('/upload-file', upload.single('file'), (req, res) => {
     return res.status(400).json({ message: 'No file uploaded or invalid file type' });
   }
 
-  const filePath = `/uploads/${req.file.filename}`;
-  const fullUrl = `${req.protocol}://${req.get('host')}${filePath}`;
+  // const filePath = `/uploads/${req.file.filename}`;
+  // const fullUrl = `${req.protocol}://${req.get('host')}${filePath}`;
+   const filePath = `/uploads/${req.file.filename}`;
+  const fullUrl =
+    process.env.NODE_ENV === 'production'
+      ? `https://ems.ebhoom.com${filePath}`
+      : `${req.protocol}://${req.get('host')}${filePath}`;
+
   res.status(200).json({ 
     filePath: fullUrl,
     fileName: req.file.filename,
