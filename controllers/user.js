@@ -1044,7 +1044,37 @@ const getUsersByAdminTypeQuery = async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+const saveSubscription = async (req, res) => {
+  try {
+    // The subscription object is sent from the frontend
+    const { subscription } = req.body;
+    
+    // The user's ID is available from your 'authenticate' middleware
+    const userId = req.userId;
 
+    // Basic validation
+    if (!subscription) {
+      return res.status(400).json({ error: "Subscription object is required." });
+    }
+
+    // Find the user by their ID and update their pushSubscription field
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { pushSubscription: subscription } },
+      { new: true } // This option returns the updated document
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    res.status(200).json({ message: "Subscription saved successfully." });
+
+  } catch (error) {
+    console.error("Error saving subscription:", error);
+    res.status(500).json({ error: "Server error while saving subscription." });
+  }
+};
 
 module.exports = {
   register,
@@ -1078,5 +1108,5 @@ module.exports = {
   getAllUsersByCreator,
   getAllOperators,
   getCompaniesByTerritorialManager,
-  getUsersByAdminTypeQuery
+  getUsersByAdminTypeQuery,saveSubscription
 };

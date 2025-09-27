@@ -142,6 +142,10 @@ const userSchema = new mongoose.Schema({
     ref: "Users",
     default: null,
   },
+   pushSubscription: {
+        type: Object, // Stores the subscription object from the browser
+        required: false
+    }
 });
 
 // Hash passwords

@@ -11,6 +11,22 @@ const {
 const tankDataController = require("../controllers/tankDataController");
 const RETRY_DELAY = 5000; // 5 seconds
 const { saveRealtimeDataToS3 } = require("../S3Bucket/s3saveRealtimeData");
+// --- 1. PUSH NOTIFICATION SETUP ---
+const webpush = require("web-push");
+
+// Use the VAPID keys from your .env file
+const vapidKeys = {
+  publicKey: process.env.VAPID_PUBLIC_KEY,
+  privateKey: process.env.VAPID_PRIVATE_KEY,
+};
+
+// Configure web-push with your details
+webpush.setVapidDetails(
+  "mailto:your-email@example.com", // Replace with your admin email
+  vapidKeys.publicKey,
+  vapidKeys.privateKey
+);
+// --- END PUSH NOTIFICATION SETUP ---
 // MQTT Connection Options
 const options = {
   host: "3.108.105.76",
@@ -68,7 +84,33 @@ const coerceSensorStack = (s) => {
   return out;
 };
 
+// --- 2. PUSH NOTIFICATION FUNCTION ---
+async function triggerPushNotification(userName, fuelLevel) {
+  // Check the low fuel condition
+  if (fuelLevel !== undefined && fuelLevel <= 20) {
+    try {
+      // Find the user in the database to get their subscription object
+      const user = await userdb.findOne({ userName: userName });
 
+      // Check if the user and their subscription object exist
+      if (user && user.pushSubscription) {
+        const subscription = user.pushSubscription;
+        const payload = JSON.stringify({
+          title: "Low Fuel Alert",
+          body: `Diesel is at ${fuelLevel}%. Please refill soon.`,
+        });
+
+        // Send the notification
+        await webpush.sendNotification(subscription, payload);
+        console.log(`Push notification sent successfully to ${userName}.`);
+      }
+    } catch (error) {
+      console.error("Error sending push notification:", error.statusCode, error.body);
+      // You can add logic here to remove expired subscriptions (e.g., if error.statusCode === 410)
+    }
+  }
+}
+// --- END PUSH NOTIFICATION FUNCTION ---
 const setupMqttClient = (io) => {
   client = mqtt.connect(options);
 
@@ -450,6 +492,15 @@ if (item.product_id && item.userName && Array.isArray(item.stacks)) {
         userName: item.userName,
         stackData: sensorPayload.stacks,
       });
+      // --- 3. TRIGGER PUSH NOTIFICATION ---
+                // Extract the fuel level from the clean sensor data
+                const latestSensorData = cleanSensor[0];
+                if (latestSensorData) {
+                    const fuelLevel = latestSensorData.fuel_level_percentage;
+                    // Call the function to check and send a notification if needed
+                    await triggerPushNotification(item.userName, fuelLevel);
+                }
+                // --- END TRIGGER ---
     } catch (err) {
       console.error(
         "Error sending sensor payload:",

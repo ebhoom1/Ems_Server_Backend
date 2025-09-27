@@ -30,7 +30,7 @@ const {
   getAllUsersByCreator,
   getAllOperators,
   getCompaniesByTerritorialManager,
-  getUsersByAdminTypeQuery,
+  getUsersByAdminTypeQuery,saveSubscription
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
 const User = require("../models/user");
@@ -94,5 +94,5 @@ router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
 });
 router.get('/get-companies-by-territorialManager/:managerId', getCompaniesByTerritorialManager);
 router.get("/users/by-admin-type", getUsersByAdminTypeQuery);
-
+router.post("/save-subscription", authenticate, saveSubscription);
 module.exports = router;
