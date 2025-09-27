@@ -166,7 +166,7 @@ const setupMqttClient = (io) => {
           data = Array.isArray(data) ? data : [data];
 
           for (const item of data) {
-           
+
             if (item.messageId && !item.userName) {
               debugLog(
                 "Ignoring command echo or unrecognized command format:",
@@ -183,7 +183,7 @@ const setupMqttClient = (io) => {
               const userDetails = await userdb.findOne({
                 productID: item.product_id,
                 userName: item.userName,
-               
+
               });
 
               if (!userDetails) {
@@ -220,10 +220,10 @@ const setupMqttClient = (io) => {
                 console.log("Forwarding pump feedback payload:", payload);
                 try {
                   await pumpStateController.updatePumpState(
-                  item.product_id,
-                  pumpId,
-                  status === 1 || status === "ON"
-                );
+                    item.product_id,
+                    pumpId,
+                    status === 1 || status === "ON"
+                  );
                   // await axios.post(
                   //   "https://api.ocems.ebhoom.com/api/handleSaveMessage",
                   //   payload
@@ -260,7 +260,7 @@ const setupMqttClient = (io) => {
             console.log("Processing pump acknowledgment:", item);
 
             //vibration
-           //  await pumpDataController.savePumpMetrics(item);
+            //  await pumpDataController.savePumpMetrics(item);
 
             for (const pump of item.pumps) {
               try {
@@ -288,7 +288,7 @@ const setupMqttClient = (io) => {
             }
             const ackData = {
               product_id: item.product_id,
-              userName:item.userName,
+              userName: item.userName,
               pumps: item.pumps,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
@@ -413,152 +413,152 @@ const setupMqttClient = (io) => {
 
           //   continue;
           // }
-// Sensor & Tank data
-if (item.product_id && item.userName && Array.isArray(item.stacks)) {
-  console.log("Processing sensor/tank data:", item);
-  const now = moment().tz("Asia/Kolkata").toDate();
-  const key = `${item.product_id}_${item.userName}`;
-  if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
-    console.log("Throttling duplicate sensor/tank message:", item);
-    continue;
-  }
-  lastProcessedTime[key] = now;
+          // Sensor & Tank data
+          if (item.product_id && item.userName && Array.isArray(item.stacks)) {
+            console.log("Processing sensor/tank data:", item);
+            const now = moment().tz("Asia/Kolkata").toDate();
+            const key = `${item.product_id}_${item.userName}`;
+            if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
+              console.log("Throttling duplicate sensor/tank message:", item);
+              continue;
+            }
+            lastProcessedTime[key] = now;
 
-  // split into sensor vs. tank
-  const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
-  const tankStacksRaw   = item.stacks.filter((s) => !!s.TankName);
+            // split into sensor vs. tank
+            const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
+            const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
 
-  // --- Try strict user match first (with stackName elemMatch) ---
-  let userDetails = await userdb.findOne({
-    productID: item.product_id,
-    userName: item.userName,
-    stackName: {
-      $elemMatch: {
-        name: { $in: item.stacks.map((s) => s.stackName) },
-      },
-    },
-  });
+            // --- Try strict user match first (with stackName elemMatch) ---
+            let userDetails = await userdb.findOne({
+              productID: item.product_id,
+              userName: item.userName,
+              stackName: {
+                $elemMatch: {
+                  name: { $in: item.stacks.map((s) => s.stackName) },
+                },
+              },
+            });
 
-  // --- If not found and we have only tank data, relax the condition ---
-  if (!userDetails && tankStacksRaw.length && !sensorStacksRaw.length) {
-    userDetails = await userdb.findOne({
-      productID: item.product_id,
-      userName: item.userName,
-    });
-    if (!userDetails) {
-      console.error("No user found for tank-only data (relaxed lookup failed):", item);
-      continue;
-    } else {
-      console.warn("Relaxed user lookup used for tank-only data:", {
-        productID: item.product_id,
-        userName: item.userName,
-      });
-    }
-  }
+            // --- If not found and we have only tank data, relax the condition ---
+            if (!userDetails && tankStacksRaw.length && !sensorStacksRaw.length) {
+              userDetails = await userdb.findOne({
+                productID: item.product_id,
+                userName: item.userName,
+              });
+              if (!userDetails) {
+                console.error("No user found for tank-only data (relaxed lookup failed):", item);
+                continue;
+              } else {
+                console.warn("Relaxed user lookup used for tank-only data:", {
+                  productID: item.product_id,
+                  userName: item.userName,
+                });
+              }
+            }
 
-  if (!userDetails) {
-    console.error("No user found in DB for sensor/tank data:", item);
-    continue;
-  }
+            if (!userDetails) {
+              console.error("No user found in DB for sensor/tank data:", item);
+              continue;
+            }
 
-  // —— Process Sensor Data (coerced numbers) ——
-  if (sensorStacksRaw.length) {
-    const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
+            // —— Process Sensor Data (coerced numbers) ——
+            if (sensorStacksRaw.length) {
+              const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
 
-    const sensorPayload = {
-      product_id: item.product_id,
-      userName: userDetails.userName,
-      email: userDetails.email,
-      mobileNumber: userDetails.mobileNumber,
-      companyName: userDetails.companyName,
-      industryType: userDetails.industryType,
-      stacks: cleanSensor,
-      date: moment(now).format("DD/MM/YYYY"),
-      time: moment(now).format("HH:mm"),
-      timestamp: now,
-    };
+              const sensorPayload = {
+                product_id: item.product_id,
+                userName: userDetails.userName,
+                email: userDetails.email,
+                mobileNumber: userDetails.mobileNumber,
+                companyName: userDetails.companyName,
+                industryType: userDetails.industryType,
+                stacks: cleanSensor,
+                date: moment(now).format("DD/MM/YYYY"),
+                time: moment(now).format("HH:mm"),
+                timestamp: now,
+              };
 
-    console.log("Sending sensor payload:", sensorPayload);
-    try {
-      await axios.post(
-        "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-        sensorPayload
-      );
+              console.log("Sending sensor payload:", sensorPayload);
+              try {
+                await axios.post(
+                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+                  sensorPayload
+                );
 
-         // 🔹 Save only energy data to S3
-    await saveRealtimeDataToS3(sensorPayload);
-      // Emit to userName room for sensors (as you already do)
-      io.to(item.userName).emit("stackDataUpdate", {
-        userName: item.userName,
-        stackData: sensorPayload.stacks,
-      });
-      // --- 3. TRIGGER PUSH NOTIFICATION ---
+                // 🔹 Save only energy data to S3
+                await saveRealtimeDataToS3(sensorPayload);
+                // Emit to userName room for sensors (as you already do)
+                io.to(item.userName).emit("stackDataUpdate", {
+                  userName: item.userName,
+                  stackData: sensorPayload.stacks,
+                });
+                // --- 3. TRIGGER PUSH NOTIFICATION ---
                 // Extract the fuel level from the clean sensor data
                 const latestSensorData = cleanSensor[0];
                 if (latestSensorData) {
-                    const fuelLevel = latestSensorData.fuel_level_percentage;
-                    // Call the function to check and send a notification if needed
-                    await triggerPushNotification(item.userName, fuelLevel);
+                  const fuelLevel = latestSensorData.fuel_level_percentage;
+                  // Call the function to check and send a notification if needed
+                  await triggerPushNotification(item.userName, fuelLevel);
                 }
                 // --- END TRIGGER ---
-    } catch (err) {
-      console.error(
-        "Error sending sensor payload:",
-        err.response?.data || err.message
-      );
-    }
-  }
+              } catch (err) {
+                console.error(
+                  "Error sending sensor payload:",
+                  err.response?.data || err.message
+                );
+              }
+            }
 
-  // —— Process Tank Data (coerced numbers) ——
-// In mqtt.js, find the section for processing tank data
+            // —— Process Tank Data (coerced numbers) ——
+            // In mqtt.js, find the section for processing tank data
 
-// —— Process Tank Data (coerced numbers) ——
-if (tankStacksRaw.length) {
-  const tankData = tankStacksRaw.map(coerceTankStack);
-  const tankPayload = {
-    product_id: item.product_id,
-    userName: userDetails.userName,
-    email: userDetails.email,
-    mobileNumber: userDetails.mobileNumber,
-    companyName: userDetails.companyName,
-    industryType: userDetails.industryType,
-    stacks: [{ stackName: "dummy", value: 0 }],
-    tankData, // <- numeric level/percentage
-    date: moment(now).format("DD/MM/YYYY"),
-    time: moment(now).format("HH:mm"),
-    timestamp: now,
-  };
+            // —— Process Tank Data (coerced numbers) ——
+            if (tankStacksRaw.length) {
+              const tankData = tankStacksRaw.map(coerceTankStack);
+              const tankPayload = {
+                product_id: item.product_id,
+                userName: userDetails.userName,
+                email: userDetails.email,
+                mobileNumber: userDetails.mobileNumber,
+                companyName: userDetails.companyName,
+                industryType: userDetails.industryType,
+                stacks: [{ stackName: "dummy", value: 0 }],
+                tankData, // <- numeric level/percentage
+                date: moment(now).format("DD/MM/YYYY"),
+                time: moment(now).format("HH:mm"),
+                timestamp: now,
+              };
 
-  console.log("Sending tank payload:", tankPayload);
+              console.log("Sending tank payload:", tankPayload);
 
-  try {
-    // =========================================================
-    // ▼▼▼ ADD THIS LINE TO SAVE THE DATA TO YOUR DATABASE ▼▼▼
-    // =========================================================
+              try {
+                // =========================================================
+                // ▼▼▼ ADD THIS LINE TO SAVE THE DATA TO YOUR DATABASE ▼▼▼
+                // =========================================================
 
-    //tankdata
-    //await tankDataController.saveTankData(tankPayload);
+                //tankdata
+                //await tankDataController.saveTankData(tankPayload);
 
-    // Your existing code to send data to the API and emit via socket
-    await axios.post(
-      "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-      tankPayload
-    );
+                // Your existing code to send data to the API and emit via socket
+                await axios.post(
+                  "https://api.ocems.ebhoom.com/api/handleSaveMessage",
+                  tankPayload
+                );
 
-    const room = item.product_id.toString();
-    io.to(room).emit("data", tankPayload);
-    lastTankDataByProductId[room] = tankPayload;
+                const room = item.product_id.toString();
+                io.to(room).emit("data", tankPayload);
+                lastTankDataByProductId[room] = tankPayload;
 
-  } catch (err) {
-    console.error(
-      "Error sending/saving tank payload:", // Updated log message
-      err.response?.data || err.message
-    );
-  }
-}
+              } catch (err) {
+                console.error(
+                  "Error sending/saving tank payload:", // Updated log message
+                  err.response?.data || err.message
+                );
+              }
+            }
 
-  continue;
-}
+            continue;
+          }
 
           console.log("Unrecognized ebhoomPub format:", item);
         }
@@ -641,32 +641,32 @@ if (tankStacksRaw.length) {
 // };
 
 const sendPumpControlMessage = async (product_id, pumps) => {
-    const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const message = {
-        product_id,
-        pumps: pumps.map((p) => ({
-            pumpId: p.pumpId,
-            pumpName: p.pumpName,
-            status: p.status === "ON" ? 1 : 0,
-        })),
-        timestamp: new Date().toISOString(),
-        messageId,
-    };
+  const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const message = {
+    product_id,
+    pumps: pumps.map((p) => ({
+      pumpId: p.pumpId,
+      pumpName: p.pumpName,
+      status: p.status === "ON" ? 1 : 0,
+    })),
+    timestamp: new Date().toISOString(),
+    messageId,
+  };
 
-    try {
-        // Set the pending status to true in the database for each pump
-        for (const pump of pumps) {
-            await pumpStateController.setPumpPending(product_id, pump.pumpId, true);
-        }
-    } catch (err) {
-        console.error("Error setting pump pending status:", err);
+  try {
+    // Set the pending status to true in the database for each pump
+    for (const pump of pumps) {
+      await pumpStateController.setPumpPending(product_id, pump.pumpId, true);
     }
+  } catch (err) {
+    console.error("Error setting pump pending status:", err);
+  }
 
-    // ... (rest of the sendPumpControlMessage function)
-    client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-        if (err) console.error("Error publishing pump control:", err);
-        else console.log("Pump command sent:", message);
-    });
+  // ... (rest of the sendPumpControlMessage function)
+  client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
+    if (err) console.error("Error publishing pump control:", err);
+    else console.log("Pump command sent:", message);
+  });
 };
 
 const initializeMqttClients = async (io) => {

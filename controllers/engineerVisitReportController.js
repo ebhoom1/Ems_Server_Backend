@@ -60,17 +60,37 @@ exports.getEngineerVisitReportByEquipment = async (req, res) => {
   }
 };
 
+// exports.getEngineerVisitReportsByUserAndMonth = async (req, res) => {
+//   try {
+//     const { userName, year, month } = req.params;
+
+//     const start = new Date(year, month - 1, 1);
+//     const end = new Date(year, month, 0, 23, 59, 59);
+
+//     const reports = await EngineerVisitReport.find({
+//       customerName: userName,
+//       date: { $gte: start, $lte: end },
+//     });
+
+//     res.json({ success: true, reports });
+//   } catch (err) {
+//     console.error("Error fetching engineer visit reports", err);
+//     res.status(500).json({ success: false, message: "Server error" });
+//   }
+// };
+
 exports.getEngineerVisitReportsByUserAndMonth = async (req, res) => {
   try {
     const { userName, year, month } = req.params;
-
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59);
 
     const reports = await EngineerVisitReport.find({
-      customerName: userName,
-      date: { $gte: start, $lte: end },
-    });
+      customerName: new RegExp(`^${userName}$`, "i"),
+      date: { $gte: start, $lte: end }
+    })
+      .select("+customerSignatureImage +engineerSignatureImage") // ✅ force include
+      .sort({ date: -1 });
 
     res.json({ success: true, reports });
   } catch (err) {
