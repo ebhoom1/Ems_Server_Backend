@@ -85,15 +85,30 @@ const coerceSensorStack = (s) => {
 };
 
 // --- 2. PUSH NOTIFICATION FUNCTION ---
-async function triggerPushNotification(userName, fuelLevel) {
-  // Check the low fuel condition
-  if (fuelLevel !== undefined && fuelLevel <= 70) {
-    try {
-      // Find the user in the database to get their subscription object
-      const user = await userdb.findOne({ userName: userName });
+// Add these constants at the top of your file for easy configuration
+const LOW_FUEL_THRESHOLD = 70; // Notify when fuel is at or below this percentage
+const REFUEL_RESET_THRESHOLD = 80; // Reset the alert when fuel is back above this percentage
 
-      // Check if the user and their subscription object exist
-      if (user && user.pushSubscription) {
+async function triggerPushNotification(userName, fuelLevel) {
+  // Exit early if fuelLevel data is missing
+  if (fuelLevel === undefined) {
+    return;
+  }
+
+  try {
+    const user = await userdb.findOne({ userName: userName });
+
+    // Exit if no user is found
+    if (!user) {
+      return;
+    }
+
+    const hasSentLowFuelAlert = user.lowFuelNotificationSent || false;
+
+    // --- 1. Check if a notification needs to be sent ---
+    // Condition: Fuel is low AND we haven't sent an alert yet.
+    if (fuelLevel <= LOW_FUEL_THRESHOLD && !hasSentLowFuelAlert) {
+      if (user.pushSubscription) {
         const subscription = user.pushSubscription;
         const payload = JSON.stringify({
           title: "Low Fuel Alert",
@@ -104,9 +119,28 @@ async function triggerPushNotification(userName, fuelLevel) {
         await webpush.sendNotification(subscription, payload);
         console.log(`Push notification sent successfully to ${userName}.`);
       }
-    } catch (error) {
-      console.error("Error sending push notification:", error.statusCode, error.body);
-      // You can add logic here to remove expired subscriptions (e.g., if error.statusCode === 410)
+      
+      // IMPORTANT: Mark that the alert has been sent to prevent spam
+      await userdb.updateOne({ userName: userName }, { $set: { lowFuelNotificationSent: true } });
+
+    // --- 2. Check if the "sent" flag needs to be reset ---
+    // Condition: Fuel has been refilled AND the alert flag is still active.
+    } else if (fuelLevel >= REFUEL_RESET_THRESHOLD && hasSentLowFuelAlert) {
+      await userdb.updateOne({ userName: userName }, { $set: { lowFuelNotificationSent: false } });
+      console.log(`Low fuel alert flag has been reset for ${userName}.`);
+    }
+
+  } catch (error) {
+    // --- 3. Handle errors, including expired subscriptions ---
+    if (error.statusCode === 410) {
+      // 410 Gone: The subscription is expired and invalid. Remove it.
+      console.log(`Subscription for ${userName} has expired. Removing from DB.`);
+      await userdb.updateOne(
+        { userName: userName },
+        { $unset: { pushSubscription: "" } }
+      );
+    } else {
+      console.error(`Error processing push notification for ${userName}:`, error);
     }
   }
 }
