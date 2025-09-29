@@ -94,5 +94,24 @@ router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
 });
 router.get('/get-companies-by-territorialManager/:managerId', getCompaniesByTerritorialManager);
 router.get("/users/by-admin-type", getUsersByAdminTypeQuery);
-router.post("/save-subscription", authenticate, saveSubscription);
-module.exports = router;
+// userRoutes.js (temporary)
+router.post('/save-subscription', async (req, res) => {
+  try {
+    const { subscription, userName } = req.body;
+    if (!subscription || !userName) {
+      return res.status(400).json({ error: "Subscription and userName are required" });
+    }
+    const user = await User.findOneAndUpdate(
+      { userName },
+      { $set: { pushSubscription: subscription } },
+      { new: true, upsert: false }
+    );
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.status(200).json({ message: "Subscription saved successfully" });
+  } catch (error) {
+    console.error("Error saving subscription:", error);
+    res.status(500).json({ error: "Server error while saving subscription" });
+  }
+});module.exports = router;

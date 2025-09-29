@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path'); 
 const DB = require('./config/DB');
 const Chat = require('./models/chatModel'); // Import Chat model here
+const userdb = require("./models/user");
 
 const assignmentRoutes = require("./routers/assignmentRoutes");
 
@@ -403,6 +404,23 @@ server.listen(port, async () => {
 app.get('/cors-test', (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.send('CORS is working!');
+});
+app.get("/api/test-push", async (req, res) => {
+  const user = await userdb.findOne({ userName: "BBUSER" });
+  if (!user?.pushSubscription) return res.status(400).send("No subscription");
+
+  const payload = JSON.stringify({
+    title: "Test Push",
+    body: "This is a test notification 🚀",
+  });
+
+  try {
+    await webpush.sendNotification(user.pushSubscription, payload);
+    res.send("Notification sent");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error sending notification");
+  }
 });
 
 // Error handling middleware
