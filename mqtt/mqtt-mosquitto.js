@@ -86,8 +86,8 @@ const coerceSensorStack = (s) => {
 
 // --- 2. PUSH NOTIFICATION FUNCTION ---
 // Add these constants at the top of your file for easy configuration
-const LOW_FUEL_THRESHOLD = 70; // Notify when fuel is at or below this percentage
-const REFUEL_RESET_THRESHOLD = 80; // Reset the alert when fuel is back above this percentage
+const LOW_FUEL_THRESHOLD = 40; // Notify when fuel is at or below this percentage
+const REFUEL_RESET_THRESHOLD = 43; // Reset the alert when fuel is back above this percentage
 
 async function triggerPushNotification(userName, fuelLevel) {
   // Exit early if fuelLevel data is missing

@@ -145,7 +145,11 @@ const userSchema = new mongoose.Schema({
    pushSubscription: {
         type: Object, // Stores the subscription object from the browser
         required: false
-    }
+    },
+    lowFuelNotificationSent: {
+        type: Boolean,
+        default: false
+  }
 });
 
 // Hash passwords
