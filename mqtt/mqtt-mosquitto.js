@@ -87,7 +87,7 @@ const coerceSensorStack = (s) => {
 // --- 2. PUSH NOTIFICATION FUNCTION ---
 async function triggerPushNotification(userName, fuelLevel) {
   // Check the low fuel condition
-  if (fuelLevel !== undefined && fuelLevel <= 25) {
+  if (fuelLevel !== undefined && fuelLevel <= 70) {
     try {
       // Find the user in the database to get their subscription object
       const user = await userdb.findOne({ userName: userName });
