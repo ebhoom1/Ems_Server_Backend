@@ -46,11 +46,14 @@ router.post('/upload-file', upload.single('file'), (req, res) => {
 
   // const filePath = `/uploads/${req.file.filename}`;
   // const fullUrl = `${req.protocol}://${req.get('host')}${filePath}`;
-   const filePath = `/uploads/${req.file.filename}`;
-  const fullUrl =
-    process.env.NODE_ENV === 'production'
-      ? `https://ems.ebhoom.com${filePath}`
-      : `${req.protocol}://${req.get('host')}${filePath}`;
+  const filePath = `/uploads/${req.file.filename}`;
+let fullUrl;
+
+if (process.env.NODE_ENV === 'production') {
+  fullUrl = `https://api.ocems.ebhoom.com${filePath}`;  // 👈 force https
+} else {
+  fullUrl = `${req.protocol}://${req.get('host')}${filePath}`;
+}
 
   res.status(200).json({ 
     filePath: fullUrl,
