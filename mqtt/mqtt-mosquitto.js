@@ -1,6 +1,7 @@
 const mqtt = require("mqtt");
 const axios = require("axios");
 const moment = require("moment-timezone");
+const crypto = require("crypto"); // Add this for MD5 computation (if not hardcoded)
 const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
@@ -49,6 +50,26 @@ const lastProcessedTime = {}; // For throttling sensor/tank data
 // === NEW: Store last tank data per productId ===
 const lastTankDataByProductId = {};
 
+// --- AADHAV API CONFIGURATION ---
+// Hardcoded for India Land Tech Park Pvt Ltd - STP Outlet (managed by Goodfoot Sustainability)
+const AADHAV_CONFIG = {
+  baseUrl: "http://sityog.org/aadhav/dataApiAadhavSecure.php",
+  apiKey: "GOOJDRE4VsdfsMyIz23", // From email
+  industryId: 120,
+  stationId: 249,
+  // Pre-computed MD5 key (you can recompute if needed: md5(`${industryId}_${stationId}_${apiKey}`))
+  md5Key: "b0623209daed3940427e82bf6a7c968c",
+  // Target identifiers for this integration
+  targetUserName: "INDL40",
+  targetCompanyName: "India Land Tech Park",
+  targetProductId: "40",
+  targetStackName: "STP",
+  targetStationType: "effluent",
+  // New: Targets for flow data (STP outlet)
+  targetFlowStackName: "STP outlet",
+  targetFlowStationType: "effluent_flow",
+};
+
 function debugLog(...args) {
   console.log("🛠️ DEBUG:", ...args);
 }
@@ -84,10 +105,77 @@ const coerceSensorStack = (s) => {
   return out;
 };
 
+// --- NEW: Function to send data to Aadhav API ---
+// This extracts BOD, COD, TSS, pH from the "STP" / "effluent" stack
+// And FLOW (flowRate), totalizer (cumulatingFlow) from the "STP outlet" / "effluent_flow" stack
+// Matches the email format: industryId,stationId,timestamp,BOD|val,COD|val,TSS|val,pH|val,FLOW|val,totalizer|val
+async function sendToAadhavApi(sensorData) {
+  try {
+    // Find pollution stack (STP / effluent)
+    const pollutionStack = sensorData.find(stack => 
+      stack.stackName === AADHAV_CONFIG.targetStackName &&
+      stack.stationType === AADHAV_CONFIG.targetStationType &&
+      (stack.BOD !== undefined || stack.COD !== undefined || stack.TSS !== undefined ||
+       stack.pH !== undefined || stack.ph !== undefined)
+    );
+
+    // Find flow stack (STP outlet / effluent_flow)
+    const flowStack = sensorData.find(stack => 
+      stack.stackName === AADHAV_CONFIG.targetFlowStackName &&
+      stack.stationType === AADHAV_CONFIG.targetFlowStationType &&
+      (stack.flowRate !== undefined || stack.cumulatingFlow !== undefined)
+    );
+
+    if (!pollutionStack && !flowStack) {
+      console.log("No relevant pollution or flow parameters/stacks found for Aadhav API");
+      return;
+    }
+
+    // Extract pollution values (fallback to 0 or neutral if missing)
+    const bod = toNum(pollutionStack?.BOD, 0);
+    const cod = toNum(pollutionStack?.COD, 0);
+    const tss = toNum(pollutionStack?.TSS, 0);
+    const ph = toNum(pollutionStack?.pH || pollutionStack?.ph, 7); // Handle possible 'ph' lowercase
+
+    // Extract flow values (fallback to 0 if missing)
+    const flow = toNum(flowStack?.flowRate, 0); // FLOW = flowRate from STP outlet
+    const totalizer = toNum(flowStack?.cumulatingFlow, 0); // totalizer = cumulatingFlow from STP outlet
+
+    // Generate timestamp in IST (matches sample: YYYY-MM-DD HH:mm:ss)
+    const timestamp = moment().tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss");
+
+    // Build raw data string (exact format from email)
+    const rawData = `${AADHAV_CONFIG.industryId},${AADHAV_CONFIG.stationId},${timestamp},BOD|${bod},COD|${cod},TSS|${tss},pH|${ph},FLOW|${flow},totalizer|${totalizer}`;
+
+    // Base64 encode the raw data (matches email: data=base64_encode(raw))
+    const encodedData = Buffer.from(rawData).toString("base64");
+
+    // Build full URL with params
+    const apiUrl = `${AADHAV_CONFIG.baseUrl}?key=${AADHAV_CONFIG.md5Key}&data=${encodedData}`;
+
+    console.log("Sending to Aadhav API:", { rawData, encodedData, apiUrl });
+
+    // Send GET request (as per sample URL structure)
+    const response = await axios.get(apiUrl, { timeout: 10000 });
+
+    if (response.status === 200) {
+      console.log("✅ Aadhav API data sent successfully. Response:", response.data);
+      // You can check response.data for specific success message if the API returns one (e.g., JSON or text like "success")
+      // If the API returns a specific message, log or handle it here
+    } else {
+      console.error("❌ Aadhav API response error:", response.status, response.data);
+    }
+
+  } catch (error) {
+    console.error("Error sending to Aadhav API:", error.response?.data || error.message);
+    // Optional: Implement retry logic here if needed
+  }
+}
+
 // --- 2. PUSH NOTIFICATION FUNCTION ---
 // Add these constants at the top of your file for easy configuration
-const LOW_FUEL_THRESHOLD = 40; // Notify when fuel is at or below this percentage
-const REFUEL_RESET_THRESHOLD = 43; // Reset the alert when fuel is back above this percentage
+const LOW_FUEL_THRESHOLD = 30; // Notify when fuel is at or below this percentage
+const REFUEL_RESET_THRESHOLD = 33; // Reset the alert when fuel is back above this percentage
 
 async function triggerPushNotification(userName, fuelLevel) {
   // Exit early if fuelLevel data is missing
@@ -98,7 +186,7 @@ async function triggerPushNotification(userName, fuelLevel) {
   try {
     const user = await userdb.findOne({ userName: userName });
 
-    // Exit if no user is found
+    // Exit if no user found
     if (!user) {
       return;
     }
@@ -334,120 +422,6 @@ const setupMqttClient = (io) => {
           }
 
           // Sensor & Tank data
-          // if (item.product_id && item.userName && Array.isArray(item.stacks)) {
-          //   console.log("Processing sensor/tank data:", item);
-          //   const now = moment().tz("Asia/Kolkata").toDate();
-          //   const key = `${item.product_id}_${item.userName}`;
-          //   if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
-          //     console.log("Throttling duplicate sensor/tank message:", item);
-          //     continue;
-          //   }
-          //   lastProcessedTime[key] = now;
-
-          //   const userDetails = await userdb.findOne({
-          //     productID: item.product_id,
-          //     userName: item.userName,
-          //     stackName: {
-          //       $elemMatch: {
-          //         name: { $in: item.stacks.map((s) => s.stackName) },
-          //       },
-          //     },
-          //   });
-          //   if (!userDetails) {
-          //     console.error("No user found in DB for sensor/tank data:", item);
-          //     continue;
-          //   }
-
-          //   // split into sensor vs. tank
-          //   const sensorStacks = item.stacks.filter((s) => !s.TankName);
-          //   const tankStacks = item.stacks.filter((s) => !!s.TankName);
-
-          //   // —— Process Sensor Data ——
-          //   if (sensorStacks.length) {
-          //     // build a clean array of just the numeric fields
-          //     const clean = sensorStacks.map((s) => ({
-          //       stackName: s.stackName,
-          //       stationType: s.stationType,
-          //       ...Object.fromEntries(
-          //         Object.entries(s).filter(
-          //           ([k]) => k !== "stackName" && k !== "stationType"
-          //         )
-          //       ),
-          //     }));
-
-          //     const sensorPayload = {
-          //       product_id: item.product_id,
-          //       userName: userDetails.userName,
-          //       email: userDetails.email,
-          //       mobileNumber: userDetails.mobileNumber,
-          //       companyName: userDetails.companyName,
-          //       industryType: userDetails.industryType,
-          //       stacks: clean,
-          //       date: moment(now).format("DD/MM/YYYY"),
-          //       time: moment(now).format("HH:mm"),
-          //       timestamp: now,
-          //     };
-
-          //     console.log("Sending sensor payload:", sensorPayload);
-          //     try {
-          //       await axios.post(
-          //         "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-          //         sensorPayload
-          //       );
-          //       // ← updated emit: join on userName, not product_id
-          //       io.to(item.userName).emit("stackDataUpdate", {
-          //         userName: item.userName,
-          //         stackData: sensorPayload.stacks,
-          //       });
-          //     } catch (err) {
-          //       console.error(
-          //         "Error sending sensor payload:",
-          //         err.response?.data || err.message
-          //       );
-          //     }
-          //   }
-
-          //   // —— Process Tank Data —— (unchanged)
-          //   if (tankStacks.length) {
-          //     const tankPayload = {
-          //       product_id: item.product_id,
-          //       userName: userDetails.userName,
-          //       email: userDetails.email,
-          //       mobileNumber: userDetails.mobileNumber,
-          //       companyName: userDetails.companyName,
-          //       industryType: userDetails.industryType,
-          //       stacks: [{ stackName: "dummy", value: 0 }],
-          //       tankData: tankStacks.map((t) => ({
-          //         stackName: t.stackName,
-          //         tankName: t.TankName,
-          //         level: t.level,
-          //         percentage: t.percentage,
-          //       })),
-          //       date: moment(now).format("DD/MM/YYYY"),
-          //       time: moment(now).format("HH:mm"),
-          //       timestamp: now,
-          //     };
-          //     console.log("Sending tank payload:", tankPayload);
-          //     try {
-          //       await axios.post(
-          //         "https://api.ocems.ebhoom.com/api/handleSaveMessage",
-          //         tankPayload
-          //       );
-          //       io.to(item.product_id.toString()).emit("data", tankPayload);
-          //       // === NEW: Store last tank data for this productId ===
-          //       lastTankDataByProductId[item.product_id.toString()] =
-          //         tankPayload;
-          //     } catch (err) {
-          //       console.error(
-          //         "Error sending tank payload:",
-          //         err.response?.data || err.message
-          //       );
-          //     }
-          //   }
-
-          //   continue;
-          // }
-          // Sensor & Tank data
           if (item.product_id && item.userName && Array.isArray(item.stacks)) {
             console.log("Processing sensor/tank data:", item);
             const now = moment().tz("Asia/Kolkata").toDate();
@@ -535,6 +509,16 @@ const setupMqttClient = (io) => {
                   await triggerPushNotification(item.userName, fuelLevel);
                 }
                 // --- END TRIGGER ---
+
+                // --- NEW: Send to Aadhav API if this matches the target India Land identifiers ---
+                if (
+                  userDetails.userName === AADHAV_CONFIG.targetUserName &&
+                  userDetails.companyName === AADHAV_CONFIG.targetCompanyName &&
+                  item.product_id === AADHAV_CONFIG.targetProductId
+                ) {
+                  await sendToAadhavApi(cleanSensor);
+                }
+
               } catch (err) {
                 console.error(
                   "Error sending sensor payload:",
@@ -649,30 +633,6 @@ const setupMqttClient = (io) => {
     });
   });
 };
-
-// const sendPumpControlMessage = (product_id, pumps) => {
-//   const messageId = `cmd-${Date.now()}-${Math.random()
-//     .toString(36)
-//     .substring(2, 9)}`; // More robust unique ID
-//   const message = {
-//     product_id,
-//     pumps: pumps.map((p) => ({
-//       pumpId: p.pumpId,
-//       pumpName: p.pumpName,
-//       status: p.status === "ON" ? 1 : 0, // Convert "ON"/"OFF" to 1/0
-//     })),
-//     timestamp: new Date().toISOString(),
-//     messageId, // Include unique ID for echo filtering
-//   };
-
-//   debugLog("sendPumpControlMessage → adding to sentCommandIds:", messageId);
-//   sentCommandIds.add(messageId); // Add command ID to set for echo filtering
-
-//   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-//     if (err) console.error("Error publishing pump control:", err);
-//     else console.log("Pump command sent:", message);
-//   });
-// };
 
 const sendPumpControlMessage = async (product_id, pumps) => {
   const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
