@@ -39,7 +39,7 @@ const uploadFields = upload.fields([
 ]);
 
 router.post("/add-safetyreport", uploadFields, createSafetyReport);
-// router.get("/safetyreportById/:id", getSafetyReportById);
+router.get("/safetyreport/byId/:id", getSafetyReportById);
 router.get("/safetyreport/:equipmentId", getSafetyReportByEquipment);
 router.get("/safetyreport/user/:user/:year/:month", getReportsByUserMonth);
 router.put(

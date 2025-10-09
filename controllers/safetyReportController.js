@@ -180,40 +180,110 @@ exports.getReportsByUserMonth = async (req, res) => {
 };
 
 // ✅ UPDATE SAFETY REPORT
+// exports.updateSafetyReport = async (req, res) => {
+//   try {
+//     const { reportId } = req.params;
+
+//     // Include dynamicChecklist, safety fields, etc.
+//     const updateFields = { ...req.body };
+
+//     // Handle new signature uploads (optional)
+//     if (req.files) {
+//       if (req.files.customerSignatureImage?.[0]?.location) {
+//         updateFields.customerSignatureImage =
+//           req.files.customerSignatureImage[0].location;
+//       }
+//       if (req.files.engineerSignatureImage?.[0]?.location) {
+//         updateFields.engineerSignatureImage =
+//           req.files.engineerSignatureImage[0].location;
+//       }
+//     }
+
+//     const updatedReport = await SafetyReport.findByIdAndUpdate(
+//       reportId,
+//       { $set: updateFields },
+//       { new: true }
+//     );
+
+//     if (!updatedReport)
+//       return res.status(404).json({ success: false, message: "Report not found" });
+
+//     res.json({ success: true, report: updatedReport });
+//   } catch (err) {
+//     console.error("❌ Error updating safety report:", err);
+//     res.status(500).json({ success: false, message: "Server error" });
+//   }
+// };
+
+
+// ✅ Update Safety Report (Safe Partial Update)
 exports.updateSafetyReport = async (req, res) => {
   try {
     const { reportId } = req.params;
+    let report = await SafetyReport.findById(reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Report not found" });
 
-    // Include dynamicChecklist, safety fields, etc.
-    const updateFields = { ...req.body };
+    // ✅ Parse JSON fields safely
+    const parseField = (field) => {
+      try {
+        return typeof field === "string" ? JSON.parse(field) : field;
+      } catch {
+        return field;
+      }
+    };
 
-    // Handle new signature uploads (optional)
-    if (req.files) {
-      if (req.files.customerSignatureImage?.[0]?.location) {
-        updateFields.customerSignatureImage =
-          req.files.customerSignatureImage[0].location;
+    // ✅ Update text fields only if provided
+    const updatableFields = [
+      "refNo", "date", "customerName", "plantName", "capacity",
+      "engineerName", "auditDetails", "observation",
+      "customerRemarks", "engineerRemarks",
+      "customerSigName", "customerSigDesignation",
+      "engineerSigName", "engineerSigDesignation",
+      "checklistType"
+    ];
+
+    updatableFields.forEach((field) => {
+      if (req.body[field] !== undefined && req.body[field] !== null) {
+        report[field] = req.body[field];
       }
-      if (req.files.engineerSignatureImage?.[0]?.location) {
-        updateFields.engineerSignatureImage =
-          req.files.engineerSignatureImage[0].location;
-      }
+    });
+
+    // ✅ Checklist (static & dynamic)
+    if (req.body.checklist) {
+      report.checklist = parseField(req.body.checklist);
+    }
+    if (req.body.dynamicChecklist) {
+      report.dynamicChecklist = parseField(req.body.dynamicChecklist);
     }
 
-    const updatedReport = await SafetyReport.findByIdAndUpdate(
-      reportId,
-      { $set: updateFields },
-      { new: true }
-    );
+    // ✅ Signatures: replace only if new file uploaded
+    if (req.files?.customerSignatureImage?.[0]) {
+      report.customerSignatureImage = req.files.customerSignatureImage[0].location;
+    }
 
-    if (!updatedReport)
-      return res.status(404).json({ success: false, message: "Report not found" });
+    if (req.files?.engineerSignatureImage?.[0]) {
+      report.engineerSignatureImage = req.files.engineerSignatureImage[0].location;
+    }
 
-    res.json({ success: true, report: updatedReport });
+    // ✅ Otherwise, if no new uploads and no explicit change, keep old URLs (no action needed)
+
+    await report.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Safety Report updated successfully",
+      report,
+    });
   } catch (err) {
-    console.error("❌ Error updating safety report:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("❌ updateSafetyReport error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error updating safety report",
+      error: err.message,
+    });
   }
 };
+
 
 // ✅ GET SAFETY REPORT BY ID (for Edit Prefill)
 exports.getSafetyReportById = async (req, res) => {
