@@ -2,7 +2,7 @@ const express = require('express');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const { createEngineerVisitReport, getEngineerVisitReportByEquipment ,getEngineerVisitReportsByUserAndMonth} = require('../controllers/engineerVisitReportController');
+const { createEngineerVisitReport, getEngineerVisitReportByEquipment ,getEngineerVisitReportsByUserAndMonth,} = require('../controllers/engineerVisitReportController');
 
 const router = express.Router();
 
