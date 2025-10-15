@@ -60,6 +60,8 @@ const pumpRuntimeRoutes=require('./routers/pumpRuntimeRoutes');
 const realtimeRoutes = require('./routers/realtime');
 const downloadRoutes = require('./routers/downloadRoutes');
 const consumptionRouters = require("./routers/consumptionRoutes");
+const reportSummaryRoutes = require("./routers/reportSummaryRoutes");
+
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -143,7 +145,7 @@ app.use((req, res, next) => {
     req.io = io;
     next();
 });
-
+app.use("/api", reportSummaryRoutes);
 app.use('/api', userRoutes);
 app.use('/api', calibrationRoutes);
 app.use('/api', notificationRoutes);
@@ -192,6 +194,7 @@ app.use('/api', downloadRoutes);
 app.use("/api", consumptionRouters);
 app.use('/api', reports3routes);
 app.use('/api',realtimedatas3Route);
+
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {

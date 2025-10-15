@@ -35,4 +35,36 @@ router.get(
   ctrl.getReportByEquipmentAndMonth // year and month from query parameters
 );
 
+router.delete("/s3/electrical/delete", async (req, res) => {
+  try {
+    const { userName, equipment } = req.body;
+
+    if (!userName ) {
+      return res.status(400).json({
+        success: false,
+        message: "userName and date are required (format: YYYY-MM-DD)",
+      });
+    }
+
+    // Pass 'equipment' instead of 'equipmentId'
+    const result = await deleteReportsFromS3({ userName,equipment });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No matching reports found for deletion",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount} report(s) deleted successfully.`,
+    });
+  } catch (err) {
+    console.error("❌ Error deleting report:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 module.exports = router;

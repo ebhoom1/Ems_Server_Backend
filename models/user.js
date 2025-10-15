@@ -88,6 +88,8 @@ const userSchema = new mongoose.Schema({
   district: { type: String },
   state: { type: String },
   address: { type: String },
+  engineerVisitNo:{type:Number},
+  selectedVisits: { type: [Number], default: [] },
   latitude: {
     type: Number,
     /* required: function() {

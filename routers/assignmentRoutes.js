@@ -6,6 +6,7 @@ const {
   getAssignments,
   getCompletionStatusForAssignment,
   getAssignmentsByUser,
+  UpdateEngineerVisitNo,
 } = require("../controllers/assignmentController");
 
 // POST: assign or update assignment
@@ -21,6 +22,7 @@ router.get(
   getCompletionStatusForAssignment
 );
 router.get("/assignments/by-assigned-to/:userId", getAssignmentsByUser);
+router.post("/update-engineer-visits", UpdateEngineerVisitNo);
 
 
 module.exports = router;

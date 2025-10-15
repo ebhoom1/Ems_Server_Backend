@@ -4,50 +4,7 @@ const MechanicalReport = require("../models/MechanicalReport");
 const User=require("../models/user")
 const Equipment = require("../models/equipment");
 
-// exports.getCompletionStatusForAssignment = async (req, res) => {
-//     const { userId, type, month, year } = req.params;
-//     const m = parseInt(month);
-//     const y = parseInt(year);
-//     try {
-//       const startDate = new Date(y, m - 1, 1);
-//       const endDate = new Date(y, m, 1);
-//       const user = await User.findById(userId);
-//       if (!user) return res.status(404).json({ success: false, message: "User not found" });
-  
-//       const equipments = await Equipment.find({ userName: user.userName });
-  
-//       const equipmentIds = equipments.map((e) => e._id.toString());
-  
-//       if (type === "EPM") {
-//         const reports = await ElectricalReport.find({
-//           equipmentId: { $in: equipmentIds },
-//           createdAt: { $gte: startDate, $lt: endDate },
-//         });
-  
-//         const submittedEquipmentIds = reports.map((r) => r.equipmentId.toString());
-//         const isComplete = equipmentIds.every((id) => submittedEquipmentIds.includes(id));
-  
-//         return res.json({ completed: isComplete });
-//       }
-  
-//       if (type === "MPM") {
-//         const reports = await MechanicalReport.find({
-//           equipmentId: { $in: equipmentIds },
-//           timestamp: { $gte: startDate, $lt: endDate },
-//         });
-  
-//         const submittedEquipmentIds = reports.map((r) => r.equipmentId.toString());
-//         const isComplete = equipmentIds.every((id) => submittedEquipmentIds.includes(id));
-  
-//         return res.json({ completed: isComplete });
-//       }
-  
-//       return res.json({ completed: false });
-//     } catch (err) {
-//       console.error("Completion check error", err);
-//       res.status(500).json({ success: false, message: "Server error" });
-//     }
-//   };
+
 exports.getCompletionStatusForAssignment = async (req, res) => {
     const { userId, type, month, year } = req.params;
     const m = parseInt(month);
@@ -217,3 +174,32 @@ exports.getAssignments = async (req, res) => {
       res.status(500).json({ success: false, error: "Server error" });
     }
   };
+
+
+  exports.UpdateEngineerVisitNo=async(req,res)=>{
+ try {
+    const { userId, selectedVisits } = req.body;
+
+    if (!userId)
+      return res.status(400).json({ message: "Missing userId" });
+
+    await User.findByIdAndUpdate(
+      userId,
+      { $set: { selectedVisits } },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Engineer visit selections updated successfully",
+      data: selectedVisits,
+    });
+  } catch (error) {
+    console.error("Error updating engineer visits:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+}
+  
