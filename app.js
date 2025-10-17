@@ -91,7 +91,7 @@ const {setupCronJobS3Report} = require('./S3Bucket/s3Report');
 const {setupCronJobS3Payment} = require('./S3Bucket/s3PaymentData');
 const {setupCronJobsForHourlyS3Upload} = require('./S3Bucket/s3differenceData');
 const { calculateAndSaveHourlyConsumption } = require('./S3Bucket/s3HourlyConsumption');
-
+require('./schedulers/dailyReportScheduler')
 const { generateAndSendReport } = require('./controllers/DailyReport/reportGenerator');
 const svgUploadRoutes = require('./routers/svgUpload');
 const attendanceRoutes = require('./routers/attendanceRoutes');
