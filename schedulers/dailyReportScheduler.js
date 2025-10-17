@@ -28,8 +28,8 @@ function validateEnvironment() {
         console.error('❌ CRITICAL: Missing environment variables:', missing.join(', '));
         console.error('Please create a .env file with:');
         console.error('API_URL=http://localhost:5555');
-        console.error('EMAIL_USER=info.ebhoom@gmail.com');
-        console.error('EMAIL_PASS=iwei jhqo yten xthp');
+        console.error('EMAIL=info.ebhoom@gmail.com');
+        console.error('PASSWORD=iwei jhqo yten xthp');
         process.exit(1);
     }
     console.log('✅ Environment variables validated');
