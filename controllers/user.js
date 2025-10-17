@@ -53,6 +53,7 @@ const register = async (req, res) => {
     isOperator,
     createdBy,
     operators, // ✅ ADD THIS
+    engineerVisitNo,
   } = req.body;
 //try block
   try {
@@ -96,6 +97,7 @@ const register = async (req, res) => {
       isOperator: userType === "operator" ? true : isOperator,
       operators: operators || [], // ✅ new
       createdBy:  createdBy, // Set the creator's userId
+      engineerVisitNo,
     };
 
     // Set iotLastEnterDate always to today's date
