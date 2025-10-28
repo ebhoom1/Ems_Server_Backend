@@ -47,7 +47,7 @@ const uploadFields = photoUpload.fields([
   { name: 'issuePhotos', maxCount: 20 },
   { name: 'beforeImages', maxCount: 20 },
   { name: 'afterImages', maxCount: 20 },
-  { name: 'customerSignatureImage', maxCount: 1 },     // NEW
+  { name: 'customerSignatureImage', maxCount: 1 },     
   { name: 'technicianSignatureImage', maxCount: 1 },   // NEW
 ]);
 
