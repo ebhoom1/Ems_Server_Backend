@@ -412,6 +412,7 @@ const setupMqttClient = (io) => {
               product_id: item.product_id,
               userName: item.userName,
               pumps: item.pumps,
+              tanks:item.tanks,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
             };
