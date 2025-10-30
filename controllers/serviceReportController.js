@@ -122,10 +122,10 @@ exports.createServiceReport = async (req, res) => {
       technicianSigDesignation,
     } = req.body;
 
-    if (!equipmentId || !equipmentName || !userName || !technicianName || !technicianEmail) {
+    if (!userName || !technicianName || !technicianEmail) {
       return res.status(400).json({
         success: false,
-        message: "Missing essential identifying information for Service Report (Equipment, User, Technician).",
+        message: "Missing required fields: userName, technicianName, technicianEmail.",
       });
     }
 
@@ -159,7 +159,7 @@ exports.createServiceReport = async (req, res) => {
     );
 
     const equipmentDetailsObj = safeJsonParse(equipmentDetails, {});
-
+    const effectiveEquipmentName = equipmentName || equipmentDetailsObj?.name || "";
     // Header: set plantCapacity; mirror into legacy areaOfInspection for compatibility
     const header = {
       site: headerSite || '',
@@ -178,14 +178,17 @@ exports.createServiceReport = async (req, res) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-    const existing = await ServiceReport.findOne({
-      equipmentId,
-      reportDate: { $gte: startOfMonth, $lte: endOfMonth },
-    });
-
+    const monthlyWhere = { reportDate: { $gte: startOfMonth, $lte: endOfMonth } };
+    if (equipmentId) {
+      monthlyWhere.equipmentId = equipmentId;
+    } else {
+      // No equipment: de-duplicate by user + site (header.site)
+      monthlyWhere.userName = userName;
+      if (header.site) monthlyWhere['header.site'] = header.site;
+    }
+    const existing = await ServiceReport.findOne(monthlyWhere);
     if (existing) {
-      existing.equipmentName = equipmentName;
+      existing.equipmentName = effectiveEquipmentName;
       existing.userName = userName;
       existing.technician = technician;
       existing.submittedBy = submittedBy;
@@ -247,7 +250,7 @@ exports.createServiceReport = async (req, res) => {
 
     const report = new ServiceReport({
       equipmentId,
-      equipmentName,
+      equipmentName: effectiveEquipmentName,
       userName,
       technician,
       submittedBy,

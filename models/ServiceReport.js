@@ -37,8 +37,8 @@ const HeaderSchema = new Schema({
 }, { _id: false });
 
 const ServiceReportSchema = new Schema({
-  equipmentId: { type: Schema.Types.ObjectId, ref: 'Equipment', required: true },
-  equipmentName: { type: String, required: true },
+  equipmentId: { type: Schema.Types.ObjectId, ref: 'Equipment' },
+  equipmentName: { type: String},
   userName: { type: String, required: true, index: true },
 
   reportDate: { type: Date, default: Date.now },
