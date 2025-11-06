@@ -47,6 +47,7 @@ const engineerReportRoutes=require('./routers/engineerVisitReportRoutes');
 const safetyReportRoutes=require('./routers/safetyReportRoutes');
 const reports3routes = require('./routers/reports3Routes')
 const realtimedatas3Route = require('./routers/realtimeDataRoutes')
+const flowReportRoutes = require('./routers/flowReportRoutes'); // <-- ADD THIS
 const { getAllDeviceCredentials } = require('./controllers/user');
 const {initializeMqttClients} = require('./mqtt/mqtt-mosquitto');
 const http = require('http');
@@ -61,7 +62,7 @@ const realtimeRoutes = require('./routers/realtime');
 const downloadRoutes = require('./routers/downloadRoutes');
 const consumptionRouters = require("./routers/consumptionRoutes");
 const reportSummaryRoutes = require("./routers/reportSummaryRoutes");
-
+const monthlyReportRoutes = require('./routers/monthlyReportRoutes');
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -194,7 +195,8 @@ app.use('/api', downloadRoutes);
 app.use("/api", consumptionRouters);
 app.use('/api', reports3routes);
 app.use('/api',realtimedatas3Route);
-
+app.use('/api/monthly-report', monthlyReportRoutes);
+app.use('/api/flow-report', flowReportRoutes); // <-- ADD THIS
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
 io.on('connection', (socket) => {
