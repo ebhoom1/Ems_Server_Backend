@@ -43,7 +43,13 @@ const monthlyReportSchema = new mongoose.Schema({
     type: Number, // 0-11 (Jan-Dec)
     required: true 
   },
-  readings: [readingSchema] // Array of daily readings
+  readings: [readingSchema] ,// Array of daily readings
+   photos: [
+    {
+      type: String, // will store image URL or relative path
+      default: null
+    }
+  ],
 }, { timestamps: true });
 
 // Create a unique compound index
