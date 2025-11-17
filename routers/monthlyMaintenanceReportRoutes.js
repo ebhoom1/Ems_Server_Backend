@@ -10,6 +10,7 @@ const {
   saveOrUpdateReport,
   getReport,
   addPhotosToDate,
+  deletePhotoFromDate,
 } = require('../controllers/monthlyMaintenanceReportController');
 
 // --- AWS S3 CONFIG ---
@@ -38,7 +39,7 @@ const photoUpload = multer({
       cb(
         null,
         `monthlyMaintenance/${userId}/${year}-${month}-${day}/${ts}-${safe}`
-      );
+      );  
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
@@ -54,6 +55,11 @@ router.post(
   '/upload/:userId/:year/:month/:day',
   photoUpload.array('photos', 10),
   addPhotosToDate
+);
+
+router.delete(
+  '/photo/:userId/:year/:month/:day',
+  deletePhotoFromDate
 );
 
 module.exports = router;

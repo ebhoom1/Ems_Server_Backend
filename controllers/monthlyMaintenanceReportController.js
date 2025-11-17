@@ -132,3 +132,65 @@ exports.addPhotosToDate = async (req, res) => {
     res.status(500).json({ message: 'Failed to attach photos' });
   }
 };
+
+// DELETE /api/monthly-maintenance/photo/:userId/:year/:month/:day
+// Body: { photoUrl }
+exports.deletePhotoFromDate = async (req, res) => {
+  try {
+    const { userId, year, month, day } = req.params;
+    const { photoUrl } = req.body;
+
+    if (!photoUrl) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'photoUrl is required' });
+    }
+
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    const d = parseInt(day, 10);
+
+    const report = await MonthlyMaintenanceReport.findOne({
+      userId,
+      year: y,
+      month: m,
+    });
+
+    if (!report) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Report not found' });
+    }
+
+    const entry = report.entries.find((e) => e.date === d);
+    if (!entry) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Entry for that day not found' });
+    }
+
+    const beforeLen = (entry.photos || []).length;
+    entry.photos = (entry.photos || []).filter((p) => p !== photoUrl);
+
+    if (entry.photos.length === beforeLen) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Photo not found in entry' });
+    }
+
+    await report.save();
+
+    const updatedEntry = report.entries.find((e) => e.date === d);
+
+    return res.json({
+      success: true,
+      message: 'Photo deleted successfully',
+      entry: updatedEntry,
+    });
+  } catch (err) {
+    console.error('Error in deletePhotoFromDate:', err);
+    res
+      .status(500)
+      .json({ success: false, message: 'Failed to delete photo' });
+  }
+};

@@ -64,6 +64,9 @@ const consumptionRouters = require("./routers/consumptionRoutes");
 const reportSummaryRoutes = require("./routers/reportSummaryRoutes");
 const monthlyReportRoutes = require('./routers/monthlyReportRoutes');
 const monthlyMaintenanceReportRoutes = require('./routers/monthlyMaintenanceReportRoutes');
+const treatedWaterClarityRoutes = require("./routers/treatedWaterClarityRoutes");
+const equipmentStatusRoutes = require("./routers/equipmentStatusRoutes");
+
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
@@ -198,6 +201,10 @@ app.use('/api', reports3routes);
 app.use('/api',realtimedatas3Route);
 app.use('/api/monthly-report', monthlyReportRoutes);
 app.use('/api/monthly-maintenance', monthlyMaintenanceReportRoutes);
+app.use("/api/treated-water-clarity", treatedWaterClarityRoutes);
+app.use("/api/equipment-status", equipmentStatusRoutes);
+
+
 app.use('/api/flow-report', flowReportRoutes); // <-- ADD THIS
 // WebSockets for real-time chat
 // WebSockets for real-time chat and energy data
