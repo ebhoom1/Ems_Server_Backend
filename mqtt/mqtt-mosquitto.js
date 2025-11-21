@@ -114,15 +114,15 @@ const coerceSensorStack = (s) => {
 async function sendToAadhavApi(sensorData) {
   try {
     // Find pollution stack (STP / effluent)
-    const pollutionStack = sensorData.find(stack => 
+    const pollutionStack = sensorData.find(stack =>
       stack.stackName === AADHAV_CONFIG.targetStackName &&
       stack.stationType === AADHAV_CONFIG.targetStationType &&
       (stack.BOD !== undefined || stack.COD !== undefined || stack.TSS !== undefined ||
-       stack.pH !== undefined || stack.ph !== undefined)
+        stack.pH !== undefined || stack.ph !== undefined)
     );
 
     // Find flow stack (STP outlet / effluent_flow)
-    const flowStack = sensorData.find(stack => 
+    const flowStack = sensorData.find(stack =>
       stack.stackName === AADHAV_CONFIG.targetFlowStackName &&
       stack.stationType === AADHAV_CONFIG.targetFlowStationType &&
       (stack.flowRate !== undefined || stack.cumulatingFlow !== undefined)
@@ -229,12 +229,12 @@ async function triggerPushNotification(userName, fuelLevel) {
         await webpush.sendNotification(subscription, payload);
         console.log(`Push notification sent successfully to ${userName}.`);
       }
-      
+
       // IMPORTANT: Mark that the alert has been sent to prevent spam
       await userdb.updateOne({ userName: userName }, { $set: { lowFuelNotificationSent: true } });
 
-    // --- 2. Check if the "sent" flag needs to be reset ---
-    // Condition: Fuel has been refilled AND the alert flag is still active.
+      // --- 2. Check if the "sent" flag needs to be reset ---
+      // Condition: Fuel has been refilled AND the alert flag is still active.
     } else if (fuelLevel >= REFUEL_RESET_THRESHOLD && hasSentLowFuelAlert) {
       await userdb.updateOne({ userName: userName }, { $set: { lowFuelNotificationSent: false } });
       console.log(`Low fuel alert flag has been reset for ${userName}.`);
@@ -284,8 +284,8 @@ async function sendTankLevelAlert({ userDetails, tankName, percentage, band }) {
       return; // only notify for these bands
   }
 
-  const url = "https://ems.ebhoom.com/autonerve"; // page to open on click
-  // const url = "http://localhost:3000/autonerve";
+  // const url = "https://ems.ebhoom.com/autonerve"; // page to open on click
+  const url = "http://localhost:3000/autonerve";
 
 
   const payload = JSON.stringify({
@@ -374,8 +374,29 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
     const pct = toNum(t.percentage, null);
 
     if (pct == null) continue;
-
     const currentBand = classifyTankBand(pct);
+
+    if (io) {
+      console.log("io &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+      const alertPayload = {
+        product_id: String(productId),
+        userName: userDetails.userName,
+        email: userDetails.email,
+        companyName: userDetails.companyName,
+        industryType: userDetails.industryType,
+        tankName,
+        percentage: pct,
+        band: currentBand, // "critical_low" / "low_25" / "high_85" / "critical_high_95"
+        timestamp: new Date().toISOString(),
+      };
+
+      // Emit to the product room – admin dashboards that joined this room will get it
+      io.to(String(productId)).emit("tankAlert", alertPayload);   // 👈 CHANGE THIS
+      console.log("Emitted tankAlert:", alertPayload);            // 👈 and this log
+    }
+
+
+
     if (currentBand === "normal") {
       // console.log("normal band%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
       // We don't notify for normal levels
@@ -403,25 +424,6 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
     });
 
     // 💬 2) Socket.IO real-time alert for UI (tankLevelAlert)
-   // 💬 2) Socket.IO real-time alert for UI (tankLevelAlert)
-if (io) {
-  const alertPayload = {
-    product_id: String(productId),
-    userName: userDetails.userName,
-    email: userDetails.email,
-    companyName: userDetails.companyName,
-    industryType: userDetails.industryType,
-    tankName,
-    percentage: pct,
-    band: currentBand, // "critical_low" / "low_25" / "high_85" / "critical_high_95"
-    timestamp: new Date().toISOString(),
-  };
-
-  // Emit to the product room – admin dashboards that joined this room will get it
-  io.to(String(productId)).emit("tankAlert", alertPayload);   // 👈 CHANGE THIS
-  console.log("Emitted tankAlert:", alertPayload);            // 👈 and this log
-}
-
 
     // 3) Upsert new band so you don't repeat alerts for same band
     await TankAlertState.updateOne(
@@ -613,7 +615,7 @@ const setupMqttClient = (io) => {
               product_id: item.product_id,
               userName: item.userName,
               pumps: item.pumps,
-              tanks:item.tanks,
+              tanks: item.tanks,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
             };
@@ -768,8 +770,8 @@ const setupMqttClient = (io) => {
                 const room = item.product_id.toString();
                 io.to(room).emit("data", tankPayload);
                 lastTankDataByProductId[room] = tankPayload;
-// 🔔 Check levels and send notifications to user + admin when thresholds are crossed
-await handleTankAlerts(item.product_id, userDetails, tankData, io);
+                // 🔔 Check levels and send notifications to user + admin when thresholds are crossed
+                await handleTankAlerts(item.product_id, userDetails, tankData, io);
 
 
               } catch (err) {
