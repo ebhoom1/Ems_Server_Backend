@@ -6,6 +6,8 @@ const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
 const pumpDataController = require("../controllers/pumpDataController");
+const TankAlertState = require("../models/TankAlertState");
+
 const {
   updateRuntimeFromRealtime,
 } = require("../controllers/pumpRuntimeController");
@@ -177,6 +179,26 @@ async function sendToAadhavApi(sensorData) {
 const LOW_FUEL_THRESHOLD = 30; // Notify when fuel is at or below this percentage
 const REFUEL_RESET_THRESHOLD = 33; // Reset the alert when fuel is back above this percentage
 
+// --- TANK ALERT THRESHOLDS ---
+// You can tweak these numbers if needed
+const TANK_LOW_25 = 25;     // around 25%
+const TANK_CRITICAL_5 = 5;  // below 5%
+const TANK_HIGH_85 = 85;    // above 85%
+const TANK_CRITICAL_95 = 95;// at/above 95%
+
+// Map percentage to a "band" label
+function classifyTankBand(pct) {
+  if (pct == null || !Number.isFinite(pct)) return "normal";
+
+  if (pct <= TANK_CRITICAL_5) return "critical_low";
+  if (pct <= TANK_LOW_25) return "low_25";
+  if (pct >= TANK_CRITICAL_95) return "critical_high_95";
+  if (pct >= TANK_HIGH_85) return "high_85";
+
+  return "normal";
+}
+
+
 async function triggerPushNotification(userName, fuelLevel) {
   // Exit early if fuelLevel data is missing
   if (fuelLevel === undefined) {
@@ -232,6 +254,185 @@ async function triggerPushNotification(userName, fuelLevel) {
     }
   }
 }
+
+// Send tank-level alert to device user + their admin (via createdBy)
+async function sendTankLevelAlert({ userDetails, tankName, percentage, band }) {
+  // console.log("recieved######################################")
+  if (!userDetails) return;
+
+  const siteUserName = userDetails.userName;
+
+  let title = "Tank Level Alert";
+  let body = "";
+
+  const pctText = `${Number(percentage).toFixed(1)}%`;
+
+  switch (band) {
+    case "critical_low":
+      body = `${tankName} is below 5% (${pctText}). Critical low level.`;
+      break;
+    case "low_25":
+      body = `${tankName} reached around 25% (${pctText}). Please schedule refilling.`;
+      break;
+    case "high_85":
+      body = `${tankName} is above 85% (${pctText}). Getting close to full.`;
+      break;
+    case "critical_high_95":
+      body = `${tankName} is at/above 95% (${pctText}). Overflow risk!`;
+      break;
+    default:
+      return; // only notify for these bands
+  }
+
+  const url = "https://ems.ebhoom.com/autonerve"; // page to open on click
+  // const url = "http://localhost:3000/autonerve";
+
+
+  const payload = JSON.stringify({
+    title,
+    body,
+    url,
+  });
+
+  const recipients = [];
+
+  // 1️⃣ Add the site user (device owner)
+  if (siteUserName) {
+    recipients.push(userDetails);
+  }
+
+  // 2️⃣ Find the admin using createdBy (ObjectId of admin)
+  let adminUser = null;
+  try {
+    let adminId = null;
+
+    // support both: createdBy: ObjectId("...")  and  createdBy: { user: ObjectId("...") }
+    if (userDetails.createdBy) {
+      if (
+        typeof userDetails.createdBy === "object" &&
+        userDetails.createdBy.user
+      ) {
+        adminId = userDetails.createdBy.user;
+      } else {
+        adminId = userDetails.createdBy;
+      }
+    }
+
+    if (adminId) {
+      adminUser = await userdb.findById(adminId);
+      if (adminUser) {
+        recipients.push(adminUser);
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching admin by createdBy:", err);
+  }
+
+  // Remove duplicates by _id (in case user == admin in some test data)
+  const byId = new Map();
+  recipients.forEach((u) => {
+    if (u && u._id) byId.set(String(u._id), u);
+  });
+
+  for (const [, u] of byId.entries()) {
+    const subscription = u.pushSubscription;
+    if (!subscription) continue;
+
+    try {
+      await webpush.sendNotification(subscription, payload);
+      console.log(
+        `Tank alert sent to ${u.userName} (${tankName}, ${pctText}, band=${band})`
+      );
+    } catch (err) {
+      if (err.statusCode === 410) {
+        console.log(
+          `Expired push subscription for ${u.userName}, removing from DB`
+        );
+        await userdb.updateOne(
+          { _id: u._id },
+          { $unset: { pushSubscription: "" } }
+        );
+      } else {
+        console.error(
+          "Error sending tank-level notification to",
+          u.userName,
+          err
+        );
+      }
+    }
+  }
+}
+
+// Check each tank and send notifications when crossing bands
+// Check each tank and send notifications when crossing bands
+async function handleTankAlerts(productId, userDetails, tankData, io) {
+  // console.log("called************************************************************************")
+  if (!Array.isArray(tankData) || !tankData.length) return;
+
+  for (const t of tankData) {
+    const tankName = t.tankName || t.TankName || "Tank";
+    const pct = toNum(t.percentage, null);
+
+    if (pct == null) continue;
+
+    const currentBand = classifyTankBand(pct);
+    if (currentBand === "normal") {
+      // console.log("normal band%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+      // We don't notify for normal levels
+      continue;
+    }
+
+    const key = { productId: String(productId), tankName };
+
+    // Fetch last band from DB
+    let state = await TankAlertState.findOne(key);
+    const prevBand = state?.lastBand || "normal";
+
+    // Only notify when band actually changes (e.g. normal → low_25)
+    if (prevBand === currentBand) {
+      // console.log("same band%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+      continue;
+    }
+
+    // 🔔 1) Push notification to user + admin (what you already had)
+    await sendTankLevelAlert({
+      userDetails,
+      tankName,
+      percentage: pct,
+      band: currentBand,
+    });
+
+    // 💬 2) Socket.IO real-time alert for UI (tankLevelAlert)
+   // 💬 2) Socket.IO real-time alert for UI (tankLevelAlert)
+if (io) {
+  const alertPayload = {
+    product_id: String(productId),
+    userName: userDetails.userName,
+    email: userDetails.email,
+    companyName: userDetails.companyName,
+    industryType: userDetails.industryType,
+    tankName,
+    percentage: pct,
+    band: currentBand, // "critical_low" / "low_25" / "high_85" / "critical_high_95"
+    timestamp: new Date().toISOString(),
+  };
+
+  // Emit to the product room – admin dashboards that joined this room will get it
+  io.to(String(productId)).emit("tankAlert", alertPayload);   // 👈 CHANGE THIS
+  console.log("Emitted tankAlert:", alertPayload);            // 👈 and this log
+}
+
+
+    // 3) Upsert new band so you don't repeat alerts for same band
+    await TankAlertState.updateOne(
+      key,
+      { $set: { lastBand: currentBand } },
+      { upsert: true }
+    );
+  }
+}
+
+
 // --- END PUSH NOTIFICATION FUNCTION ---
 const setupMqttClient = (io) => {
   client = mqtt.connect(options);
@@ -567,6 +768,9 @@ const setupMqttClient = (io) => {
                 const room = item.product_id.toString();
                 io.to(room).emit("data", tankPayload);
                 lastTankDataByProductId[room] = tankPayload;
+// 🔔 Check levels and send notifications to user + admin when thresholds are crossed
+await handleTankAlerts(item.product_id, userDetails, tankData, io);
+
 
               } catch (err) {
                 console.error(

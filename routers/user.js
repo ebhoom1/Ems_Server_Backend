@@ -30,7 +30,7 @@ const {
   getAllUsersByCreator,
   getAllOperators,
   getCompaniesByTerritorialManager,
-  getUsersByAdminTypeQuery,saveSubscription
+  getUsersByAdminTypeQuery,saveSubscription, changeLoggedInPassword,
 } = require("../controllers/user");
 const authenticate = require("../middleware/authenticate");
 const User = require("../models/user");
@@ -94,6 +94,8 @@ router.get('/get-companies-by-operator/:operatorId', async (req, res) => {
 });
 router.get('/get-companies-by-territorialManager/:managerId', getCompaniesByTerritorialManager);
 router.get("/users/by-admin-type", getUsersByAdminTypeQuery);
+router.post("/change-password",changeLoggedInPassword);
+
 // userRoutes.js (temporary)
 router.post('/save-subscription', async (req, res) => {
   try {

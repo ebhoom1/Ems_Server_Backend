@@ -1078,6 +1078,59 @@ const saveSubscription = async (req, res) => {
   }
 };
 
+// Change password for a LOGGED-IN user using authenticate middleware
+const changeLoggedInPassword = async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  // Basic validation
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res
+      .status(400)
+      .json({ status: 400, message: "All fields are required" });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(422).json({
+      status: 422,
+      message: "New password and confirmation password do not match",
+    });
+  }
+
+  try {
+    // req.userId comes from authenticate middleware
+    const user = await userdb.findById(req.userId);
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "User not found" });
+    }
+
+    // Check current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ status: 401, message: "Current password is incorrect" });
+    }
+
+    // Hash and save new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    user.password = hashedPassword;
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ status: 200, message: "Password changed successfully" });
+  } catch (error) {
+    console.error(`Error changing password (logged-in): ${error.message}`);
+    return res
+      .status(500)
+      .json({ status: 500, error: "Internal Server Error" });
+  }
+};
+
+
 module.exports = {
   register,
   updateStackName,
@@ -1110,5 +1163,6 @@ module.exports = {
   getAllUsersByCreator,
   getAllOperators,
   getCompaniesByTerritorialManager,
-  getUsersByAdminTypeQuery,saveSubscription
+  getUsersByAdminTypeQuery,saveSubscription,
+  changeLoggedInPassword,
 };
