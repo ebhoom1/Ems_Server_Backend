@@ -186,6 +186,10 @@ const TANK_CRITICAL_5 = 5;  // below 5%
 const TANK_HIGH_85 = 85;    // above 85%
 const TANK_CRITICAL_95 = 95;// at/above 95%
 
+const CLIENT_BASE_URL = process.env.EMS_CLIENT_URL || "https://ems.ebhoom.com";
+const FUEL_DASHBOARD_PATH = "/diesel";
+const TANK_DASHBOARD_PATH = "/autonerve";
+
 // Map percentage to a "band" label
 function classifyTankBand(pct) {
   if (pct == null || !Number.isFinite(pct)) return "normal";
@@ -220,9 +224,12 @@ async function triggerPushNotification(userName, fuelLevel) {
     if (fuelLevel <= LOW_FUEL_THRESHOLD && !hasSentLowFuelAlert) {
       if (user.pushSubscription) {
         const subscription = user.pushSubscription;
+        const url = `${CLIENT_BASE_URL}${FUEL_DASHBOARD_PATH}`;
+
         const payload = JSON.stringify({
           title: "Low Fuel Alert",
           body: `Diesel is at ${fuelLevel}%. Please refill soon.`,
+          url,
         });
 
         // Send the notification
@@ -285,7 +292,7 @@ async function sendTankLevelAlert({ userDetails, tankName, percentage, band }) {
   }
 
   // const url = "https://ems.ebhoom.com/autonerve"; // page to open on click
-  const url = "http://localhost:3000/autonerve";
+  const url = `${CLIENT_BASE_URL}${TANK_DASHBOARD_PATH}`;
 
 
   const payload = JSON.stringify({
@@ -363,21 +370,67 @@ async function sendTankLevelAlert({ userDetails, tankName, percentage, band }) {
   }
 }
 
+
 // Check each tank and send notifications when crossing bands
 // Check each tank and send notifications when crossing bands
 async function handleTankAlerts(productId, userDetails, tankData, io) {
-  // console.log("called************************************************************************")
   if (!Array.isArray(tankData) || !tankData.length) return;
 
   for (const t of tankData) {
     const tankName = t.tankName || t.TankName || "Tank";
     const pct = toNum(t.percentage, null);
-
     if (pct == null) continue;
-    const currentBand = classifyTankBand(pct);
 
+    const currentBand = classifyTankBand(pct); // "normal" / "critical_low" / "low_25" / "high_85" / "critical_high_95"
+    const key = { productId: String(productId), tankName };
+
+    // 🔹 Read last band from DB (default "normal")
+    let state = await TankAlertState.findOne(key);
+    const prevBand = state?.lastBand || "normal";
+
+    // 🔹 If band did NOT change, do nothing (even if payload comes every 5s)
+    if (prevBand === currentBand) {
+      // console.log("Tank band unchanged → skipping alert", { productId, tankName, pct, band: currentBand });
+      continue;
+    }
+
+    // 🔹 Always store latest band (including "normal")
+    await TankAlertState.updateOne(
+      key,
+      { $set: { lastBand: currentBand } },
+      { upsert: true }
+    );
+
+    // 🔹 If back to normal, just record and exit (no banner)
+    if (currentBand === "normal") {
+      console.log("Tank returned to normal band, no alert:", {
+        productId,
+        tankName,
+        pct,
+      });
+      continue;
+    }
+
+    // 🔔 Now we know:
+    //     - Band CHANGED
+    //     - New band is NOT "normal"
+    //     This covers:
+    //       normal  → critical_low        (< 5%)
+    //       low_25  → critical_low
+    //       high_85 → critical_high_95    (>= 95%)
+    //       normal  → critical_high_95
+    //       etc.
+
+    // 1) Push notification (if enabled)
+    await sendTankLevelAlert({
+      userDetails,
+      tankName,
+      percentage: pct,
+      band: currentBand,
+    });
+
+    // 2) Socket.IO → frontend banner
     if (io) {
-      console.log("io &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
       const alertPayload = {
         product_id: String(productId),
         userName: userDetails.userName,
@@ -386,53 +439,16 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
         industryType: userDetails.industryType,
         tankName,
         percentage: pct,
-        band: currentBand, // "critical_low" / "low_25" / "high_85" / "critical_high_95"
+        band: currentBand,
         timestamp: new Date().toISOString(),
       };
 
-      // Emit to the product room – admin dashboards that joined this room will get it
-      io.to(String(productId)).emit("tankAlert", alertPayload);   // 👈 CHANGE THIS
-      console.log("Emitted tankAlert:", alertPayload);            // 👈 and this log
+      io.to(String(productId)).emit("tankAlert", alertPayload);
+      console.log("Emitted tankAlert (band change):", alertPayload);
     }
-
-
-
-    if (currentBand === "normal") {
-      // console.log("normal band%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-      // We don't notify for normal levels
-      continue;
-    }
-
-    const key = { productId: String(productId), tankName };
-
-    // Fetch last band from DB
-    let state = await TankAlertState.findOne(key);
-    const prevBand = state?.lastBand || "normal";
-
-    // Only notify when band actually changes (e.g. normal → low_25)
-    if (prevBand === currentBand) {
-      // console.log("same band%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-      continue;
-    }
-
-    // 🔔 1) Push notification to user + admin (what you already had)
-    await sendTankLevelAlert({
-      userDetails,
-      tankName,
-      percentage: pct,
-      band: currentBand,
-    });
-
-    // 💬 2) Socket.IO real-time alert for UI (tankLevelAlert)
-
-    // 3) Upsert new band so you don't repeat alerts for same band
-    await TankAlertState.updateOne(
-      key,
-      { $set: { lastBand: currentBand } },
-      { upsert: true }
-    );
   }
 }
+
 
 
 // --- END PUSH NOTIFICATION FUNCTION ---
