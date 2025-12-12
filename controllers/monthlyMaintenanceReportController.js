@@ -83,6 +83,7 @@ exports.saveOrUpdateReport = async (req, res) => {
 
 // Called after S3 upload middleware
 // POST /api/monthly-report/upload/:userId/:year/:month/:day
+// POST /api/monthly-report/upload/:userId/:year/:month/:day
 exports.addPhotosToDate = async (req, res) => {
   try {
     const { userId, year, month, day } = req.params;
@@ -96,7 +97,15 @@ exports.addPhotosToDate = async (req, res) => {
       return res.status(400).json({ message: 'No files received' });
     }
 
-    let report = await MonthlyMaintenanceReport.findOne({ userId, year: y, month: m });
+    // 👇 NEW: read photo type from body (MPM / EPM)
+    const { photoType } = req.body;
+    const type = photoType === 'EPM' ? 'EPM' : 'MPM'; // default MPM
+
+    let report = await MonthlyMaintenanceReport.findOne({
+      userId,
+      year: y,
+      month: m,
+    });
 
     if (!report) {
       report = new MonthlyMaintenanceReport({
@@ -118,7 +127,10 @@ exports.addPhotosToDate = async (req, res) => {
     }
 
     entry.photos = entry.photos || [];
-    entry.photos.push(...photoUrls);
+
+    // 👇 NEW: push objects with url + type
+    const photoObjects = photoUrls.map((url) => ({ url, type }));
+    entry.photos.push(...photoObjects);
 
     await report.save();
 
@@ -135,6 +147,7 @@ exports.addPhotosToDate = async (req, res) => {
 
 // DELETE /api/monthly-maintenance/photo/:userId/:year/:month/:day
 // Body: { photoUrl }
+// DELETE /api/monthly-maintenance/photo/:userId/:year/:month/:day
 exports.deletePhotoFromDate = async (req, res) => {
   try {
     const { userId, year, month, day } = req.params;
@@ -170,7 +183,12 @@ exports.deletePhotoFromDate = async (req, res) => {
     }
 
     const beforeLen = (entry.photos || []).length;
-    entry.photos = (entry.photos || []).filter((p) => p !== photoUrl);
+
+    // 👇 handle both old string style and new { url, type } style
+    entry.photos = (entry.photos || []).filter((p) => {
+      if (typeof p === 'string') return p !== photoUrl;
+      return p.url !== photoUrl;
+    });
 
     if (entry.photos.length === beforeLen) {
       return res

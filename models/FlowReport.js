@@ -1,66 +1,36 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-// Schema for an individual day's reading
-const flowReadingSchema = new mongoose.Schema({
-  date: { 
-    type: String, 
-    required: true 
-  },
-  inletInitial: {
-    type: Number,
-    default: null
-  },
-  inletFinal: { 
-    type: Number, 
-    default: null 
-  },
-  inletComment: { 
-    type: String, 
-    default: null 
-  },
-  outletInitial: {
-    type: Number,
-    default: null
-  },
-  outletFinal: { 
-    type: Number, 
-    default: null 
-  },
-  outletComment: { 
-    type: String, 
-    default: null 
-  }
-}, { _id: false }); 
+const readingSchema = new mongoose.Schema(
+  {
+    date: { type: String, required: true },
 
-// Main schema for the monthly flow report
-const flowReportSchema = new mongoose.Schema({
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
-    required: true 
+    // Dynamic fields such as:
+    // inlet_initial, inlet_final, inlet_comment, inlet_total
+    // outlet_initial, outlet_final, outlet_comment, outlet_total
+    // garden_initial, garden_final, garden_comment, garden_total
   },
-  userName: { 
-    type: String, 
-    required: true, 
-    index: true 
-  },
-  siteName: { 
-    type: String 
-  },
-  year: { 
-    type: Number, 
-    required: true 
-  },
-  month: { 
-    type: Number, 
-    required: true 
-  },
-  readings: [flowReadingSchema] 
-}, { timestamps: true });
+  { strict: false, _id: false }
+);
 
-// Create a unique compound index
+const flowReportSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    userName: { type: String, required: true, index: true },
+    siteName: { type: String },
+
+    year: { type: Number, required: true },
+    month: { type: Number, required: true },
+    flowMeters: {
+  type: [String],
+  default: ["Inlet", "Outlet"]
+},
+
+    readings: [readingSchema], // Now accepts unlimited dynamic meters
+  },
+  { timestamps: true }
+);
+
+// Prevent duplicate month
 flowReportSchema.index({ userId: 1, year: 1, month: 1 }, { unique: true });
 
-const FlowReport = mongoose.model('FlowReport', flowReportSchema);
-
-module.exports = FlowReport;
+module.exports = mongoose.model("FlowReport", flowReportSchema);

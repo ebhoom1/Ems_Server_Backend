@@ -5,11 +5,21 @@ const entrySchema = new mongoose.Schema(
   {
     // Day-of-month: 1–31
     date: { type: Number, required: true },
-    photos: [{ type: String }], // S3 URLs
+    photos: [
+      {
+        url: { type: String, required: true }, // S3 URL
+        type: {
+          type: String,
+          enum: ['MPM', 'EPM'],
+          default: 'MPM',
+        },
+      },
+    ],
     comment: { type: String, default: '' },
   },
   { _id: false }
 );
+
 
 const monthlyMaintenanceReportSchema = new mongoose.Schema(
   {

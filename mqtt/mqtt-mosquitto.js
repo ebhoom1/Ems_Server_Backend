@@ -72,6 +72,98 @@ const AADHAV_CONFIG = {
   targetFlowStationType: "effluent_flow",
 };
 
+// --- KSPCB CEM API CONFIGURATION ---
+// Target: Seafood Park (India) Ltd (userName: SFP008)
+const KSPCB_CEM_CONFIG = {
+  url: "https://ebhoomcem.kspcb.kerala.gov.in/api/v1/dashboards/realtime-parameter",
+
+  // ⚠️ IMPORTANT:
+  // Fill these with the exact IDs from the KSPCB CEM portal for SFP008.
+  // I'm putting placeholders now – change them to the correct values.
+  productId: "PID-SFPIL",     // e.g. "PID-SFP008" or whatever they gave you
+  stationId: "station_4214",    // e.g. "seafood_lab", "SFP008_STP", etc.
+  industryId: "industry_4148",           // e.g. industry code in the portal
+  userId: "SFPIL",            // KSPCB user id / login id if required
+
+  // Match conditions from the MQTT payload
+  targetUserName: "SFP008",
+  targetProductId: "8", // this is from your payload: product_id: '8'
+  targetStackName: "Effluent_SeafoodLab_Monitoring", // from your payload
+};
+
+/**
+ * Send one stack's data to KSPCB CEM realtime API.
+ * Expects payload similar to your `sensorPayload`.
+ */
+async function sendToKspcbCem(sensorPayload) {
+  try {
+    const { stacks, date, time } = sensorPayload;
+
+    // Find the effluent stack for Seafood Lab
+    const targetStack = stacks.find(
+      (s) =>
+        s.stackName === KSPCB_CEM_CONFIG.targetStackName &&
+        (s.stationType === "effluent" || !s.stationType)
+    );
+
+    if (!targetStack) {
+      console.log(
+        "KSPCB CEM: No matching stack found for",
+        KSPCB_CEM_CONFIG.targetStackName
+      );
+      return;
+    }
+
+    // Build the "values" object expected by KSPCB CEM
+    // Adjust / add keys here depending on what they have enabled for this stack.
+    const values = {};
+
+    if (targetStack.TEMP !== undefined)
+      values.TEMP = toNum(targetStack.TEMP, 0);
+    if (targetStack.COD !== undefined)
+      values.COD = toNum(targetStack.COD, 0);
+    if (targetStack.BOD !== undefined)
+      values.BOD = toNum(targetStack.BOD, 0);
+    if (targetStack.TSS !== undefined)
+      values.TSS = toNum(targetStack.TSS, 0);
+    if (targetStack.TURB !== undefined)
+      values.TURB = toNum(targetStack.TURB, 0);
+    if (targetStack.pH !== undefined || targetStack.ph !== undefined)
+      values.ph = toNum(targetStack.pH ?? targetStack.ph, 7);
+
+    const cemPayload = {
+      productId: KSPCB_CEM_CONFIG.productId,
+      stationId: KSPCB_CEM_CONFIG.stationId,
+      industryId: KSPCB_CEM_CONFIG.industryId,
+      userId: KSPCB_CEM_CONFIG.userId,
+      stackData: [
+        {
+          name: KSPCB_CEM_CONFIG.targetStackName,
+          type: targetStack.stationType || "effluent",
+          values,
+          date, // 'DD/MM/YYYY'
+          time, // 'HH:mm'
+        },
+      ],
+    };
+
+    console.log("Sending to KSPCB CEM:", JSON.stringify(cemPayload, null, 2));
+
+    const resp = await axios.post(KSPCB_CEM_CONFIG.url, cemPayload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 10000,
+    });
+
+    console.log("✅ KSPCB CEM API success:", resp.data);
+  } catch (err) {
+    console.error(
+      "❌ Error sending to KSPCB CEM:",
+      err.response?.data || err.message
+    );
+  }
+}
+
+
 function debugLog(...args) {
   console.log("🛠️ DEBUG:", ...args);
 }
@@ -610,16 +702,16 @@ const setupMqttClient = (io) => {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
-                await updateRuntimeFromRealtime({
-                  product_id: item.product_id,
-                  userName: item.userName,
-                  pumpId: pump.pumpId,
-                  pumpName: pump.pumpName,
-                  status:
-                    pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
-                  timestamp:
-                    item.ntpTime || item.timestamp || new Date().toISOString(),
-                });
+                // await updateRuntimeFromRealtime({
+                //   product_id: item.product_id,
+                //   userName: item.userName,
+                //   pumpId: pump.pumpId,
+                //   pumpName: pump.pumpName,
+                //   status:
+                //     pump.status === 1 || pump.status === "ON" ? "ON" : "OFF",
+                //   timestamp:
+                //     item.ntpTime || item.timestamp || new Date().toISOString(),
+                // });
               } catch (err) {
                 console.error(
                   "Error saving pump state from acknowledgment:",
@@ -738,6 +830,14 @@ const setupMqttClient = (io) => {
                 ) {
                   await sendToAadhavApi(cleanSensor);
                 }
+
+                // --- NEW: Send Seafood Park (SFP008) data to KSPCB CEM realtime API ---
+                // if (
+                //   userDetails.userName === KSPCB_CEM_CONFIG.targetUserName &&
+                //   item.product_id === KSPCB_CEM_CONFIG.targetProductId
+                // ) {
+                //   await sendToKspcbCem(sensorPayload);
+                // }
 
               } catch (err) {
                 console.error(
