@@ -66,6 +66,7 @@ const monthlyReportRoutes = require('./routers/monthlyReportRoutes');
 const monthlyMaintenanceReportRoutes = require('./routers/monthlyMaintenanceReportRoutes');
 const treatedWaterClarityRoutes = require("./routers/treatedWaterClarityRoutes");
 const equipmentStatusRoutes = require("./routers/equipmentStatusRoutes");
+const chemicalReportRoutes = require("./routers/chemicalReportRoutes");
 
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
@@ -203,6 +204,7 @@ app.use('/api/monthly-report', monthlyReportRoutes);
 app.use('/api/monthly-maintenance', monthlyMaintenanceReportRoutes);
 app.use("/api/treated-water-clarity", treatedWaterClarityRoutes);
 app.use("/api/equipment-status", equipmentStatusRoutes);
+app.use('/api/chemical-report', chemicalReportRoutes); 
 
 
 app.use('/api/flow-report', flowReportRoutes); // <-- ADD THIS
