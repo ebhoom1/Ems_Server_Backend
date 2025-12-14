@@ -53,7 +53,7 @@ router.get('/:userId/:year/:month', getReport);
 // field name: "photos"
 router.post(
   '/upload/:userId/:year/:month/:day',
-  photoUpload.array('photos', 10),
+  photoUpload.array('photos', 30),
   addPhotosToDate
 );
 

@@ -54,7 +54,7 @@ router.get("/:userId/:year/:month", getTreatedWaterClarityReport);
 // POST /api/treated-water-clarity/upload/:userId/:year/:month/:day
 router.post(
   "/upload/:userId/:year/:month/:day",
-  clarityPhotoUpload.array("photos", 10),
+  clarityPhotoUpload.array("photos", 30),
   uploadTreatedWaterPhotos
 );
 
