@@ -287,9 +287,7 @@ function classifyTankBand(pct) {
   if (pct == null || !Number.isFinite(pct)) return "normal";
 
   if (pct <= TANK_CRITICAL_5) return "critical_low";
-  if (pct <= TANK_LOW_25) return "low_25";
   if (pct >= TANK_CRITICAL_95) return "critical_high_95";
-  if (pct >= TANK_HIGH_85) return "high_85";
 
   return "normal";
 }
