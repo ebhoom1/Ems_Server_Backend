@@ -21,6 +21,83 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+ const bulkRegisterOperators = async (req, res) => {
+  const { operators, adminType, createdBy } = req.body;
+
+  if (!Array.isArray(operators) || operators.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "operators array is required"
+    });
+  }
+
+  const success = [];
+  const failed = [];
+
+  for (const op of operators) {
+    try {
+      const { userName, fname, email, password, companyName } = op;
+
+      if (!userName || !fname || !email || !password || !companyName) {
+        failed.push({
+          email,
+          reason: "Missing required fields"
+        });
+        continue;
+      }
+
+      const existingUser = await userdb.findOne({ email });
+      if (existingUser) {
+        failed.push({
+          email,
+          reason: "Email already registered"
+        });
+        continue;
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      const userObject = {
+        userName,
+        fname,
+        email,
+        password: hashedPassword,
+        cpassword: password,
+        companyName,
+        userType: "operator",
+        adminType,
+        isOperator: true,
+        createdBy,
+        iotLastEnterDate: new Date().toISOString().split("T")[0],
+        subscriptionActive: true
+      };
+
+      const newUser = new userdb(userObject);
+      const savedUser = await newUser.save();
+
+      success.push({
+        userId: savedUser._id,
+        email: savedUser.email
+      });
+
+    } catch (err) {
+      failed.push({
+        email: op.email,
+        reason: err.message
+      });
+    }
+  }
+
+  return res.status(201).json({
+    success: true,
+    total: operators.length,
+    created: success.length,
+    failed: failed.length,
+    successUsers: success,
+    failedUsers: failed
+  });
+};
+
 const register = async (req, res) => {
   console.log("rquest body:", req.body);
   const {
@@ -1132,6 +1209,7 @@ const changeLoggedInPassword = async (req, res) => {
 
 
 module.exports = {
+  bulkRegisterOperators,
   register,
   updateStackName,
   login,

@@ -368,12 +368,6 @@ async function sendTankLevelAlert({ userDetails, tankName, percentage, band }) {
     case "critical_low":
       body = `${tankName} is below 5% (${pctText}). Critical low level.`;
       break;
-    case "low_25":
-      body = `${tankName} reached around 25% (${pctText}). Please schedule refilling.`;
-      break;
-    case "high_85":
-      body = `${tankName} is above 85% (${pctText}). Getting close to full.`;
-      break;
     case "critical_high_95":
       body = `${tankName} is at/above 95% (${pctText}). Overflow risk!`;
       break;

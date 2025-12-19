@@ -99,8 +99,8 @@ exports.addPhotosToDate = async (req, res) => {
 
     // 👇 NEW: read photo type from body (MPM / EPM)
     const { photoType } = req.body;
-    const type = photoType === 'EPM' ? 'EPM' : 'MPM'; // default MPM
-
+    const type = photoType === 'EPM' ? 'EPM' : photoType === 'GENERAL' ? 'GENERAL'
+      : 'MPM';
     let report = await MonthlyMaintenanceReport.findOne({
       userId,
       year: y,

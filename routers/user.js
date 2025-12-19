@@ -1,5 +1,6 @@
 const express = require("express");
 const {
+  bulkRegisterOperators,
   register,
   login,
   validuser,
@@ -38,6 +39,7 @@ const User = require("../models/user");
 const router = express.Router();
 
 router.post("/register", register);
+router.post("/register/bulk-operators", bulkRegisterOperators);
 router.patch("/updateStackName/:companyName", updateStackName);
 router.post("/login", login);
 router.get("/validuser", authenticate, validuser);

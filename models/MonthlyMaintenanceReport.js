@@ -10,7 +10,7 @@ const entrySchema = new mongoose.Schema(
         url: { type: String, required: true }, // S3 URL
         type: {
           type: String,
-          enum: ['MPM', 'EPM'],
+          enum: ['MPM', 'EPM','GENERAL'],
           default: 'MPM',
         },
       },
