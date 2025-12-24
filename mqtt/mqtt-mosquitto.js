@@ -510,7 +510,7 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
       userDetails,
       tankName,
       percentage: pct,
-      band: currentBand,
+      band: currentBand, 
     });
 
     // 2) Socket.IO → frontend banner
