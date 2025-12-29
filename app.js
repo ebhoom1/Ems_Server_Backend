@@ -72,6 +72,7 @@ const criticalSpareReportRoutes = require("./routers/criticalSpareReportRoutes")
 const ChemicalConsumptionReport=require("./routers/chemicalConsumptionRoutes");
 const powerConsumptionRoutes = require('./routers/powerConsumptionRoutes');
 const waterBalanceRoutes = require('./routers/waterBalanceRoutes');
+const plantOperatingRoutes=require("./routers/plantOperatingRoutes")
 
 const cron = require('node-cron');
 const { setupCronJobNotificationDelete } = require('./controllers/notification');
@@ -215,6 +216,7 @@ app.use("/api/critical-spares", criticalSpareReportRoutes);
 app.use("/api",ChemicalConsumptionReport);
 app.use("/api",powerConsumptionRoutes);
 app.use("/api",waterBalanceRoutes);
+app.use("/api/",plantOperatingRoutes);
 
 
 app.use('/api/flow-report', flowReportRoutes); // <-- ADD THIS
