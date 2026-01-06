@@ -5,7 +5,7 @@ const crypto = require("crypto"); // Add this for MD5 computation (if not hardco
 const userdb = require("../models/user");
 const PumpState = require("../models/PumpState");
 const pumpStateController = require("../controllers/pumpStateController");
-const pumpDataController = require("../controllers/pumpDataController");
+const valveStateController = require("../controllers/valveStateController");
 const TankAlertState = require("../models/TankAlertState");
 
 const {
@@ -510,7 +510,7 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
       userDetails,
       tankName,
       percentage: pct,
-      band: currentBand, 
+      band: currentBand,
     });
 
     // 2) Socket.IO → frontend banner
@@ -894,6 +894,29 @@ const setupMqttClient = (io) => {
           }
 
           console.log("Unrecognized ebhoomPub format:", item);
+
+          if (item.product_id && Array.isArray(item.valves)) {
+            console.log("🟢 BACKEND RECEIVED VALVE ACK:");
+
+            console.log("Processing valve acknowledgment:", item);
+
+            for (const valve of item.valves) {
+              await valveStateController.updateValveState(
+                item.product_id,
+                valve.valveId,
+                valve.status === 1
+              );
+              await valveStateController.setValvePending(
+                item.product_id,
+                valve.valveId,
+                false
+              );
+            }
+
+            io.to(item.product_id.toString()).emit("valveAck", item);
+            continue;
+          }
+
         }
         return;
       }
@@ -943,40 +966,105 @@ const setupMqttClient = (io) => {
       sendPumpControlMessage(product_id, pumps);
     });
 
+    socket.on("controlValve", ({ product_id, valves, msgType }) => {
+  console.log(
+    `🧯 Socket controlValve received for product ${product_id}:`,
+    valves
+  );
+
+  if (!product_id || !Array.isArray(valves) || !valves.length) {
+    console.error("Invalid valve control request");
+    return;
+  }
+
+  // Forward to MQTT exactly like pumps
+  sendPumpControlMessage(product_id, valves, "valve");
+});
+
+
     socket.on("disconnect", () => {
       console.log("Socket disconnected:", socket.id);
     });
   });
 };
 
-const sendPumpControlMessage = async (product_id, pumps) => {
+// const sendPumpControlMessage = async (product_id, pumps) => {
+//   const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+//   const message = {
+//     product_id,
+//     pumps: pumps.map((p) => ({
+//       pumpId: p.pumpId,
+//       pumpName: p.pumpName,
+//       status: p.status === "ON" ? 1 : 0,
+//     })),
+//     timestamp: new Date().toISOString(),
+//     messageId,
+//   };
+
+//   try {
+//     // Set the pending status to true in the database for each pump
+//     for (const pump of pumps) {
+//       await pumpStateController.setPumpPending(product_id, pump.pumpId, true);
+//     }
+//   } catch (err) {
+//     console.error("Error setting pump pending status:", err);
+//   }
+
+//   // ... (rest of the sendPumpControlMessage function)
+//   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
+//     if (err) console.error("Error publishing pump control:", err);
+//     else console.log("Pump command sent:", message);
+//   });
+// };
+
+const sendPumpControlMessage = async (product_id, items, msgType = "pump") => {
   const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
   const message = {
     product_id,
-    pumps: pumps.map((p) => ({
-      pumpId: p.pumpId,
-      pumpName: p.pumpName,
-      status: p.status === "ON" ? 1 : 0,
-    })),
     timestamp: new Date().toISOString(),
     messageId,
   };
 
-  try {
-    // Set the pending status to true in the database for each pump
-    for (const pump of pumps) {
-      await pumpStateController.setPumpPending(product_id, pump.pumpId, true);
-    }
-  } catch (err) {
-    console.error("Error setting pump pending status:", err);
+  // 🔹 Add pump command
+  if (msgType === "pump") {
+    message.pumps = items.map((p) => ({
+      pumpId: p.pumpId,
+      pumpName: p.pumpName,
+      status: p.status === "ON" ? 1 : 0,
+    }));
   }
 
-  // ... (rest of the sendPumpControlMessage function)
+  // 🔹 Add valve command (THIS IS WHAT YOU NEEDED)
+  if (msgType === "valve") {
+    message.valves = items.map((v) => ({
+      valveId: v.valveId,
+      valveName: v.valveName,
+      status: v.status === "ON" ? 1 : 0,
+    }));
+  }
+
+  // 🔹 Set pending in DB
+  try {
+    for (const item of items) {
+      if (msgType === "pump") {
+        await pumpStateController.setPumpPending(product_id, item.pumpId, true);
+      }
+      if (msgType === "valve") {
+        await valveStateController.setValvePending(product_id, item.valveId, true);
+      }
+    }
+  } catch (err) {
+    console.error("Error setting pending state:", err);
+  }
+
+  // 🔹 Publish message
   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-    if (err) console.error("Error publishing pump control:", err);
-    else console.log("Pump command sent:", message);
+    if (err) console.error("Error publishing control:", err);
+    else console.log("Control message sent:", message);
   });
 };
+
 
 const initializeMqttClients = async (io) => {
   try {

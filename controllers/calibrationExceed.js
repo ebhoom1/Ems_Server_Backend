@@ -607,33 +607,33 @@ const getExceedDataByUserName = async (req, res) => {
 
 // 
    
-const sendNotification = async (parameter, value, user,stackName) => {
-    try {
-        const message = `Your calibration for ${parameter} exceeds the threshold. The value is ${value} for company ${user.companyName} and userName ${user.userName} and station Name ${stackName}`;
-        const currentDate = moment().format('DD/MM/YYYY');
-        const currentTime = moment().format('HH:mm:ss');
+// const sendNotification = async (parameter, value, user,stackName) => {
+//     try {
+//         const message = `Your calibration for ${parameter} exceeds the threshold. The value is ${value} for company ${user.companyName} and userName ${user.userName} and station Name ${stackName}`;
+//         const currentDate = moment().format('DD/MM/YYYY');
+//         const currentTime = moment().format('HH:mm:ss');
 
-        // Send SMS notification
-        const today = moment().startOf('day');
-        const lastExceedEntry = await CalibrationExceed.findOne({ userName: user.userName }).sort({ timestamp: -1 });
+//         // Send SMS notification
+//         const today = moment().startOf('day');
+//         const lastExceedEntry = await CalibrationExceed.findOne({ userName: user.userName }).sort({ timestamp: -1 });
 
-        if (!lastExceedEntry || moment(lastExceedEntry.timestamp).startOf('day').isBefore(today)) {
-            if (user.mobileNumber) {
-                await sendSMS(user.mobileNumber, message);
-            }
-        }
+//         if (!lastExceedEntry || moment(lastExceedEntry.timestamp).startOf('day').isBefore(today)) {
+//             if (user.mobileNumber) {
+//                 await sendSMS(user.mobileNumber, message);
+//             }
+//         }
 
-        // Send email notification
-        if (user.email) {
-            await sendEmail(user.email, 'Calibration Exceed Notification', message);
-        }
+//         // Send email notification
+//         if (user.email) {
+//             await sendEmail(user.email, 'Calibration Exceed Notification', message);
+//         }
 
-        // Add notification to the database
-         await createNotification(message, user._id, user.userName, currentDate, currentTime);
-    } catch (error) {
-        console.error('Error sending notification:', error);
-    }
-};
+//         // Add notification to the database
+//          await createNotification(message, user._id, user.userName, currentDate, currentTime);
+//     } catch (error) {
+//         console.error('Error sending notification:', error);
+//     }
+// };
  
 const saveExceedValue = async (parameter, value, user,stackName) => {
     try {

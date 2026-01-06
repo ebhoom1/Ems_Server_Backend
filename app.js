@@ -12,7 +12,7 @@ const assignmentRoutes = require("./routers/assignmentRoutes");
 
 const userRoutes = require('./routers/user');
 const calibrationRoutes = require('./routers/calibration');
-const notificationRoutes = require('./routers/notification');
+// const notificationRoutes = require('./routers/notification');
 const calibrationExceedRoutes = require('./routers/calibrationExceed');
 const calibrationExceedValuesRoute = require('./routers/calibrationExceedValues');
 const calculateAverageRoute = require('./routers/iotDataRouter');
@@ -73,9 +73,10 @@ const ChemicalConsumptionReport=require("./routers/chemicalConsumptionRoutes");
 const powerConsumptionRoutes = require('./routers/powerConsumptionRoutes');
 const waterBalanceRoutes = require('./routers/waterBalanceRoutes');
 const plantOperatingRoutes=require("./routers/plantOperatingRoutes")
+const valveRoutes = require('./routers/valveRoutes');
 
 const cron = require('node-cron');
-const { setupCronJobNotificationDelete } = require('./controllers/notification');
+// const { setupCronJobNotificationDelete } = require('./controllers/notification');
 const { scheduleAveragesCalculation } = require('./controllers/iotDataAverages');
 const {schedulePredictionCalculation} = require('./controllers/predictionController')
 const {scheduleTotalConsumptionCalculation} = require('./controllers/consumptionController');
@@ -160,7 +161,7 @@ app.use((req, res, next) => {
 app.use("/api", reportSummaryRoutes);
 app.use('/api', userRoutes);
 app.use('/api', calibrationRoutes);
-app.use('/api', notificationRoutes);
+// app.use('/api', notificationRoutes);
 app.use('/api', calibrationExceedRoutes);
 app.use('/api', calibrationExceedValuesRoute);
 app.use('/api', calculateAverageRoute);
@@ -217,6 +218,7 @@ app.use("/api",ChemicalConsumptionReport);
 app.use("/api",powerConsumptionRoutes);
 app.use("/api",waterBalanceRoutes);
 app.use("/api/",plantOperatingRoutes);
+app.use("/api/",valveRoutes);
 
 
 app.use('/api/flow-report', flowReportRoutes); // <-- ADD THIS
@@ -327,7 +329,7 @@ setupCronJobConsumption()
 setupCronJobPrediction()
 
 // Schedule the task to delete old notifications every day at midnight
-setupCronJobNotificationDelete()
+// setupCronJobNotificationDelete()
 
 // Schedule the bill delete in every month 
 setupCronJobBillDelete()
