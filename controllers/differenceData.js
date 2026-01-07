@@ -1868,7 +1868,9 @@ const getDifferenceDataByMonth = async (req, res) => {
  */
 const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
   try {
+    // 1. Get parameters from Query String
     const { userName, month, year } = req.query;
+
     if (!userName || !month) {
       return res.status(400).json({
         success: false,
@@ -1876,7 +1878,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
       });
     }
     
-    // 1) Validate month/year
+    // 2. Validate Month
     const monthNum = parseInt(month, 10);
     if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
       return res.status(400).json({
@@ -1884,28 +1886,45 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
         message: 'Invalid month. Please specify a value from 1 to 12.'
       });
     }
-    const selectedYear = year
-      ? parseInt(year, 10)
-      : new Date().getFullYear();
-    if (isNaN(selectedYear)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid year.'
-      });
+
+    // 3. Determine Year (Smart Logic)
+    let selectedYear;
+    
+    if (year) {
+      // Case A: User specifically provided a year (e.g., ?year=2024)
+      selectedYear = parseInt(year, 10);
+      if (isNaN(selectedYear) || selectedYear < 2000 || selectedYear > 2100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid year provided.'
+        });
+      }
+    } else {
+      // Case B: No year provided -> Use Smart Logic
+      const now = moment().tz("Asia/Kolkata");
+      const currentYear = now.year();
+      const currentMonth = now.month() + 1; // 1-12
+
+      // If asking for a month (e.g., 12) greater than current (e.g., 1), assume last year
+      if (monthNum > currentMonth) {
+        selectedYear = currentYear - 1;
+      } else {
+        selectedYear = currentYear;
+      }
     }
 
-    // Build a regex to match DD/MM/YYYY for this month/year
+    // 4. Build Regex for filtering (Format: /MM/YYYY at the end of the string)
     const monthStr = monthNum.toString().padStart(2, '0');
     const dateRegex = new RegExp(`\\/${monthStr}\\/${selectedYear}$`);
 
-    // 2) Load DB entries (automated daily differences)
+    // 5. Load DB entries (automated daily differences)
     const dbEntries = await DifferenceData.find({
       userName,
       interval: 'daily',
       date: dateRegex
     }).lean();
 
-    // 3) Load S3 entries (manual overrides)
+    // 6. Load S3 entries (manual overrides)
     const bucketName = 'ems-ebhoom-bucket';
     const key = 'difference_data/hourlyDifferenceData.json';
     let s3Raw = [];
@@ -1913,37 +1932,46 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
       const obj = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
       s3Raw = JSON.parse(obj.Body.toString('utf-8'));
     } catch (err) {
-      if (err.code !== 'NoSuchKey') throw err;
+      if (err.code !== 'NoSuchKey') {
+        console.error("S3 Fetch Error:", err);
+      }
     }
+
+    // Filter S3 entries for this user/month/year
     const s3Entries = s3Raw.filter(e =>
       e.userName === userName &&
       e.interval === 'daily' &&
       dateRegex.test(e.date)
     );
 
-    // 4) Merge: use a map keyed by day+stack; manual overrides win
+    // 7. Merge: Map by unique key (Date + Stack). S3 overrides DB.
     const byDayStack = {};
     const addToMap = entry => {
-      const key = `${entry.date}__${entry.stackName}`;
-      byDayStack[key] = entry;
+      // Create a unique key for the day and stack (e.g., "01/12/2025__STP Inlet")
+      const uniqueKey = `${entry.date}__${entry.stackName}`;
+      byDayStack[uniqueKey] = entry;
     };
+
+    // Add DB first, then S3 (so S3 overwrites duplicates)
     dbEntries.forEach(addToMap);
     s3Entries.forEach(addToMap);
 
     const merged = Object.values(byDayStack);
 
-    // 5) Sum per stackName
+    // 8. Sum per stackName
     const totalsByStack = merged.reduce((acc, e) => {
       const stack = e.stackName;
-      // This assumes the 'cumulatingFlowDifference' field now holds the correct DAILY value.
       const diff = Number(e.cumulatingFlowDifference) || 0;
       acc[stack] = (acc[stack] || 0) + diff;
       return acc;
     }, {});
 
-    // 6) Format response
+    // 9. Format response
     const totals = Object.entries(totalsByStack).map(
-      ([stackName, total]) => ({ stackName, totalDifference: total.toFixed(2) }) // Using a consistent output key and formatting to 2 decimal places
+      ([stackName, total]) => ({ 
+        stackName, 
+        totalDifference: parseFloat(total.toFixed(2)) // Keep it as a number, but limit decimals
+      })
     );
 
     return res.status(200).json({
