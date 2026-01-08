@@ -679,7 +679,45 @@ const setupMqttClient = (io) => {
       if (topic === "ebhoomPub") {
         for (const item of data) {
           debugLog("ebhoomPub item:", item);
+ // 🔧 HANDLE VALVE ACK SENT AS pumps[]
+          if (
+            item.product_id &&
+            Array.isArray(item.pumps) &&
+            item.pumps.some(p => p.pumpId?.startsWith("valve_"))
+          ) {
+            console.log("🟢 Processing VALVE ACK via pumps[]:", item);
 
+            const valveAcks = item.pumps
+              .filter(p => p.pumpId.startsWith("valve_"))
+              .map(p => ({
+                valveId: p.pumpId,            // valve_5
+                valveName: p.pumpName || p.pumpId,
+                status: Number(p.status) === 1
+              }));
+
+            // ✅ Update DB
+            for (const v of valveAcks) {
+              await valveStateController.updateValveState(
+                item.product_id,
+                v.valveId,
+                v.status
+              );
+              await valveStateController.setValvePending(
+                item.product_id,
+                v.valveId,
+                false
+              );
+            }
+
+            // ✅ Emit proper valveAck to frontend
+            io.to(item.product_id.toString()).emit("valveAck", {
+              product_id: item.product_id,
+              valves: valveAcks,
+              timestamp: item.timestamp || new Date().toISOString()
+            });
+
+            continue;
+          }
           // Pump acknowledgments (device confirming receipt/action of a command)
           if (item.product_id && Array.isArray(item.pumps)) {
             console.log("Processing pump acknowledgment:", item);
@@ -895,28 +933,6 @@ const setupMqttClient = (io) => {
 
           console.log("Unrecognized ebhoomPub format:", item);
 
-          if (item.product_id && Array.isArray(item.valves)) {
-            console.log("🟢 BACKEND RECEIVED VALVE ACK:");
-
-            console.log("Processing valve acknowledgment:", item);
-
-            for (const valve of item.valves) {
-              await valveStateController.updateValveState(
-                item.product_id,
-                valve.valveId,
-                valve.status === 1
-              );
-              await valveStateController.setValvePending(
-                item.product_id,
-                valve.valveId,
-                false
-              );
-            }
-
-            io.to(item.product_id.toString()).emit("valveAck", item);
-            continue;
-          }
-
         }
         return;
       }
@@ -967,19 +983,19 @@ const setupMqttClient = (io) => {
     });
 
     socket.on("controlValve", ({ product_id, valves, msgType }) => {
-  console.log(
-    `🧯 Socket controlValve received for product ${product_id}:`,
-    valves
-  );
+      console.log(
+        `🧯 Socket controlValve received for product ${product_id}:`,
+        valves
+      );
 
-  if (!product_id || !Array.isArray(valves) || !valves.length) {
-    console.error("Invalid valve control request");
-    return;
-  }
+      if (!product_id || !Array.isArray(valves) || !valves.length) {
+        console.error("Invalid valve control request");
+        return;
+      }
 
-  // Forward to MQTT exactly like pumps
-  sendPumpControlMessage(product_id, valves, "valve");
-});
+      // Forward to MQTT exactly like pumps
+      sendPumpControlMessage(product_id, valves, "valve");
+    });
 
 
     socket.on("disconnect", () => {
@@ -1017,51 +1033,49 @@ const setupMqttClient = (io) => {
 //   });
 // };
 
-const sendPumpControlMessage = async (product_id, items, msgType = "pump") => {
-  const messageId = `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+const sendPumpControlMessage = async (product_id, items) => {
+  const messageId = `cmd-${Date.now()}-${Math.random()
+    .toString(36)
+    .substring(2, 9)}`;
 
   const message = {
     product_id,
     timestamp: new Date().toISOString(),
     messageId,
+
+    // 🔥 UNIFIED STRUCTURE
+    pumps: items.map((item) => ({
+      pumpId: item.pumpId || item.valveId,   // valve_5 OR pump_1
+      pumpName: item.pumpName || item.valveName,
+      status: item.status === "ON" || item.status === 1 ? 1 : 0,
+    })),
   };
-
-  // 🔹 Add pump command
-  if (msgType === "pump") {
-    message.pumps = items.map((p) => ({
-      pumpId: p.pumpId,
-      pumpName: p.pumpName,
-      status: p.status === "ON" ? 1 : 0,
-    }));
-  }
-
-  // 🔹 Add valve command (THIS IS WHAT YOU NEEDED)
-  if (msgType === "valve") {
-    message.valves = items.map((v) => ({
-      valveId: v.valveId,
-      valveName: v.valveName,
-      status: v.status === "ON" ? 1 : 0,
-    }));
-  }
 
   // 🔹 Set pending in DB
   try {
-    for (const item of items) {
-      if (msgType === "pump") {
-        await pumpStateController.setPumpPending(product_id, item.pumpId, true);
-      }
-      if (msgType === "valve") {
-        await valveStateController.setValvePending(product_id, item.valveId, true);
+    for (const p of message.pumps) {
+      if (p.pumpId.startsWith("valve_")) {
+        await valveStateController.setValvePending(
+          product_id,
+          p.pumpId,
+          true
+        );
+      } else {
+        await pumpStateController.setPumpPending(
+          product_id,
+          p.pumpId,
+          true
+        );
       }
     }
   } catch (err) {
     console.error("Error setting pending state:", err);
   }
 
-  // 🔹 Publish message
+  // 🔹 Publish to MQTT
   client.publish("ebhoomSub", JSON.stringify(message), { qos: 1 }, (err) => {
-    if (err) console.error("Error publishing control:", err);
-    else console.log("Control message sent:", message);
+    if (err) console.error("❌ Error publishing control:", err);
+    else console.log("✅ Control message sent:", message);
   });
 };
 

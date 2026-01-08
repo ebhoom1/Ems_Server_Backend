@@ -25,6 +25,69 @@ const getTreatedWaterClarityReport = async (req, res) => {
 
 // POST /api/treated-water-clarity/upload/:userId/:year/:month/:day
 // Multer-S3 will already have stored files on S3; here we just save URLs
+// const uploadTreatedWaterPhotos = async (req, res) => {
+//   try {
+//     const { userId, year, month, day } = req.params;
+//     const yearNum = Number(year);
+//     const monthNum = Number(month);
+//     const dayNum = Number(day);
+
+//     const files = req.files || [];
+//     if (!files.length) {
+//       return res.status(400).json({ success: false, message: "No files uploaded" });
+//     }
+
+//     const photoUrls = files.map((f) => f.location);
+
+//     let report = await TreatedWaterClarityReport.findOne({
+//       userId,
+//       year: yearNum,
+//       month: monthNum,
+//     });
+
+//     if (!report) {
+//       report = new TreatedWaterClarityReport({
+//         userId,
+//         year: yearNum,
+//         month: monthNum,
+//         userName: req.body.userName || undefined,
+//         siteName: req.body.siteName || undefined,
+//         entries: [],
+//       });
+//     } else {
+//       // Update optional meta if provided
+//       if (req.body.userName) report.userName = req.body.userName;
+//       if (req.body.siteName) report.siteName = req.body.siteName;
+//     }
+
+//     const idx = report.entries.findIndex((e) => e.date === dayNum);
+//     if (idx === -1) {
+//       report.entries.push({
+//         date: dayNum,
+//         photos: photoUrls,
+//       });
+//     } else {
+//       report.entries[idx].photos = [
+//         ...(report.entries[idx].photos || []),
+//         ...photoUrls,
+//       ];
+//     }
+
+//     await report.save();
+
+//     const updatedEntry = report.entries.find((e) => e.date === dayNum);
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Photos uploaded successfully",
+//       entry: updatedEntry,
+//     });
+//   } catch (err) {
+//     console.error("Error uploading treated water clarity photos:", err);
+//     res.status(500).json({ success: false, message: "Upload failed" });
+//   }
+// };
+
 const uploadTreatedWaterPhotos = async (req, res) => {
   try {
     const { userId, year, month, day } = req.params;
@@ -33,6 +96,8 @@ const uploadTreatedWaterPhotos = async (req, res) => {
     const dayNum = Number(day);
 
     const files = req.files || [];
+    const { comment } = req.body; // Get the comment from the body
+
     if (!files.length) {
       return res.status(400).json({ success: false, message: "No files uploaded" });
     }
@@ -55,7 +120,6 @@ const uploadTreatedWaterPhotos = async (req, res) => {
         entries: [],
       });
     } else {
-      // Update optional meta if provided
       if (req.body.userName) report.userName = req.body.userName;
       if (req.body.siteName) report.siteName = req.body.siteName;
     }
@@ -65,12 +129,14 @@ const uploadTreatedWaterPhotos = async (req, res) => {
       report.entries.push({
         date: dayNum,
         photos: photoUrls,
+        comment: comment || "", // Add comment to the new entry
       });
     } else {
       report.entries[idx].photos = [
         ...(report.entries[idx].photos || []),
         ...photoUrls,
       ];
+      report.entries[idx].comment = comment || ""; // Update comment
     }
 
     await report.save();
@@ -79,7 +145,7 @@ const uploadTreatedWaterPhotos = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Photos uploaded successfully",
+      message: "Photos and comment uploaded successfully",
       entry: updatedEntry,
     });
   } catch (err) {
@@ -87,6 +153,7 @@ const uploadTreatedWaterPhotos = async (req, res) => {
     res.status(500).json({ success: false, message: "Upload failed" });
   }
 };
+
 
 // DELETE /api/treated-water-clarity/photo/:userId/:year/:month/:day
 const deleteTreatedWaterPhoto = async (req, res) => {

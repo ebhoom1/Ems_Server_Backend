@@ -5,6 +5,7 @@ const treatedWaterEntrySchema = new mongoose.Schema(
   {
     date: { type: Number, required: true }, // 1–31
     photos: [{ type: String }], // S3 URLs
+    comment: { type: String, default: "" },
   },
   { _id: false }
 );
