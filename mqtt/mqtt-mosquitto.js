@@ -173,6 +173,19 @@ const toNum = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
+const normalizeOnOff = (v) => {
+  if (typeof v === "number") return v ? 1 : 0;
+  if (typeof v === "boolean") return v ? 1 : 0;
+
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["on", "1", "true", "open"].includes(s)) return 1;
+    if (["off", "0", "false", "close"].includes(s)) return 0;
+  }
+
+  return undefined; // means "status missing/unknown"
+};
+
 
 // Clamp a number between min and max
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
@@ -575,6 +588,8 @@ const setupMqttClient = (io) => {
       let data;
       try {
         data = JSON.parse(messageString);
+        console.log("✅ Parsed data (array):", JSON.stringify(data, null, 2));
+
         data = Array.isArray(data) ? data : [data];
       } catch (e) {
         console.log("Message not JSON, wrapping as plain string");
@@ -679,42 +694,86 @@ const setupMqttClient = (io) => {
       if (topic === "ebhoomPub") {
         for (const item of data) {
           debugLog("ebhoomPub item:", item);
- // 🔧 HANDLE VALVE ACK SENT AS pumps[]
+          // 🔧 HANDLE VALVE ACK SENT AS pumps[]
+          // if (
+          //   item.product_id &&
+          //   Array.isArray(item.pumps) &&
+          //   item.pumps.some(p => p.pumpId?.startsWith("valve_"))
+          // ) {
           if (
             item.product_id &&
             Array.isArray(item.pumps) &&
-            item.pumps.some(p => p.pumpId?.startsWith("valve_"))
+            item.pumps.some(
+              (p) =>
+                typeof p.pumpId === "string" &&
+                p.pumpId.startsWith("valve_") &&
+                Object.prototype.hasOwnProperty.call(p, "status") &&
+                p.status !== undefined &&
+                p.status !== null &&
+                String(p.status).trim() !== ""
+            )
           ) {
+
             console.log("🟢 Processing VALVE ACK via pumps[]:", item);
 
             const valveAcks = item.pumps
-              .filter(p => p.pumpId.startsWith("valve_"))
-              .map(p => ({
-                valveId: p.pumpId,            // valve_5
-                valveName: p.pumpName || p.pumpId,
-                status: Number(p.status) === 1
-              }));
+              .filter((p) => p.pumpId?.startsWith("valve_"))
+              .map((p) => {
+                const norm = normalizeOnOff(p.status);
+
+                return {
+                  valveId: p.pumpId,
+                  valveName: p.pumpName || p.pumpId,
+                  status: norm, // ✅ 1/0 or undefined
+                };
+              });
+
 
             // ✅ Update DB
+            // for (const v of valveAcks) {
+            //   await valveStateController.updateValveState(
+            //     item.product_id,
+            //     v.valveId,
+            //     v.status
+            //   );
+            //   await valveStateController.setValvePending(
+            //     item.product_id,
+            //     v.valveId,
+            //     false
+            //   );
+            // }
+
+            // ✅ Update DB ONLY if status is present
             for (const v of valveAcks) {
-              await valveStateController.updateValveState(
-                item.product_id,
-                v.valveId,
-                v.status
-              );
-              await valveStateController.setValvePending(
-                item.product_id,
-                v.valveId,
-                false
-              );
+              if (typeof v.status === "undefined") continue;
+
+              await valveStateController.updateValveState(item.product_id, v.valveId, v.status);
+              await valveStateController.setValvePending(item.product_id, v.valveId, false);
+            }
+            console.log("valveAcks***********:", valveAcks);
+
+            // ✅ Emit ONLY valves with defined status
+            const realValveAcks = valveAcks.filter((v) => typeof v.status !== "undefined");
+            console.log("realValveAcks***********:", realValveAcks);
+
+            if (realValveAcks.length) {
+              
+              io.to(item.product_id.toString()).emit("valveAck", {
+                product_id: item.product_id,
+                valves: realValveAcks,
+                timestamp: item.timestamp || new Date().toISOString(),
+              });
             }
 
+
             // ✅ Emit proper valveAck to frontend
-            io.to(item.product_id.toString()).emit("valveAck", {
-              product_id: item.product_id,
-              valves: valveAcks,
-              timestamp: item.timestamp || new Date().toISOString()
-            });
+            // io.to(item.product_id.toString()).emit("valveAck", {
+            //   product_id: item.product_id,
+            //   valves: valveAcks,
+            //   timestamp: item.timestamp || new Date().toISOString()
+            // });
+
+            console.log("✅ Valve ACK processed and forwarded:", valveAcks);
 
             continue;
           }
@@ -1032,6 +1091,19 @@ const setupMqttClient = (io) => {
 //     else console.log("Pump command sent:", message);
 //   });
 // };
+
+const normalizeCmdStatus = (v) => {
+  if (typeof v === "number") return v ? 1 : 0;
+  if (typeof v === "boolean") return v ? 1 : 0;
+
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["on", "1", "true", "open"].includes(s)) return 1;
+    if (["off", "0", "false", "close"].includes(s)) return 0;
+  }
+
+  return 0; // default safe
+};
 
 const sendPumpControlMessage = async (product_id, items) => {
   const messageId = `cmd-${Date.now()}-${Math.random()
