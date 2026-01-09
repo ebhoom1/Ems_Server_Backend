@@ -54,7 +54,9 @@ const saveOrUpdateEquipmentStatusReport = async (req, res) => {
           (e.capacity && e.capacity.toString().trim() !== "") ||
           (e.make && e.make.toString().trim() !== "") ||
           (e.status && e.status.toString().trim() !== "") ||
-          (e.comment && e.comment.toString().trim() !== "");
+          (e.comment && e.comment.toString().trim() !== "")||
+          (e.notes && e.notes.toString().trim() !== "");
+
         return hasEquipment || hasOther;
       })
       .map((e, idx) => ({
@@ -67,6 +69,8 @@ const saveOrUpdateEquipmentStatusReport = async (req, res) => {
         make: e.make || "",
         status: e.status || "",
         comment: e.comment || "",
+        notes: e.notes || "",
+
       }));
 
     const updateDoc = {

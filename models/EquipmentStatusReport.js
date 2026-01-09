@@ -9,6 +9,9 @@ const equipmentEntrySchema = new mongoose.Schema(
     make: { type: String, default: "" },
     status: { type: String, default: "" },
     comment: { type: String, default: "" },
+  
+notes: { type: String, default: "" },
+
   },
   { _id: false }
 );
