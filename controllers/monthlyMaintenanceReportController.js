@@ -1,5 +1,7 @@
 // controllers/monthlyReportController.js
 const MonthlyMaintenanceReport = require('../models/MonthlyMaintenanceReport');
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 // GET /api/monthly-report/:userId/:year/:month
 exports.getReport = async (req, res) => {
@@ -210,5 +212,99 @@ exports.deletePhotoFromDate = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: 'Failed to delete photo' });
+  }
+};
+exports.getSignedUrls = async (req, res) => {
+  try {
+    const { urls = [], expiresIn = 300 } = req.body || {};
+
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ message: "urls array is required" });
+    }
+
+    const BUCKET_NAME = process.env.AWS_S3_BUCKET || "ems-ebhoom-bucket";
+    const REGION = process.env.AWS_REGION;
+
+    if (!REGION) {
+      return res.status(500).json({ message: "AWS_REGION missing in .env" });
+    }
+
+    // ✅ Create S3 client (uses your .env IAM creds)
+    const s3 = new S3Client({
+      region: REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    });
+
+    // ✅ Convert incoming value into S3 object Key
+    // Supports:
+    // 1) Full URL: https://bucket.s3.region.amazonaws.com/monthlyMaintenance/...
+    // 2) Full URL: https://s3.region.amazonaws.com/bucket/monthlyMaintenance/...
+    // 3) Raw key: monthlyMaintenance/.../file.jpg
+    const toKey = (u) => {
+      if (!u || typeof u !== "string") return null;
+
+      // If frontend sends S3 key directly
+      if (!u.startsWith("http")) {
+        return decodeURIComponent(u.replace(/^\/+/, ""));
+      }
+
+      try {
+        const parsed = new URL(u);
+        const pathname = decodeURIComponent(parsed.pathname || "");
+
+        // Virtual-hosted style:
+        //   /monthlyMaintenance/... => key is pathname without leading "/"
+        // Path-style:
+        //   /bucket/monthlyMaintenance/... => remove "/bucket/" first
+        const parts = pathname.split("/").filter(Boolean);
+
+        // If first part is bucket name, remove it
+        if (parts.length && parts[0] === BUCKET_NAME) {
+          parts.shift();
+        }
+
+        return parts.join("/") || null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    // Collect unique keys
+    const signedMap = {};
+
+    await Promise.all(
+      urls.map(async (u) => {
+        try {
+          const key = toKey(u);
+          if (!key) {
+            signedMap[u] = null;
+            return;
+          }
+
+          const cmd = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+          });
+
+          const signedUrl = await getSignedUrl(s3, cmd, {
+            expiresIn: Number(expiresIn) || 300,
+          });
+
+          signedMap[u] = signedUrl;
+        } catch (err) {
+          // ✅ Don’t fail whole request if one url fails
+          console.error("Signed URL failed for:", u, err?.message);
+          signedMap[u] = null;
+        }
+      })
+    );
+
+    return res.json({ success: true, signedMap });
+  } catch (err) {
+    console.error("getSignedUrls error:", err);
+    return res.status(500).json({ message: "Failed to generate signed urls" });
   }
 };

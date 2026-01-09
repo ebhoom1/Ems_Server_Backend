@@ -11,6 +11,7 @@ const {
   getReport,
   addPhotosToDate,
   deletePhotoFromDate,
+  getSignedUrls,
 } = require('../controllers/monthlyMaintenanceReportController');
 
 // --- AWS S3 CONFIG ---
@@ -48,7 +49,9 @@ const photoUpload = multer({
   storage: multerS3({
     s3,
     bucket: BUCKET_NAME,
-    acl: 'public-read',
+    // acl: 'public-read',
+    acl: 'private',
+
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {
       const ts = Date.now();
@@ -97,5 +100,7 @@ router.delete(
   '/photo/:userId/:year/:month/:day',
   deletePhotoFromDate
 );
+
+router.post("/signed-urls", getSignedUrls);
 
 module.exports = router;

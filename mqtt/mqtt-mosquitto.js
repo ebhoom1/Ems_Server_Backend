@@ -695,11 +695,6 @@ const setupMqttClient = (io) => {
         for (const item of data) {
           debugLog("ebhoomPub item:", item);
           // 🔧 HANDLE VALVE ACK SENT AS pumps[]
-          // if (
-          //   item.product_id &&
-          //   Array.isArray(item.pumps) &&
-          //   item.pumps.some(p => p.pumpId?.startsWith("valve_"))
-          // ) {
           if (
             item.product_id &&
             Array.isArray(item.pumps) &&
@@ -729,19 +724,7 @@ const setupMqttClient = (io) => {
               });
 
 
-            // ✅ Update DB
-            // for (const v of valveAcks) {
-            //   await valveStateController.updateValveState(
-            //     item.product_id,
-            //     v.valveId,
-            //     v.status
-            //   );
-            //   await valveStateController.setValvePending(
-            //     item.product_id,
-            //     v.valveId,
-            //     false
-            //   );
-            // }
+           
 
             // ✅ Update DB ONLY if status is present
             for (const v of valveAcks) {

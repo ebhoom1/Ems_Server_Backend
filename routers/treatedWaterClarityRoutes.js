@@ -9,6 +9,7 @@ const {
   getTreatedWaterClarityReport,
   uploadTreatedWaterPhotos,
   deleteTreatedWaterPhoto,
+  getSignedUrls,
 } = require("../controllers/treatedWaterClarityController");
 
 const router = express.Router();
@@ -48,6 +49,8 @@ const clarityPhotoUpload = multer({
 
 // Get full month report for a site
 // GET /api/treated-water-clarity/:userId/:year/:month
+router.post("/signed-urls", getSignedUrls);
+
 router.get("/:userId/:year/:month", getTreatedWaterClarityReport);
 
 // Upload photos for a specific day

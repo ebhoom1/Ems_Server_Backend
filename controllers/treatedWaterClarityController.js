@@ -1,5 +1,27 @@
 // controllers/treatedWaterClarityController.js
 const TreatedWaterClarityReport = require("../models/TreatedWaterClarityReport");
+const { GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { S3Client } = require("@aws-sdk/client-s3");
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+// helper: extract object key from url
+const getKeyFromUrl = (url) => {
+  try {
+    const u = new URL(url);
+    // pathname starts with /
+    return decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+  } catch {
+    return null;
+  }
+};
 
 // GET /api/treated-water-clarity/:userId/:year/:month
 const getTreatedWaterClarityReport = async (req, res) => {
@@ -211,9 +233,42 @@ const deleteTreatedWaterPhoto = async (req, res) => {
   }
 };
 
+// POST /api/treated-water-clarity/signed-urls
+const getSignedUrls = async (req, res) => {
+  try {
+    const { urls = [], expiresIn = 600 } = req.body;
+    if (!Array.isArray(urls) || !urls.length) {
+      return res.status(400).json({ message: "urls array required" });
+    }
+
+    const signedMap = {};
+
+    for (const originalUrl of urls) {
+      const key = getKeyFromUrl(originalUrl);
+      if (!key) continue;
+
+      const command = new GetObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME || "ems-ebhoom-bucket",
+        Key: key,
+      });
+
+      const signed = await getSignedUrl(s3, command, {
+        expiresIn: Math.min(Number(expiresIn) || 600, 3600),
+      });
+
+      signedMap[originalUrl] = signed;
+    }
+
+    return res.json({ signedMap });
+  } catch (err) {
+    console.error("signed-urls error:", err);
+    return res.status(500).json({ message: "Failed to create signed urls" });
+  }
+};
 
 module.exports = {
   getTreatedWaterClarityReport,
   uploadTreatedWaterPhotos,
   deleteTreatedWaterPhoto,
+  getSignedUrls,
 };
