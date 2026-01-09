@@ -34,7 +34,7 @@ const getEquipmentStatusReport = async (req, res) => {
 // Body: { userId, userName, siteName, year, month, entries }
 const saveOrUpdateEquipmentStatusReport = async (req, res) => {
   try {
-    const { userId, userName, siteName, year, month, entries } = req.body;
+const { userId, userName, siteName, year, month, entries, note } = req.body;
 
     if (!userId || !year || !month) {
       return res
@@ -54,8 +54,7 @@ const saveOrUpdateEquipmentStatusReport = async (req, res) => {
           (e.capacity && e.capacity.toString().trim() !== "") ||
           (e.make && e.make.toString().trim() !== "") ||
           (e.status && e.status.toString().trim() !== "") ||
-          (e.comment && e.comment.toString().trim() !== "")||
-          (e.notes && e.notes.toString().trim() !== "");
+          (e.comment && e.comment.toString().trim() !== "")
 
         return hasEquipment || hasOther;
       })
@@ -69,7 +68,6 @@ const saveOrUpdateEquipmentStatusReport = async (req, res) => {
         make: e.make || "",
         status: e.status || "",
         comment: e.comment || "",
-        notes: e.notes || "",
 
       }));
 
@@ -79,6 +77,7 @@ const saveOrUpdateEquipmentStatusReport = async (req, res) => {
       siteName,
       year: y,
       month: m,
+      note: note || "",
       entries: cleanedEntries,
     };
 

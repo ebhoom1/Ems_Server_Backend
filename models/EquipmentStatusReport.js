@@ -10,7 +10,6 @@ const equipmentEntrySchema = new mongoose.Schema(
     status: { type: String, default: "" },
     comment: { type: String, default: "" },
   
-notes: { type: String, default: "" },
 
   },
   { _id: false }
@@ -27,6 +26,7 @@ const equipmentStatusReportSchema = new mongoose.Schema(
     siteName: { type: String },
     year: { type: Number, required: true },
     month: { type: Number, required: true }, // 1–12
+    note: { type: String, default: "" },
     entries: [equipmentEntrySchema],
   },
   { timestamps: true }
