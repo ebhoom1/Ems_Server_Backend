@@ -724,7 +724,7 @@ const setupMqttClient = (io) => {
               });
 
 
-           
+
 
             // ✅ Update DB ONLY if status is present
             for (const v of valveAcks) {
@@ -740,7 +740,7 @@ const setupMqttClient = (io) => {
             console.log("realValveAcks***********:", realValveAcks);
 
             if (realValveAcks.length) {
-              
+
               io.to(item.product_id.toString()).emit("valveAck", {
                 product_id: item.product_id,
                 valves: realValveAcks,
@@ -884,6 +884,17 @@ const setupMqttClient = (io) => {
                   userName: item.userName,
                   stackData: sensorPayload.stacks,
                 });
+
+                // ✅ NEW: Emit flowmeter + psf related stacks to Canvas via product room
+                // Frontend joins room using product_id (joinRoom)
+                io.to(String(item.product_id)).emit("flometervalveData", {
+                  product_id: String(item.product_id),
+                  userName: item.userName,
+                  stacks: sensorPayload.stacks, // contains STP + STP inlet/outlet/garden
+                  timestamp: sensorPayload.timestamp || new Date().toISOString(),
+                });
+                console.log("✅ emitting flometervalveData to room:", item.product_id);
+
                 // --- 3. TRIGGER PUSH NOTIFICATION ---
                 // Extract the fuel level from the clean sensor data
                 const latestSensorData = cleanSensor[0];
