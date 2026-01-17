@@ -548,7 +548,7 @@ const waterBalanceRoutes = require('./routers/waterBalanceRoutes');
 const plantOperatingRoutes = require("./routers/plantOperatingRoutes");
 const flowReportRoutes = require('./routers/flowReportRoutes');
 const valveStateRoutes = require('./routers/valveRoutes');
-
+const cameraRoutes = require('./routers/cameraRoutes')
 // ---------------- MQTT & SOCKET HELPERS ----------------
 const { initializeMqttClients } = require('./mqtt/mqtt-mosquitto');
 
@@ -745,7 +745,8 @@ app.use("/api", waterBalanceRoutes);
 app.use("/api", plantOperatingRoutes);
 app.use('/api/flow-report', flowReportRoutes);
 app.use('/api', valveStateRoutes);
-require('./controllers/cameraController');
+app.use("/api", cameraRoutes);
+//require('./controllers/cameraController');
 //added. 
 
 // ---------------- TEST ENDPOINTS ----------------
