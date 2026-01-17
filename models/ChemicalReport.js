@@ -3,32 +3,34 @@ const mongoose = require("mongoose");
 const ChemicalReadingSchema = new mongoose.Schema(
   {
     date: { type: String, required: true }, // DD/MM/YYYY
-    received: { type: Number, default: 0 },
-    openingStock: { type: Number, default: 0 },
-    consumption: { type: Number, default: 0 },
-    closedStock: { type: Number, default: 0 },
+    initialQty: { type: Number, default: 0 },
+    receivedQty: { type: Number, default: 0 },
+    usedQty: { type: Number, default: 0 },
+    finalQty: { type: Number, default: 0 },
   },
   { _id: false }
 );
 
-const ChemicalReportSchema = new mongoose.Schema(
+const ChemicalItemSchema = new mongoose.Schema(
+  {
+    chemicalName: { type: String, required: true },
+    readings: { type: [ChemicalReadingSchema], default: [] },
+  },
+  { _id: false }
+);
+
+const ChemicalMonthlyReportSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-
     userName: { type: String, required: true },
     siteName: { type: String },
 
-    chemicalName: { type: String, required: true },
-
     year: { type: Number, required: true },
-    month: { type: Number, required: true },
+    month: { type: Number, required: true }, // 1-12
 
-    readings: [ChemicalReadingSchema],
-
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now },
+    chemicals: { type: [ChemicalItemSchema], default: [] },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("ChemicalReport", ChemicalReportSchema);
+module.exports = mongoose.model("ChemicalMonthlyReport", ChemicalMonthlyReportSchema);

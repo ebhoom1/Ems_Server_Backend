@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const {
-  saveChemicalReport,
-  getChemicalReport
+  saveMonthlyChemicalReport,
+  getMonthlyChemicalReport,
 } = require("../controllers/chemicalReportController");
 
-router.post("/", saveChemicalReport);
-router.get("/:userName/:year/:month", getChemicalReport);
+router.post("/", saveMonthlyChemicalReport);
+router.get("/:userName/:year/:month", getMonthlyChemicalReport);
+
 module.exports = router;

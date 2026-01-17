@@ -47,10 +47,47 @@ let client;
 
 // Track every command we send so we can drop its echo
 const sentCommandIds = new Set();
-const lastProcessedTime = {}; // For throttling sensor/tank data
+// const lastProcessedTime = {}; // For throttling sensor/tank data
 
 // === NEW: Store last tank data per productId ===
 const lastTankDataByProductId = {};
+
+// ✅ DEDUPE sensor/tank payloads by content (NOT just time)
+const lastSeenByKey = new Map(); // key -> { hash, ts }
+const DEDUPE_MS_SENSOR = 1200; // drop same sensor payload within this window
+const DEDUPE_MS_TANK = 1200;   // drop same tank payload within this window
+
+function stableStringify(obj) {
+  if (Array.isArray(obj)) return `[${obj.map(stableStringify).join(",")}]`;
+  if (obj && typeof obj === "object") {
+    const keys = Object.keys(obj).sort();
+    return `{${keys
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(obj);
+}
+
+function hashObj(obj) {
+  return crypto.createHash("sha1").update(stableStringify(obj)).digest("hex");
+}
+
+/**
+ * Returns true if we should DROP the payload as a duplicate.
+ * Uses separate keys for sensor vs tank so they don't block each other.
+ */
+function shouldDropDuplicate({ productId, userName, kind, payload, windowMs }) {
+  const k = `${productId}_${userName}_${kind}`;
+  const h = hashObj(payload);
+  const now = Date.now();
+
+  const prev = lastSeenByKey.get(k);
+  if (prev && prev.hash === h && (now - prev.ts) < windowMs) return true;
+
+  lastSeenByKey.set(k, { hash: h, ts: now });
+  return false;
+}
+
 
 // --- AADHAV API CONFIGURATION ---
 // Hardcoded for India Land Tech Park Pvt Ltd - STP Outlet (managed by Goodfoot Sustainability)
@@ -808,17 +845,51 @@ const setupMqttClient = (io) => {
           // Sensor & Tank data
           if (item.product_id && item.userName && Array.isArray(item.stacks)) {
             console.log("Processing sensor/tank data:", item);
-            const now = moment().tz("Asia/Kolkata").toDate();
-            const key = `${item.product_id}_${item.userName}`;
-            if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
-              console.log("Throttling duplicate sensor/tank message:", item);
-              continue;
-            }
-            lastProcessedTime[key] = now;
+            // const now = moment().tz("Asia/Kolkata").toDate();
+            // const key = `${item.product_id}_${item.userName}`;
+            // if (lastProcessedTime[key] && now - lastProcessedTime[key] < 1000) {
+            //   console.log("Throttling duplicate sensor/tank message:", item);
+            //   continue;
+            // }
+            // lastProcessedTime[key] = now;
 
-            // split into sensor vs. tank
-            const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
-            const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
+            // // split into sensor vs. tank
+            // const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
+            // const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
+            const now = moment().tz("Asia/Kolkata").toDate();
+
+// split into sensor vs. tank
+const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
+const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
+
+// ✅ Decide separately whether to process sensor/tank (no cross-blocking)
+const processSensor =
+  sensorStacksRaw.length &&
+  !shouldDropDuplicate({
+    productId: item.product_id,
+    userName: item.userName,
+    kind: "sensor",
+    payload: sensorStacksRaw,
+    windowMs: DEDUPE_MS_SENSOR,
+  });
+
+const processTank =
+  tankStacksRaw.length &&
+  !shouldDropDuplicate({
+    productId: item.product_id,
+    userName: item.userName,
+    kind: "tank",
+    payload: tankStacksRaw,
+    windowMs: DEDUPE_MS_TANK,
+  });
+
+// If BOTH are duplicates, skip the item completely
+if (!processSensor && !processTank) {
+  // (optional) keep quiet to avoid log spam
+  // console.log("Dropping duplicate sensor+tank payload:", item.product_id, item.userName);
+  continue;
+}
+
 
             // --- Try strict user match first (with stackName elemMatch) ---
             let userDetails = await userdb.findOne({
@@ -854,8 +925,8 @@ const setupMqttClient = (io) => {
             }
 
             // —— Process Sensor Data (coerced numbers) ——
-            if (sensorStacksRaw.length) {
-              const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
+if (processSensor) {
+                const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
 
               const sensorPayload = {
                 product_id: item.product_id,
@@ -934,7 +1005,8 @@ const setupMqttClient = (io) => {
             // In mqtt.js, find the section for processing tank data
 
             // —— Process Tank Data (coerced numbers) ——
-            if (tankStacksRaw.length) {
+            if (processTank) {
+
               const tankData = tankStacksRaw.map(coerceTankStack);
               const tankPayload = {
                 product_id: item.product_id,
