@@ -745,6 +745,7 @@ app.use("/api", waterBalanceRoutes);
 app.use("/api", plantOperatingRoutes);
 app.use('/api/flow-report', flowReportRoutes);
 app.use('/api', valveStateRoutes);
+require('./controllers/cameraController');
 
 // ---------------- TEST ENDPOINTS ----------------
 app.get('/cors-test', (req, res) => {
