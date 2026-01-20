@@ -23,7 +23,7 @@ const s3 = new S3Client({
   },
 });
 
-const BUCKET_NAME = 'ems-ebhoom-bucket';
+const BUCKET_NAME = 'goodfoot-ems-bucket'; // Replace with your actual bucket name
 
 // --- Multer-S3 setup ---
 // const photoUpload = multer({
@@ -50,7 +50,7 @@ const photoUpload = multer({
     s3,
     bucket: BUCKET_NAME,
     // acl: 'public-read',
-    acl: 'private',
+    // acl: 'private',
 
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {

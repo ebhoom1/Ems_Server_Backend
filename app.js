@@ -547,6 +547,7 @@ const powerConsumptionRoutes = require('./routers/powerConsumptionRoutes');
 const waterBalanceRoutes = require('./routers/waterBalanceRoutes');
 const plantOperatingRoutes = require("./routers/plantOperatingRoutes");
 const flowReportRoutes = require('./routers/flowReportRoutes');
+const weeklyMaintenanceRoutes=require('./routers/weeklyMaintenanceRoutes');
 const valveStateRoutes = require('./routers/valveRoutes');
 
 // ---------------- MQTT & SOCKET HELPERS ----------------
@@ -744,7 +745,17 @@ app.use("/api", powerConsumptionRoutes);
 app.use("/api", waterBalanceRoutes);
 app.use("/api", plantOperatingRoutes);
 app.use('/api/flow-report', flowReportRoutes);
+app.use('/api/weekly-maintenance',weeklyMaintenanceRoutes);
 app.use('/api', valveStateRoutes);
+
+app.use((err, req, res, next) => {
+  console.error("🔥 SERVER ERROR:", err);
+  res.status(err.statusCode || 500).json({
+    message: err.message || "Internal Server Error",
+    code: err.code || null,
+  });
+});
+
 
 // ---------------- TEST ENDPOINTS ----------------
 app.get('/cors-test', (req, res) => {
