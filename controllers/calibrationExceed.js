@@ -607,6 +607,11 @@ const getExceedDataByUserName = async (req, res) => {
 
 // 
    
+/* const sendNotification = async (parameter, value, user,stackName) => {
+    try {
+        const message = `Your calibration for ${parameter} exceeds the threshold. The value is ${value} for company ${user.companyName} and userName ${user.userName} and station Name ${stackName}`;
+        const currentDate = moment().format('DD/MM/YYYY');
+        const currentTime = moment().format('HH:mm:ss');
 // const sendNotification = async (parameter, value, user,stackName) => {
 //     try {
 //         const message = `Your calibration for ${parameter} exceeds the threshold. The value is ${value} for company ${user.companyName} and userName ${user.userName} and station Name ${stackName}`;
@@ -628,13 +633,13 @@ const getExceedDataByUserName = async (req, res) => {
 //             await sendEmail(user.email, 'Calibration Exceed Notification', message);
 //         }
 
-//         // Add notification to the database
-//          await createNotification(message, user._id, user.userName, currentDate, currentTime);
-//     } catch (error) {
-//         console.error('Error sending notification:', error);
-//     }
-// };
- 
+        // Add notification to the database
+         await createNotification(message, user._id, user.userName, currentDate, currentTime);
+    } catch (error) {
+        console.error('Error sending notification:', error);
+    }
+};
+  */
 const saveExceedValue = async (parameter, value, user,stackName) => {
     try {
         console.log(`Saving exceed value for parameter: ${parameter}, value: ${value}, user:, user`);

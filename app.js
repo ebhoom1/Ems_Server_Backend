@@ -549,7 +549,7 @@ const plantOperatingRoutes = require("./routers/plantOperatingRoutes");
 const flowReportRoutes = require('./routers/flowReportRoutes');
 const weeklyMaintenanceRoutes=require('./routers/weeklyMaintenanceRoutes');
 const valveStateRoutes = require('./routers/valveRoutes');
-
+const cameraRoutes = require('./routers/cameraRoutes')
 // ---------------- MQTT & SOCKET HELPERS ----------------
 const { initializeMqttClients } = require('./mqtt/mqtt-mosquitto');
 
@@ -747,6 +747,9 @@ app.use("/api", plantOperatingRoutes);
 app.use('/api/flow-report', flowReportRoutes);
 app.use('/api/weekly-maintenance',weeklyMaintenanceRoutes);
 app.use('/api', valveStateRoutes);
+app.use("/api", cameraRoutes);
+//require('./controllers/cameraController');
+//added. 
 
 app.use((err, req, res, next) => {
   console.error("🔥 SERVER ERROR:", err);
