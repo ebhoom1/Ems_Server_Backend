@@ -359,7 +359,7 @@ try {
 
     console.log(`Fetching data from S3 with key: ${key}`);
     const params = {
-        Bucket: 'ems-ebhoom-bucket', // Your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Your bucket name
         Key: key
     };
 
@@ -772,7 +772,7 @@ try {
 
     // Fetch data from S3
     const s3Params = {
-        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
         Key: 'difference_data/hourlyDifferenceData.json', // Replace with your S3 file path
     };
 
@@ -850,7 +850,7 @@ try {
 
     // Fetch data from S3
     const s3Params = {
-        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
         Key: 'difference_data/hourlyDifferenceData.json', // Replace with your S3 file path
     };
 
@@ -1391,7 +1391,7 @@ try {
     if (filteredS3Data.length > 0) {
         // Upload the updated data back to S3 (this simulates the deletion)
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: 'iot_data/iotData.json', // Same key as before
             Body: JSON.stringify(updatedS3Data), // Updated S3 data without the deleted entries
             ContentType: 'application/json',

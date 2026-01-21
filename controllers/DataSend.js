@@ -34,7 +34,7 @@ const fetchDataFromS3 = async (userName) => {
     try {
         const key = 'average_data/averageData.json'; // S3 file key
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: key
         };
 

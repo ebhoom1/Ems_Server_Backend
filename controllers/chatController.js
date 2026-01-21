@@ -26,7 +26,7 @@ exports.sendMessage = async (req, res) => {
         const uploadedFiles = [];
         for (const file of files) {
             const params = {
-                Bucket: 'ems-ebhoom-bucket',
+                Bucket: 'goodfoot-ems-bucket',
                 Key: `chat/chatFile/${Date.now()}_${file.originalname}`,
                 Body: file.buffer,
                 ContentType: file.mimetype,
@@ -64,7 +64,7 @@ const fetchChatDataFromS3 = async () => {
     try {
         const key = 'chat_data/chatData.json'; // File path in the S3 bucket
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Bucket: 'goodfoot-ems-bucket', // Your S3 bucket name
             Key: key,
         };
 

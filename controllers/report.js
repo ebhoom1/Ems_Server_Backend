@@ -62,7 +62,7 @@ AWS.config.update({
   
       // Fetch data from S3
       const s3Params = {
-        Bucket: 'ems-ebhoom-bucket',
+        Bucket: 'goodfoot-ems-bucket',
         Key: 'parameterExceed_data/exceedData.json',
       };
   

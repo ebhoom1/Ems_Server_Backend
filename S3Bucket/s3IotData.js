@@ -46,7 +46,7 @@ const uploadDataToS3AndClearDB = async () => {
 
         // Multipart upload for large files
         const uploadId = (await s3.createMultipartUpload({
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: fileName,
             ContentType: 'application/json',
         }).promise()).UploadId;
@@ -58,7 +58,7 @@ const uploadDataToS3AndClearDB = async () => {
             const partNum = Math.ceil(i / partSize) + 1;
 
             const uploadPartResponse = await s3.uploadPart({
-                Bucket: 'ems-ebhoom-bucket',
+                Bucket: 'goodfoot-ems-bucket',
                 Key: fileName,
                 PartNumber: partNum,
                 UploadId: uploadId,
@@ -69,7 +69,7 @@ const uploadDataToS3AndClearDB = async () => {
         }
 
         await s3.completeMultipartUpload({
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: fileName,
             UploadId: uploadId,
             MultipartUpload: { Parts: parts },

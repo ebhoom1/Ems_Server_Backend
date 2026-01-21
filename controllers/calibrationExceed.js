@@ -103,7 +103,7 @@ const s3 = new AWS.S3();
 
 const fetchExceedDataFromS3 = async (key) => {
     const params = {
-        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
         Key: key, // Replace with the correct key
     };
 
@@ -118,7 +118,7 @@ const fetchExceedDataFromS3 = async (key) => {
 // Function to delete data from S3
 const deleteDataFromS3 = async (key) => {
     const params = {
-        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
         Key: key, // Replace with your object key
     };
 
@@ -132,7 +132,7 @@ const deleteDataFromS3 = async (key) => {
 };
 const clearDataFromS3 = async (key) => {
     const params = {
-        Bucket: 'ems-ebhoom-bucket', // Your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Your bucket name
         Key: key,                   // The object key, e.g., 'parameterExceed_data/exceedData.json'
         Body: JSON.stringify([], null, 2), // Reset the file to an empty JSON array (or use {} if that fits your data structure)
         ContentType: 'application/json',
@@ -149,7 +149,7 @@ const clearDataFromS3 = async (key) => {
 
 const updateDataInS3 = async (key, updatedData) => {
     const params = {
-        Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+        Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
         Key: key,
         Body: JSON.stringify(updatedData, null, 2),
         ContentType: 'application/json',
@@ -708,7 +708,7 @@ const fetchAndDeleteDataByUserName = async (userName) => {
 
         // Save the filtered data back to S3
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
             Key: key, // Replace with your object key
             Body: JSON.stringify(remainingData), // Save the remaining data
             ContentType: 'application/json',

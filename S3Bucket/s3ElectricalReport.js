@@ -8,7 +8,7 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
-const BUCKET_NAME = 'ems-ebhoom-bucket';
+const BUCKET_NAME = 'goodfoot-ems-bucket';
 const FILE_KEY = 'electrical_reports/reports.json';
 
 // Fetch all reports from S3

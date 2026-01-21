@@ -84,7 +84,7 @@ const saveHourlyData = async () => {
 
         // ### S3 Direct Save Logic (No MongoDB save) ###
         const fileName = 'hourly_data/hourlyData.json';
-        const bucketName = 'ems-ebhoom-bucket';
+        const bucketName = 'goodfoot-ems-bucket';
         
         let existingJsonData = [];
         try {
@@ -252,7 +252,7 @@ const getHourlyDataOfCumulatingFlowAndEnergy = async (req, res) => {
 const fetchDataFromS3 = async (key) => {
     try {
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: key
         };
 

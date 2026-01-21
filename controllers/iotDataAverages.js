@@ -5,7 +5,7 @@ const { Parser } = require('json2csv');
 const PDFDocument = require('pdfkit');
 const AWS = require('aws-sdk');
 const moment = require('moment');
-const S3_BUCKET = 'ems-ebhoom-bucket';
+const S3_BUCKET = 'goodfoot-ems-bucket';
 
 const calculateAverages = async (userName, product_id, stackName, interval) => {
     const nowIST = moment().tz('Asia/Kolkata'); // Get current IST time
@@ -641,7 +641,7 @@ const fetchAverageDataFromS3 = async () => {
 
         console.log(`Fetching data from S3 with key: ${key}`);
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Replace with your bucket name
+            Bucket: 'goodfoot-ems-bucket', // Replace with your bucket name
             Key: key
         };
 

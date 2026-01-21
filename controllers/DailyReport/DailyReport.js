@@ -33,7 +33,7 @@ const s3 = new AWS.S3();
 const fetchLastAverageDataFromS3 = async () => {
     try {
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: 'average_data/averageData.json',
         };
         const data = await s3.getObject(params).promise();
@@ -127,7 +127,7 @@ const generateWaterTable = (stackName, parameters, exceedance, maxMinData) => {
 const fetchLastDifferenceDataFromS3 = async () => {
     try {
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: 'difference_data/hourlyDifferenceData.json',
         };
         const data = await s3.getObject(params).promise();

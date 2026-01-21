@@ -12,7 +12,7 @@ const saveInitialData = async () => {
 try {
 const today = moment().tz('Asia/Kolkata').format('DD/MM/YYYY');
 const yesterday = moment().tz('Asia/Kolkata').subtract(1, 'day').format('DD/MM/YYYY');
-const bucketName = 'ems-ebhoom-bucket';
+const bucketName = 'goodfoot-ems-bucket';
     
 const hourlyFileKey = 'hourly_data/hourlyData.json';
     const differenceFileKey = 'difference_data/hourlyDifferenceData.json';
@@ -179,7 +179,7 @@ const findBestFinalValue = (hourlyEntries, initialValue, valueType) => {
 // UPDATED: Fixed difference calculation with robust final value selection
 const calculateDailyDifferenceFromS3 = async () => {
 try {
-const bucketName = 'ems-ebhoom-bucket';
+const bucketName = 'goodfoot-ems-bucket';
 const hourlyFileKey = 'hourly_data/hourlyData.json';
     const differenceFileKey = 'difference_data/hourlyDifferenceData.json';
     let hourlyData = [];
@@ -366,7 +366,7 @@ const addManualDifferenceData = async (req, res) => {
       timestamp: item.timestamp || new Date().toISOString()
     }));
 
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const fileKey = 'difference_data/hourlyDifferenceData.json';
     
     // Get existing data
@@ -420,7 +420,7 @@ const getDifferenceDataByUserNameAndInterval = async (userName, interval, page =
             .lean();
 
         // Fetch data from S3
-        const bucketName = 'ems-ebhoom-bucket';
+        const bucketName = 'goodfoot-ems-bucket';
         const s3Key = 'difference_data/hourlyDifferenceData.json';
 
         let s3Data = [];
@@ -496,7 +496,7 @@ const getDifferenceDataByTimeRange = async (userName, interval, fromDate, toDate
             .lean();
 
         // Fetch data from S3
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const bucketName = 'goodfoot-ems-bucket'; // Replace with your bucket name
         const s3Key = 'difference_data/hourlyDifferenceData.json'; // Path to S3 file
 
         let s3Data = [];
@@ -576,7 +576,7 @@ const getLastDataByDateRange = async (userName, interval, fromDate, toDate) => {
         ]);
 
         // Fetch data from S3 bucket
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const bucketName = 'goodfoot-ems-bucket'; // Replace with your bucket name
         const fileKey = 'difference_data/hourlyDifferenceData.json'; // Path to the S3 file
         let s3Data = [];
 
@@ -654,7 +654,7 @@ const getTodayDifferenceData = async (req, res) => {
             .lean();
 
         // Fetch data from S3 bucket
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const bucketName = 'goodfoot-ems-bucket'; // Replace with your bucket name
         const fileKey = 'difference_data/hourlyDifferenceData.json'; // Replace with your S3 key
         const params = {
             Bucket: bucketName,
@@ -775,7 +775,7 @@ const getYesterdayDifferenceData = async (userName) => {
         }
 
         // ✅ **Step 2: Fetch Data from S3**
-        const bucketName = "ems-ebhoom-bucket";
+        const bucketName = "goodfoot-ems-bucket";
         const fileKey = "difference_data/hourlyDifferenceData.json";
         let s3Data = [];
 
@@ -926,7 +926,7 @@ const getEnergyAndFlowDataByDateRange = async (userName, fromDate, toDate) => {
             .lean();
 
         // Fetch data from S3 bucket
-        const bucketName = 'ems-ebhoom-bucket'; // Replace with your bucket name
+        const bucketName = 'goodfoot-ems-bucket'; // Replace with your bucket name
         const fileKey = 'difference_data/hourlyDifferenceData.json'; // Replace with your S3 key
         const params = {
             Bucket: bucketName,
@@ -1021,7 +1021,7 @@ const getLastCumulativeFlowOfMonth = async (req, res) => {
   
       // If not in MongoDB, try S3
       console.log(`Fetching data from S3 for ${userName}, ${stackName} for ${selectedMonth}/${selectedYear}...`);
-      const bucketName = "ems-ebhoom-bucket"; 
+      const bucketName = "goodfoot-ems-bucket"; 
       const fileKey = "difference_data/hourlyDifferenceData.json";
       const params = { Bucket: bucketName, Key: fileKey };
   
@@ -1130,7 +1130,7 @@ const getLastCumulativeFlowOfMonth = async (req, res) => {
   
       // If not in MongoDB, try S3
       console.log(`Fetching data from S3 for ${userName} for ${selectedMonth}/${selectedYear}...`);
-      const bucketName = "ems-ebhoom-bucket";
+      const bucketName = "goodfoot-ems-bucket";
       const fileKey = "difference_data/hourlyDifferenceData.json";
       const params = { Bucket: bucketName, Key: fileKey };
   
@@ -1233,7 +1233,7 @@ const getLastCumulativeFlowByMonth = async (req, res) => {
   
       // If no data is found in MongoDB, fetch from S3
       console.log(`Fetching data from S3 for ${userName} for ${monthNumber}/${selectedYear}...`);
-      const bucketName = "ems-ebhoom-bucket"; // your S3 bucket name
+      const bucketName = "goodfoot-ems-bucket"; // your S3 bucket name
       const fileKey = "difference_data/hourlyDifferenceData.json"; // your S3 file path
   
       const params = {
@@ -1378,7 +1378,7 @@ const getFirstDayMonthlyDifferenceData = async (req, res) => {
     // If no records found in MongoDB, fetch from S3 as fallback
     if (!records.length) {
       console.log(`No DB records found. Checking S3 for first day monthly difference data for ${userName} in ${selectedYear}...`);
-      const bucketName = 'ems-ebhoom-bucket';
+      const bucketName = 'goodfoot-ems-bucket';
       const fileKey = 'difference_data/hourlyDifferenceData.json';
       let s3Data = [];
       try {
@@ -1439,7 +1439,7 @@ const getTotalCumulatingFlowDifferenceByUser = async (req, res) => {
     const dbData = await DifferenceData.find({ userName }).lean();
 
     // 2. Fetch data from S3.
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const fileKey = 'difference_data/hourlyDifferenceData.json';
     let s3Data = [];
     try {
@@ -1496,7 +1496,7 @@ const getTotalCumulatingFlowDifferenceByUserAndStack = async (req, res) => {
     const dbData = await DifferenceData.find({ userName, stackName }).lean();
 
     // 2. Fetch records from S3.
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const fileKey = 'difference_data/hourlyDifferenceData.json';
     let s3Data = [];
     try {
@@ -1566,7 +1566,7 @@ const getDifferenceDataLastNDays = async (req, res) => {
     let s3Data = [];
     try {
       const s3Obj = await s3.getObject({
-        Bucket: 'ems-ebhoom-bucket',
+        Bucket: 'goodfoot-ems-bucket',
         Key:    'difference_data/hourlyDifferenceData.json'
       }).promise();
 
@@ -1623,7 +1623,7 @@ const getFirstCumulativeFlowOfMonth = async (req, res) => {
     }
 
     // Load from S3
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const key = 'difference_data/hourlyDifferenceData.json';
     const s3Object = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
     const allData = JSON.parse(s3Object.Body.toString('utf-8'));
@@ -1682,7 +1682,7 @@ const getLastCumulativeFlowsForUserMonth = async (req, res) => {
     }
 
     // Pull the S3 file
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const key = 'difference_data/hourlyDifferenceData.json';
     const s3Object = await s3.getObject({ Bucket: bucketName, Key: key }).promise();
     const allData = JSON.parse(s3Object.Body.toString('utf-8'));
@@ -1759,7 +1759,7 @@ const getDifferenceReport = async (req, res) => {
     const endUTC   = endIST.utc().toDate();
 
     // 4) load your hourly file from S3
-    const bucket = 'ems-ebhoom-bucket';
+    const bucket = 'goodfoot-ems-bucket';
     const key    = 'difference_data/hourlyDifferenceData.json';
     let all;
     try {
@@ -1925,7 +1925,7 @@ const getTotalCumulatingFlowDifferenceByUserAndMonth = async (req, res) => {
     }).lean();
 
     // 6. Load S3 entries (manual overrides)
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const key = 'difference_data/hourlyDifferenceData.json';
     let s3Raw = [];
     try {
@@ -2010,7 +2010,7 @@ const deleteManualDifferenceData = async (req, res) => {
       }
     }
 
-    const bucketName = 'ems-ebhoom-bucket';
+    const bucketName = 'goodfoot-ems-bucket';
     const fileKey    = 'difference_data/hourlyDifferenceData.json';
 
     // 1. Download existing data

@@ -40,7 +40,7 @@ const uploadHourlyDataToS3 = async () => {
 
         // Prepare S3 parameters
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Replace with your S3 bucket name
+            Bucket: 'goodfoot-ems-bucket', // Replace with your S3 bucket name
             Key: s3Key,
         };
 
@@ -61,7 +61,7 @@ const uploadHourlyDataToS3 = async () => {
 
         // Upload data to S3
         await s3.upload({
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: s3Key,
             Body: JSON.stringify(updatedData, null, 2), // Pretty-printed JSON
             ContentType: 'application/json',

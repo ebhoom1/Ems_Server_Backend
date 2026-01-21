@@ -49,7 +49,7 @@ const fetchUserStackNames = async (userName) => {
 // Fetch last average data from S3
 const fetchLastAverageDataFromS3 = async () => {
     try {
-        const params = { Bucket: "ems-ebhoom-bucket", Key: "average_data/averageData.json" };
+        const params = { Bucket: "goodfoot-ems-bucket", Key: "average_data/averageData.json" };
         const data = await s3.getObject(params).promise();
         const allData = JSON.parse(data.Body.toString("utf-8"));
 
@@ -150,7 +150,7 @@ const fetchConsumptionData = async (userName) => {
 const fetchLastDifferenceDataFromS3 = async () => {
     try {
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: 'difference_data/hourlyDifferenceData.json',
         };
         const data = await s3.getObject(params).promise();

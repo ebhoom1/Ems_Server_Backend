@@ -15,7 +15,7 @@ const s3 = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
-const BUCKET_NAME = 'ems-ebhoom-bucket';
+const BUCKET_NAME = 'goodfoot-ems-bucket';
 
 // --- Multer-S3 setup (same style as service reports) ---
 const photoUpload = multer({

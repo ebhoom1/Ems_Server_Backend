@@ -17,7 +17,7 @@ const s3 = new AWS.S3();
 const fetchDataFromS3 = async (key) => {
     try {
         const params = {
-            Bucket: 'ems-ebhoom-bucket',
+            Bucket: 'goodfoot-ems-bucket',
             Key: key,
         };
         const s3Object = await s3.getObject(params).promise();

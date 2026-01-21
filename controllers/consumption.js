@@ -110,7 +110,7 @@ const fetchConsumptionDataFromS3 = async () => {
         const key = 'consumption_data/consumptionData.json'; // Specify your S3 file key
         console.log(`Fetching data from S3 with key: ${key}`);
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Your bucket name
+            Bucket: 'goodfoot-ems-bucket', // Your bucket name
             Key: key,
         };
 

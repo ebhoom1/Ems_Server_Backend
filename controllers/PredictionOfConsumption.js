@@ -19,7 +19,7 @@ const fetchDataFromS3 = async (key) => {
     try {
         console.log(`Fetching data from S3 with key: ${key}`);
         const params = {
-            Bucket: 'ems-ebhoom-bucket', // Your S3 bucket name
+            Bucket: 'goodfoot-ems-bucket', // Your S3 bucket name
             Key: key // File key in the bucket
         };
 

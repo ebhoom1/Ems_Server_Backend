@@ -10,7 +10,7 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
-const BUCKET_NAME = 'ems-ebhoom-bucket'; // Replace with your bucket name
+const BUCKET_NAME = 'goodfoot-ems-bucket'; // Replace with your bucket name
 
 // Multer Configuration
 const storage = multer.memoryStorage();

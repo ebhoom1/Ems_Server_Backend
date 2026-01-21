@@ -36,7 +36,7 @@ const uploadDataToS3AndClearDB = async () => {
         try {
             // Attempt to get the existing file from S3
             const s3Params = {
-                Bucket: 'ems-ebhoom-bucket', // Your bucket name
+                Bucket: 'goodfoot-ems-bucket', // Your bucket name
                 Key: fileName
             };
 
@@ -48,7 +48,7 @@ const uploadDataToS3AndClearDB = async () => {
 
             // Upload the updated JSON to S3
             const uploadParams = {
-                Bucket: 'ems-ebhoom-bucket',
+                Bucket: 'goodfoot-ems-bucket',
                 Key: fileName,
                 Body: JSON.stringify(updatedJsonData, null, 2), // Pretty print JSON
                 ContentType: 'application/json'
@@ -61,7 +61,7 @@ const uploadDataToS3AndClearDB = async () => {
             if (getError.code === 'NoSuchKey') {
                 // Upload the new data as a new file
                 const uploadParams = {
-                    Bucket: 'ems-ebhoom-bucket',
+                    Bucket: 'goodfoot-ems-bucket',
                     Key: fileName,
                     Body: JSON.stringify(newJsonData, null, 2), // Pretty print JSON
                     ContentType: 'application/json'
