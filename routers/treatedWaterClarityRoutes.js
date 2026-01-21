@@ -23,7 +23,7 @@ const s3 = new S3Client({
   },
 });
 
-const BUCKET_NAME = "ems-ebhoom-bucket";
+const BUCKET_NAME = "goodfoot-ems-bucket";
 
 // Multer-S3 storage for treated water clarity photos
 const clarityPhotoUpload = multer({
