@@ -806,11 +806,12 @@ const setupMqttClient = (io) => {
 
             for (const pump of item.pumps) {
               try {
-                await pumpStateController.updatePumpState(
+                const pumpstate = await pumpStateController.updatePumpState(
                   item.product_id,
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
+                console.log("Pump state updated from acknowledgment**:", pumpstate);
                 // await updateRuntimeFromRealtime({
                 //   product_id: item.product_id,
                 //   userName: item.userName,
@@ -858,37 +859,37 @@ const setupMqttClient = (io) => {
             // const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
             const now = moment().tz("Asia/Kolkata").toDate();
 
-// split into sensor vs. tank
-const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
-const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
+            // split into sensor vs. tank
+            const sensorStacksRaw = item.stacks.filter((s) => !s.TankName);
+            const tankStacksRaw = item.stacks.filter((s) => !!s.TankName);
 
-// ✅ Decide separately whether to process sensor/tank (no cross-blocking)
-const processSensor =
-  sensorStacksRaw.length &&
-  !shouldDropDuplicate({
-    productId: item.product_id,
-    userName: item.userName,
-    kind: "sensor",
-    payload: sensorStacksRaw,
-    windowMs: DEDUPE_MS_SENSOR,
-  });
+            // ✅ Decide separately whether to process sensor/tank (no cross-blocking)
+            const processSensor =
+              sensorStacksRaw.length &&
+              !shouldDropDuplicate({
+                productId: item.product_id,
+                userName: item.userName,
+                kind: "sensor",
+                payload: sensorStacksRaw,
+                windowMs: DEDUPE_MS_SENSOR,
+              });
 
-const processTank =
-  tankStacksRaw.length &&
-  !shouldDropDuplicate({
-    productId: item.product_id,
-    userName: item.userName,
-    kind: "tank",
-    payload: tankStacksRaw,
-    windowMs: DEDUPE_MS_TANK,
-  });
+            const processTank =
+              tankStacksRaw.length &&
+              !shouldDropDuplicate({
+                productId: item.product_id,
+                userName: item.userName,
+                kind: "tank",
+                payload: tankStacksRaw,
+                windowMs: DEDUPE_MS_TANK,
+              });
 
-// If BOTH are duplicates, skip the item completely
-if (!processSensor && !processTank) {
-  // (optional) keep quiet to avoid log spam
-  // console.log("Dropping duplicate sensor+tank payload:", item.product_id, item.userName);
-  continue;
-}
+            // If BOTH are duplicates, skip the item completely
+            if (!processSensor && !processTank) {
+              // (optional) keep quiet to avoid log spam
+              // console.log("Dropping duplicate sensor+tank payload:", item.product_id, item.userName);
+              continue;
+            }
 
 
             // --- Try strict user match first (with stackName elemMatch) ---
@@ -925,8 +926,8 @@ if (!processSensor && !processTank) {
             }
 
             // —— Process Sensor Data (coerced numbers) ——
-if (processSensor) {
-                const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
+            if (processSensor) {
+              const cleanSensor = sensorStacksRaw.map(coerceSensorStack);
 
               const sensorPayload = {
                 product_id: item.product_id,

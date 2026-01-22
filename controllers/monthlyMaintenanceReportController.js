@@ -222,7 +222,7 @@ exports.getSignedUrls = async (req, res) => {
       return res.status(400).json({ message: "urls array is required" });
     }
 
-    const BUCKET_NAME = process.env.AWS_S3_BUCKET || "ems-ebhoom-bucket";
+    const BUCKET_NAME = process.env.S3_BUCKET_NAME_ || "goodfoot-ems-bucket";
     const REGION = process.env.AWS_REGION;
 
     if (!REGION) {

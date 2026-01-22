@@ -15,6 +15,8 @@ exports.updatePumpState = async (productId, pumpId, status) => {
   }
 };
 
+
+
 exports.getPumpState = async (productId, pumpId) => {
   try {
     const state = await PumpState.findOne({ productId, pumpId });
@@ -55,3 +57,5 @@ exports.updatePumpState = async (productId, pumpId, status) => {
         throw error;
     }
 };
+
+

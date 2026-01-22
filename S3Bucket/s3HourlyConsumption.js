@@ -9,9 +9,9 @@ const s3 = new AWS.S3({
   signatureVersion: "v4",
 });
 
-const SOURCE_BUCKET = process.env.S3_BUCKET_NAME_ || "ems-ebhoom-bucket";
+const SOURCE_BUCKET = process.env.S3_BUCKET_NAME_ || "goodfoot-ems-bucket";
 const SOURCE_KEY = "realtimedata/realtimeDataNew.json";
-const DEST_BUCKET = process.env.S3_BUCKET_NAME_ || "ems-ebhoom-bucket";
+const DEST_BUCKET = process.env.S3_BUCKET_NAME_ || "goodfoot-ems-bucket";
 const DEST_KEY = "hourly-consumption/hour.json";
 
 const calculateAndSaveHourlyConsumption = async () => {

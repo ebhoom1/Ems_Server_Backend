@@ -155,7 +155,7 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-const BUCKET = process.env.S3_BUCKET_NAME_ || 'ems-ebhoom-bucket';
+const BUCKET = process.env.S3_BUCKET_NAME_ || 'goodfoot-ems-bucket';
 const FILE_KEY = 'realtimedata/realtimeDataNew.json';
 
 const saveRealtimeDataToS3 = async (payload) => {

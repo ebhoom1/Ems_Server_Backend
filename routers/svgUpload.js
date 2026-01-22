@@ -17,7 +17,7 @@ const s3 = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.S3_BUCKET_NAME_ || 'ems-ebhoom-bucket';
+const BUCKET_NAME = process.env.S3_BUCKET_NAME_ || 'goodfoot-ems-bucket';
 
 const allowedMimeTypes = [
   'image/png',

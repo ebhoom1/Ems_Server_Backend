@@ -9,7 +9,7 @@ AWS.config.update({
 });
 
 const s3 = new AWS.S3();
-const BUCKET = process.env.S3_BUCKET_NAME_ || "ems-ebhoom-bucket";
+const BUCKET = process.env.S3_BUCKET_NAME_ || "goodfoot-ems-bucket";
 const DEST_KEY = "dailyconsumption/consumptionData.json";
 
 // GET /api/daily-consumption

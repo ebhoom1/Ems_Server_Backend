@@ -248,7 +248,7 @@ const getSignedUrls = async (req, res) => {
       if (!key) continue;
 
       const command = new GetObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME || "ems-ebhoom-bucket",
+        Bucket: process.env.S3_BUCKET_NAME_ || "goodfoot-ems-bucket",
         Key: key,
       });
 

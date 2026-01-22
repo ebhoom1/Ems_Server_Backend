@@ -30,7 +30,7 @@ const uploadDataToS3AndClearDB = async () => {
 
         try {
             // Fetch existing file
-            const existingFile = await s3.getObject({ Bucket: 'ems-ebhoom-bucket', Key: fileName }).promise();
+            const existingFile = await s3.getObject({ Bucket: 'goodfoot-ems-bucket', Key: fileName }).promise();
             existingJsonData = JSON.parse(existingFile.Body.toString('utf-8'));
         } catch (error) {
             if (error.code !== 'NoSuchKey') {
