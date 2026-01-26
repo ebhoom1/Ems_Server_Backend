@@ -549,6 +549,8 @@ const plantOperatingRoutes = require("./routers/plantOperatingRoutes");
 const flowReportRoutes = require('./routers/flowReportRoutes');
 const weeklyMaintenanceRoutes=require('./routers/weeklyMaintenanceRoutes');
 const treatedWaterClarityWeeklyRoutes = require("./routers/treatedWaterClarityWeeklyRoutes");
+const equipmentStatusWeeklyRoutes = require("./routers/equipmentStatusWeeklyRoutes");
+const criticalSpareWeeklyRoutes = require("./routers/criticalSpareWeeklyRoutes");
 const valveStateRoutes = require('./routers/valveRoutes');
 const cameraRoutes = require('./routers/cameraRoutes')
 // ---------------- MQTT & SOCKET HELPERS ----------------
@@ -748,6 +750,8 @@ app.use("/api", plantOperatingRoutes);
 app.use('/api/flow-report', flowReportRoutes);
 app.use('/api/weekly-maintenance',weeklyMaintenanceRoutes);
 app.use("/api/treated-water-clarity-weekly", treatedWaterClarityWeeklyRoutes);
+app.use("/api/equipment-status-weekly", equipmentStatusWeeklyRoutes);
+app.use("/api/critical-spares-weekly", criticalSpareWeeklyRoutes);
 app.use('/api', valveStateRoutes);
 app.use("/api", cameraRoutes);
 //require('./controllers/cameraController');
