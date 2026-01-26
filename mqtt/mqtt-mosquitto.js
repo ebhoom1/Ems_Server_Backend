@@ -785,6 +785,24 @@ const setupMqttClient = (io) => {
               });
             }
 
+            const roomId = item.product_id.toString();
+            const hasExtra =
+              (Array.isArray(item.cycle_status) && item.cycle_status.length) ||
+              (Array.isArray(item.filling_status) && item.filling_status.length);
+
+            if (hasExtra) {
+              const ackData = {
+                product_id: item.product_id,
+                userName: item.userName,
+                pumps: item.pumps,
+                cycle_status: item.cycle_status,
+                filling_status: item.filling_status,
+                timestamp: item.timestamp || new Date().toISOString(),
+              };
+
+              io.to(roomId).emit("pumpAck", ackData);
+              io.to(roomId).emit("pumpStateUpdate", ackData);
+            }
 
             // ✅ Emit proper valveAck to frontend
             // io.to(item.product_id.toString()).emit("valveAck", {
