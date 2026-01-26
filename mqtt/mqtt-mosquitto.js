@@ -770,11 +770,11 @@ const setupMqttClient = (io) => {
               await valveStateController.updateValveState(item.product_id, v.valveId, v.status);
               await valveStateController.setValvePending(item.product_id, v.valveId, false);
             }
-            console.log("valveAcks***********:", valveAcks);
+            // console.log("valveAcks***********:", valveAcks);
 
             // ✅ Emit ONLY valves with defined status
             const realValveAcks = valveAcks.filter((v) => typeof v.status !== "undefined");
-            console.log("realValveAcks***********:", realValveAcks);
+            // console.log("realValveAcks***********:", realValveAcks);
 
             if (realValveAcks.length) {
 
@@ -811,7 +811,7 @@ const setupMqttClient = (io) => {
                   pump.pumpId,
                   pump.status === 1 || pump.status === "ON"
                 );
-                console.log("Pump state updated from acknowledgment**:", pumpstate);
+                // console.log("Pump state updated from acknowledgment**:", pumpstate);
                 // await updateRuntimeFromRealtime({
                 //   product_id: item.product_id,
                 //   userName: item.userName,
