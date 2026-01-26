@@ -833,6 +833,8 @@ const setupMqttClient = (io) => {
               product_id: item.product_id,
               userName: item.userName,
               pumps: item.pumps,
+              cycle_status: item.cycle_status,
+              filling_status: item.filling_status,
               tanks: item.tanks,
               message: item.message || "Pump status updated",
               timestamp: item.timestamp || new Date().toISOString(),
@@ -1040,6 +1042,7 @@ const setupMqttClient = (io) => {
                 );
 
                 const room = item.product_id.toString();
+                console.log(room);
                 io.to(room).emit("data", tankPayload);
                 lastTankDataByProductId[room] = tankPayload;
                 // 🔔 Check levels and send notifications to user + admin when thresholds are crossed
