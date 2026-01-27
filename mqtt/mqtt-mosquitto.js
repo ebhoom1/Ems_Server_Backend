@@ -8,6 +8,20 @@ const pumpStateController = require("../controllers/pumpStateController");
 const valveStateController = require("../controllers/valveStateController");
 const TankAlertState = require("../models/TankAlertState");
 
+const productCycleStates = {};
+
+// ✅ HELPER TO FIND ACTIVE KEY
+const getActiveKey = (objOrArr) => {
+  const obj = Array.isArray(objOrArr) ? objOrArr[0] : objOrArr;
+  if (!obj || typeof obj !== "object") return null;
+
+  for (const [k, v] of Object.entries(obj)) {
+    const s = String(v).trim().toUpperCase();
+    if (s === "ON" || s === "1" || v === 1 || v === true) return k;
+  }
+  return null;
+};
+
 const {
   updateRuntimeFromRealtime,
 } = require("../controllers/pumpRuntimeController");
@@ -791,6 +805,36 @@ const setupMqttClient = (io) => {
               (Array.isArray(item.filling_status) && item.filling_status.length);
 
             if (hasExtra) {
+              // 1. Initialize state for this product if missing
+              if (!productCycleStates[roomId]) {
+                productCycleStates[roomId] = {
+                  sbr: { phase: null, startTime: null },
+                  filter: { phase: null, startTime: null },
+                };
+              }
+
+              const pState = productCycleStates[roomId];
+              const nowISO = new Date().toISOString();
+
+              // 2. Handle SBR Cycle Logic
+              const activeSbr = getActiveKey(item.cycle_status);
+              if (activeSbr) {
+                // If phase changed OR we don't have a start time yet, update it
+                if (pState.sbr.phase !== activeSbr || !pState.sbr.startTime) {
+                  pState.sbr.phase = activeSbr;
+                  pState.sbr.startTime = nowISO; // Start counting from NOW
+                }
+              }
+
+              // 3. Handle Filter Cycle Logic
+              const activeFilter = getActiveKey(item.filling_status);
+              if (activeFilter) {
+                if (pState.filter.phase !== activeFilter || !pState.filter.startTime) {
+                  pState.filter.phase = activeFilter;
+                  pState.filter.startTime = nowISO;
+                }
+              }
+
               const ackData = {
                 product_id: item.product_id,
                 userName: item.userName,
@@ -798,6 +842,9 @@ const setupMqttClient = (io) => {
                 cycle_status: item.cycle_status,
                 filling_status: item.filling_status,
                 timestamp: item.timestamp || new Date().toISOString(),
+                // ✅ SEND PERSISTED START TIMES
+                sbrStartTime: pState.sbr.startTime,
+                filterStartTime: pState.filter.startTime,
               };
 
               io.to(roomId).emit("pumpAck", ackData);
@@ -818,6 +865,30 @@ const setupMqttClient = (io) => {
           // Pump acknowledgments (device confirming receipt/action of a command)
           if (item.product_id && Array.isArray(item.pumps)) {
             console.log("Processing pump acknowledgment:", item);
+
+            const roomId = item.product_id.toString();
+
+            // 1. Initialize state if missing
+            if (!productCycleStates[roomId]) {
+              productCycleStates[roomId] = {
+                sbr: { phase: null, startTime: null },
+                filter: { phase: null, startTime: null },
+              };
+            }
+            const pState = productCycleStates[roomId];
+            const nowISO = new Date().toISOString();
+
+            // 2. Track SBR Phase Start Time
+            if (item.cycle_status) {
+              const activeSbr = getActiveKey(item.cycle_status);
+              if (activeSbr) {
+                // If phase changed OR time is missing, update it
+                if (pState.sbr.phase !== activeSbr || !pState.sbr.startTime) {
+                  pState.sbr.phase = activeSbr;
+                  pState.sbr.startTime = nowISO;
+                }
+              }
+            }
 
             //vibration
             //  await pumpDataController.savePumpMetrics(item);
@@ -855,6 +926,8 @@ const setupMqttClient = (io) => {
               filling_status: item.filling_status,
               tanks: item.tanks,
               message: item.message || "Pump status updated",
+              sbrStartTime: pState.sbr.startTime,
+              filterStartTime: pState.filter.startTime,
               timestamp: item.timestamp || new Date().toISOString(),
             };
             io.to(item.product_id.toString()).emit("pumpAck", ackData);
