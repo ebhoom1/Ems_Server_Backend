@@ -570,12 +570,12 @@ async function handleTankAlerts(productId, userDetails, tankData, io) {
     //       etc.
 
     // 1) Push notification (if enabled)
-    await sendTankLevelAlert({
-      userDetails,
-      tankName,
-      percentage: pct,
-      band: currentBand,
-    });
+    // await sendTankLevelAlert({
+    //   userDetails,
+    //   tankName,
+    //   percentage: pct,
+    //   band: currentBand,
+    // });
 
     // 2) Socket.IO → frontend banner
     if (io) {

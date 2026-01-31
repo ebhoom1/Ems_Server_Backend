@@ -540,6 +540,7 @@ const monthlyMaintenanceReportRoutes = require('./routers/monthlyMaintenanceRepo
 const treatedWaterClarityRoutes = require("./routers/treatedWaterClarityRoutes");
 const equipmentStatusRoutes = require("./routers/equipmentStatusRoutes");
 const chemicalReportRoutes = require("./routers/chemicalReportRoutes");
+const chemicalReportV2=require("./routers/chemicalReportV2");
 const mlssPhRouter = require("./routers/mlssPhRouter");
 const criticalSpareReportRoutes = require("./routers/criticalSpareReportRoutes");
 const ChemicalConsumptionReport = require("./routers/chemicalConsumptionRoutes");
@@ -741,6 +742,7 @@ app.use('/api/monthly-maintenance', monthlyMaintenanceReportRoutes);
 app.use("/api/treated-water-clarity", treatedWaterClarityRoutes);
 app.use("/api/equipment-status", equipmentStatusRoutes);
 app.use('/api/chemical-report', chemicalReportRoutes);
+app.use('/api', chemicalReportV2);
 app.use('/api', mlssPhRouter);
 app.use("/api/critical-spares", criticalSpareReportRoutes);
 app.use("/api", ChemicalConsumptionReport);
